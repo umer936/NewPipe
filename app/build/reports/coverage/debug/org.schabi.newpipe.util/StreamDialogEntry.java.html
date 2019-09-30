@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StreamDialogEntry.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.util</a> &gt; <span class="el_source">StreamDialogEntry.java</span></div><h1>StreamDialogEntry.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.util;
+
+import android.content.Context;
+import android.support.v4.app.Fragment;
+
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.extractor.stream.StreamInfoItem;
+import org.schabi.newpipe.local.dialog.PlaylistAppendDialog;
+import org.schabi.newpipe.player.playqueue.SinglePlayQueue;
+
+import java.util.Collections;
+
+<span class="nc" id="L13">public enum StreamDialogEntry {</span>
+    //////////////////////////////////////
+    // enum values with DEFAULT actions //
+    //////////////////////////////////////
+
+<span class="nc" id="L18">    enqueue_on_background(R.string.enqueue_on_background, (fragment, item) -&gt;</span>
+<span class="nc" id="L19">            NavigationHelper.enqueueOnBackgroundPlayer(fragment.getContext(), new SinglePlayQueue(item), false)),</span>
+
+<span class="nc" id="L21">    enqueue_on_popup(R.string.enqueue_on_popup, (fragment, item) -&gt;</span>
+<span class="nc" id="L22">            NavigationHelper.enqueueOnPopupPlayer(fragment.getContext(), new SinglePlayQueue(item), false)),</span>
+
+<span class="nc" id="L24">    start_here_on_background(R.string.start_here_on_background, (fragment, item) -&gt;</span>
+<span class="nc" id="L25">            NavigationHelper.playOnBackgroundPlayer(fragment.getContext(), new SinglePlayQueue(item), true)),</span>
+
+<span class="nc" id="L27">    start_here_on_popup(R.string.start_here_on_popup, (fragment, item) -&gt;</span>
+<span class="nc" id="L28">            NavigationHelper.playOnPopupPlayer(fragment.getContext(), new SinglePlayQueue(item), true)),</span>
+
+<span class="nc" id="L30">    set_as_playlist_thumbnail(R.string.set_as_playlist_thumbnail, (fragment, item) -&gt; {}), // has to be set manually</span>
+
+<span class="nc" id="L32">    delete(R.string.delete, (fragment, item) -&gt; {}), // has to be set manually</span>
+
+<span class="nc" id="L34">    append_playlist(R.string.append_playlist, (fragment, item) -&gt; {</span>
+<span class="nc bnc" id="L35" title="All 2 branches missed.">        if (fragment.getFragmentManager() != null) {</span>
+<span class="nc" id="L36">            PlaylistAppendDialog.fromStreamInfoItems(Collections.singletonList(item))</span>
+<span class="nc" id="L37">                    .show(fragment.getFragmentManager(), &quot;StreamDialogEntry@append_playlist&quot;);</span>
+<span class="nc" id="L38">        }}),</span>
+
+<span class="nc" id="L40">    share(R.string.share, (fragment, item) -&gt;</span>
+<span class="nc" id="L41">            ShareUtils.shareUrl(fragment.getContext(), item.getName(), item.getUrl()));</span>
+
+
+    ///////////////
+    // variables //
+    ///////////////
+
+    public interface StreamDialogEntryAction {
+        void onClick(Fragment fragment, final StreamInfoItem infoItem);
+    }
+
+    private final int resource;
+    private final StreamDialogEntryAction defaultAction;
+    private StreamDialogEntryAction customAction;
+
+    private static StreamDialogEntry[] enabledEntries;
+
+
+    ///////////////////////////////////////////////////////
+    // non-static methods to initialize and edit entries //
+    ///////////////////////////////////////////////////////
+
+<span class="nc" id="L63">    StreamDialogEntry(final int resource, StreamDialogEntryAction defaultAction) {</span>
+<span class="nc" id="L64">        this.resource = resource;</span>
+<span class="nc" id="L65">        this.defaultAction = defaultAction;</span>
+<span class="nc" id="L66">        this.customAction = null;</span>
+<span class="nc" id="L67">    }</span>
+
+    /**
+     * Can be used after {@link #setEnabledEntries(StreamDialogEntry...)} has been called
+     */
+    public void setCustomAction(StreamDialogEntryAction action) {
+<span class="nc" id="L73">        this.customAction = action;</span>
+<span class="nc" id="L74">    }</span>
+
+
+    ////////////////////////////////////////////////
+    // static methods that act on enabled entries //
+    ////////////////////////////////////////////////
+
+    /**
+     * To be called before using {@link #setCustomAction(StreamDialogEntryAction)}
+     */
+    public static void setEnabledEntries(StreamDialogEntry... entries) {
+        // cleanup from last time StreamDialogEntry was used
+<span class="nc bnc" id="L86" title="All 2 branches missed.">        for (StreamDialogEntry streamDialogEntry : values()) {</span>
+<span class="nc" id="L87">            streamDialogEntry.customAction = null;</span>
+        }
+
+<span class="nc" id="L90">        enabledEntries = entries;</span>
+<span class="nc" id="L91">    }</span>
+
+    public static String[] getCommands(Context context) {
+<span class="nc" id="L94">        String[] commands = new String[enabledEntries.length];</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">        for (int i = 0; i != enabledEntries.length; ++i) {</span>
+<span class="nc" id="L96">            commands[i] = context.getResources().getString(enabledEntries[i].resource);</span>
+        }
+
+<span class="nc" id="L99">        return commands;</span>
+    }
+
+    public static void clickOn(int which, Fragment fragment, StreamInfoItem infoItem) {
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        if (enabledEntries[which].customAction == null) {</span>
+<span class="nc" id="L104">            enabledEntries[which].defaultAction.onClick(fragment, infoItem);</span>
+        } else {
+<span class="nc" id="L106">            enabledEntries[which].customAction.onClick(fragment, infoItem);</span>
+        }
+<span class="nc" id="L108">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

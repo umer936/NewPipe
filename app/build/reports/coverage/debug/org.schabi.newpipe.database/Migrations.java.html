@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Migrations.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.database</a> &gt; <span class="el_source">Migrations.java</span></div><h1>Migrations.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.database;
+
+import android.arch.persistence.db.SupportSQLiteDatabase;
+import android.arch.persistence.room.migration.Migration;
+import android.support.annotation.NonNull;
+import android.util.Log;
+
+import org.schabi.newpipe.BuildConfig;
+
+<span class="nc" id="L10">public class Migrations {</span>
+
+    public static final int DB_VER_11_0 = 1;
+    public static final int DB_VER_12_0 = 2;
+
+<span class="nc bnc" id="L15" title="All 2 branches missed.">    public static final boolean DEBUG = !BuildConfig.BUILD_TYPE.equals(&quot;release&quot;);</span>
+<span class="nc" id="L16">    private static final String TAG = Migrations.class.getName();</span>
+
+<span class="nc" id="L18">    public static final Migration MIGRATION_11_12 = new Migration(DB_VER_11_0, DB_VER_12_0) {</span>
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase database) {
+<span class="nc bnc" id="L21" title="All 2 branches missed.">            if(DEBUG) {</span>
+<span class="nc" id="L22">                Log.d(TAG, &quot;Start migrating database&quot;);</span>
+            }
+            /*
+            * Unfortunately these queries must be hardcoded due to the possibility of
+            * schema and names changing at a later date, thus invalidating the older migration
+            * scripts if they are not hardcoded.
+            * */
+
+            // Not much we can do about this, since room doesn't create tables before migration.
+            // It's either this or blasting the entire database anew.
+<span class="nc" id="L32">            database.execSQL(&quot;CREATE  INDEX `index_search_history_search` ON `search_history` (`search`)&quot;);</span>
+<span class="nc" id="L33">            database.execSQL(&quot;CREATE TABLE IF NOT EXISTS `streams` (`uid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `service_id` INTEGER NOT NULL, `url` TEXT, `title` TEXT, `stream_type` TEXT, `duration` INTEGER, `uploader` TEXT, `thumbnail_url` TEXT)&quot;);</span>
+<span class="nc" id="L34">            database.execSQL(&quot;CREATE UNIQUE INDEX `index_streams_service_id_url` ON `streams` (`service_id`, `url`)&quot;);</span>
+<span class="nc" id="L35">            database.execSQL(&quot;CREATE TABLE IF NOT EXISTS `stream_history` (`stream_id` INTEGER NOT NULL, `access_date` INTEGER NOT NULL, `repeat_count` INTEGER NOT NULL, PRIMARY KEY(`stream_id`, `access_date`), FOREIGN KEY(`stream_id`) REFERENCES `streams`(`uid`) ON UPDATE CASCADE ON DELETE CASCADE )&quot;);</span>
+<span class="nc" id="L36">            database.execSQL(&quot;CREATE  INDEX `index_stream_history_stream_id` ON `stream_history` (`stream_id`)&quot;);</span>
+<span class="nc" id="L37">            database.execSQL(&quot;CREATE TABLE IF NOT EXISTS `stream_state` (`stream_id` INTEGER NOT NULL, `progress_time` INTEGER NOT NULL, PRIMARY KEY(`stream_id`), FOREIGN KEY(`stream_id`) REFERENCES `streams`(`uid`) ON UPDATE CASCADE ON DELETE CASCADE )&quot;);</span>
+<span class="nc" id="L38">            database.execSQL(&quot;CREATE TABLE IF NOT EXISTS `playlists` (`uid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT, `thumbnail_url` TEXT)&quot;);</span>
+<span class="nc" id="L39">            database.execSQL(&quot;CREATE  INDEX `index_playlists_name` ON `playlists` (`name`)&quot;);</span>
+<span class="nc" id="L40">            database.execSQL(&quot;CREATE TABLE IF NOT EXISTS `playlist_stream_join` (`playlist_id` INTEGER NOT NULL, `stream_id` INTEGER NOT NULL, `join_index` INTEGER NOT NULL, PRIMARY KEY(`playlist_id`, `join_index`), FOREIGN KEY(`playlist_id`) REFERENCES `playlists`(`uid`) ON UPDATE CASCADE ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED, FOREIGN KEY(`stream_id`) REFERENCES `streams`(`uid`) ON UPDATE CASCADE ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED)&quot;);</span>
+<span class="nc" id="L41">            database.execSQL(&quot;CREATE UNIQUE INDEX `index_playlist_stream_join_playlist_id_join_index` ON `playlist_stream_join` (`playlist_id`, `join_index`)&quot;);</span>
+<span class="nc" id="L42">            database.execSQL(&quot;CREATE  INDEX `index_playlist_stream_join_stream_id` ON `playlist_stream_join` (`stream_id`)&quot;);</span>
+<span class="nc" id="L43">            database.execSQL(&quot;CREATE TABLE IF NOT EXISTS `remote_playlists` (`uid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `service_id` INTEGER NOT NULL, `name` TEXT, `url` TEXT, `thumbnail_url` TEXT, `uploader` TEXT, `stream_count` INTEGER)&quot;);</span>
+<span class="nc" id="L44">            database.execSQL(&quot;CREATE  INDEX `index_remote_playlists_name` ON `remote_playlists` (`name`)&quot;);</span>
+<span class="nc" id="L45">            database.execSQL(&quot;CREATE UNIQUE INDEX `index_remote_playlists_service_id_url` ON `remote_playlists` (`service_id`, `url`)&quot;);</span>
+
+            // Populate streams table with existing entries in watch history
+            // Latest data first, thus ignoring older entries with the same indices
+<span class="nc" id="L49">            database.execSQL(&quot;INSERT OR IGNORE INTO streams (service_id, url, title, &quot; +</span>
+                    &quot;stream_type, duration, uploader, thumbnail_url) &quot; +
+
+                    &quot;SELECT service_id, url, title, 'VIDEO_STREAM', duration, &quot; +
+                    &quot;uploader, thumbnail_url &quot; +
+
+                    &quot;FROM watch_history &quot; +
+                    &quot;ORDER BY creation_date DESC&quot;);
+
+            // Once the streams have PKs, join them with the normalized history table
+            // and populate it with the remaining data from watch history
+<span class="nc" id="L60">            database.execSQL(&quot;INSERT INTO stream_history (stream_id, access_date, repeat_count)&quot; +</span>
+                    &quot;SELECT uid, creation_date, 1 &quot; +
+                    &quot;FROM watch_history INNER JOIN streams &quot; +
+                    &quot;ON watch_history.service_id == streams.service_id &quot; +
+                    &quot;AND watch_history.url == streams.url &quot; +
+                    &quot;ORDER BY creation_date DESC&quot;);
+
+<span class="nc" id="L67">            database.execSQL(&quot;DROP TABLE IF EXISTS watch_history&quot;);</span>
+
+<span class="nc bnc" id="L69" title="All 2 branches missed.">            if(DEBUG) {</span>
+<span class="nc" id="L70">                Log.d(TAG, &quot;Stop migrating database&quot;);</span>
+            }
+<span class="nc" id="L72">        }</span>
+    };
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

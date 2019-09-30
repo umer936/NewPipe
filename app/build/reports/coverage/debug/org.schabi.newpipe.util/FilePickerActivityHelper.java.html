@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FilePickerActivityHelper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.util</a> &gt; <span class="el_source">FilePickerActivityHelper.java</span></div><h1>FilePickerActivityHelper.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.util;
+
+import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Bundle;
+import android.os.Environment;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v4.content.Loader;
+import android.support.v7.util.SortedList;
+import android.support.v7.widget.RecyclerView;
+import android.util.TypedValue;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import com.nononsenseapps.filepicker.AbstractFilePickerFragment;
+import com.nononsenseapps.filepicker.FilePickerFragment;
+
+import org.schabi.newpipe.R;
+
+import java.io.File;
+
+<span class="nc" id="L27">public class FilePickerActivityHelper extends com.nononsenseapps.filepicker.FilePickerActivity {</span>
+
+    private CustomFilePickerFragment currentFragment;
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+<span class="nc bnc" id="L33" title="All 2 branches missed.">        if (ThemeHelper.isLightThemeSelected(this)) {</span>
+<span class="nc" id="L34">            this.setTheme(R.style.FilePickerThemeLight);</span>
+        } else {
+<span class="nc" id="L36">            this.setTheme(R.style.FilePickerThemeDark);</span>
+        }
+<span class="nc" id="L38">        super.onCreate(savedInstanceState);</span>
+<span class="nc" id="L39">    }</span>
+
+    @Override
+    public void onBackPressed() {
+        // If at top most level, normal behaviour
+<span class="nc bnc" id="L44" title="All 2 branches missed.">        if (currentFragment.isBackTop()) {</span>
+<span class="nc" id="L45">            super.onBackPressed();</span>
+        } else {
+            // Else go up
+<span class="nc" id="L48">            currentFragment.goUp();</span>
+        }
+<span class="nc" id="L50">    }</span>
+
+    @Override
+    protected AbstractFilePickerFragment&lt;File&gt; getFragment(@Nullable String startPath, int mode, boolean allowMultiple, boolean allowCreateDir, boolean allowExistingFile, boolean singleClick) {
+<span class="nc" id="L54">        final CustomFilePickerFragment fragment = new CustomFilePickerFragment();</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">        fragment.setArgs(startPath != null ? startPath : Environment.getExternalStorageDirectory().getPath(),</span>
+                mode, allowMultiple, allowCreateDir, allowExistingFile, singleClick);
+<span class="nc" id="L57">        return currentFragment = fragment;</span>
+    }
+
+    public static Intent chooseSingleFile(@NonNull Context context) {
+<span class="nc" id="L61">        return new Intent(context, FilePickerActivityHelper.class)</span>
+<span class="nc" id="L62">                .putExtra(FilePickerActivityHelper.EXTRA_ALLOW_MULTIPLE, false)</span>
+<span class="nc" id="L63">                .putExtra(FilePickerActivityHelper.EXTRA_ALLOW_CREATE_DIR, false)</span>
+<span class="nc" id="L64">                .putExtra(FilePickerActivityHelper.EXTRA_SINGLE_CLICK, true)</span>
+<span class="nc" id="L65">                .putExtra(FilePickerActivityHelper.EXTRA_MODE, FilePickerActivityHelper.MODE_FILE);</span>
+    }
+
+    public static Intent chooseFileToSave(@NonNull Context context, @Nullable String startPath) {
+<span class="nc" id="L69">        return new Intent(context, FilePickerActivityHelper.class)</span>
+<span class="nc" id="L70">                .putExtra(FilePickerActivityHelper.EXTRA_ALLOW_MULTIPLE, false)</span>
+<span class="nc" id="L71">                .putExtra(FilePickerActivityHelper.EXTRA_ALLOW_CREATE_DIR, true)</span>
+<span class="nc" id="L72">                .putExtra(FilePickerActivityHelper.EXTRA_ALLOW_EXISTING_FILE, true)</span>
+<span class="nc" id="L73">                .putExtra(FilePickerActivityHelper.EXTRA_START_PATH, startPath)</span>
+<span class="nc" id="L74">                .putExtra(FilePickerActivityHelper.EXTRA_MODE, FilePickerActivityHelper.MODE_NEW_FILE);</span>
+    }
+
+    public static boolean isOwnFileUri(@NonNull Context context, @NonNull Uri uri) {
+<span class="nc bnc" id="L78" title="All 2 branches missed.">        if (uri.getAuthority() == null) return false;</span>
+<span class="nc" id="L79">        return uri.getAuthority().startsWith(context.getPackageName());</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Internal
+    //////////////////////////////////////////////////////////////////////////*/
+
+<span class="nc" id="L86">    public static class CustomFilePickerFragment extends FilePickerFragment {</span>
+
+        @Override
+        public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+<span class="nc" id="L90">            return super.onCreateView(inflater, container, savedInstanceState);</span>
+        }
+
+        @NonNull
+        @Override
+        public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+<span class="nc" id="L96">            final RecyclerView.ViewHolder viewHolder = super.onCreateViewHolder(parent, viewType);</span>
+
+<span class="nc" id="L98">            final View view = viewHolder.itemView.findViewById(android.R.id.text1);</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">            if (view instanceof TextView) {</span>
+<span class="nc" id="L100">                ((TextView) view).setTextSize(TypedValue.COMPLEX_UNIT_PX, getResources().getDimension(R.dimen.file_picker_items_text_size));</span>
+            }
+
+<span class="nc" id="L103">            return viewHolder;</span>
+        }
+
+        @Override
+        public void onClickOk(@NonNull View view) {
+<span class="nc bnc" id="L108" title="All 4 branches missed.">            if (mode == MODE_NEW_FILE &amp;&amp; getNewFileName().isEmpty()) {</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">                if (mToast != null) mToast.cancel();</span>
+<span class="nc" id="L110">                mToast = Toast.makeText(getActivity(), R.string.file_name_empty_error, Toast.LENGTH_SHORT);</span>
+<span class="nc" id="L111">                mToast.show();</span>
+<span class="nc" id="L112">                return;</span>
+            }
+
+<span class="nc" id="L115">            super.onClickOk(view);</span>
+<span class="nc" id="L116">        }</span>
+
+        @Override
+        protected boolean isItemVisible(@NonNull File file) {
+<span class="nc bnc" id="L120" title="All 4 branches missed.">            if (file.isDirectory() &amp;&amp; file.isHidden()) return true;</span>
+<span class="nc" id="L121">            return super.isItemVisible(file);</span>
+        }
+
+        public File getBackTop() {
+<span class="nc bnc" id="L125" title="All 2 branches missed.">            if (getArguments() == null) return Environment.getExternalStorageDirectory();</span>
+
+<span class="nc" id="L127">            final String path = getArguments().getString(KEY_START_PATH, &quot;/&quot;);</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">            if (path.contains(Environment.getExternalStorageDirectory().getPath())) {</span>
+<span class="nc" id="L129">                return Environment.getExternalStorageDirectory();</span>
+            }
+
+<span class="nc" id="L132">            return getPath(path);</span>
+        }
+
+        public boolean isBackTop() {
+<span class="nc bnc" id="L136" title="All 4 branches missed.">            return compareFiles(mCurrentPath, getBackTop()) == 0 || compareFiles(mCurrentPath, new File(&quot;/&quot;)) == 0;</span>
+        }
+
+        @Override
+        public void onLoadFinished(Loader&lt;SortedList&lt;File&gt;&gt; loader, SortedList&lt;File&gt; data) {
+<span class="nc" id="L141">            super.onLoadFinished(loader, data);</span>
+<span class="nc" id="L142">            layoutManager.scrollToPosition(0);</span>
+<span class="nc" id="L143">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MainFragment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.fragments</a> &gt; <span class="el_source">MainFragment.java</span></div><h1>MainFragment.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.fragments;
+
+import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.design.widget.TabLayout;
+import android.support.v4.app.Fragment;
+import android.support.v4.app.FragmentManager;
+import android.support.v4.app.FragmentPagerAdapter;
+import android.support.v4.view.ViewPager;
+import android.support.v7.app.ActionBar;
+import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
+import android.view.View;
+import android.view.ViewGroup;
+
+import org.schabi.newpipe.BaseFragment;
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.extractor.exceptions.ExtractionException;
+import org.schabi.newpipe.report.ErrorActivity;
+import org.schabi.newpipe.report.UserAction;
+import org.schabi.newpipe.settings.tabs.Tab;
+import org.schabi.newpipe.settings.tabs.TabsManager;
+import org.schabi.newpipe.util.NavigationHelper;
+import org.schabi.newpipe.util.ServiceHelper;
+
+import java.util.ArrayList;
+import java.util.List;
+
+<span class="nc" id="L34">public class MainFragment extends BaseFragment implements TabLayout.OnTabSelectedListener {</span>
+    private ViewPager viewPager;
+    private SelectedTabsPagerAdapter pagerAdapter;
+    private TabLayout tabLayout;
+
+<span class="nc" id="L39">    private List&lt;Tab&gt; tabsList = new ArrayList&lt;&gt;();</span>
+    private TabsManager tabsManager;
+
+<span class="nc" id="L42">    private boolean hasTabsChanged = false;</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Fragment's LifeCycle
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+<span class="nc" id="L50">        super.onCreate(savedInstanceState);</span>
+<span class="nc" id="L51">        setHasOptionsMenu(true);</span>
+
+<span class="nc" id="L53">        destroyOldFragments();</span>
+
+<span class="nc" id="L55">        tabsManager = TabsManager.getManager(activity);</span>
+<span class="nc" id="L56">        tabsManager.setSavedTabsListener(() -&gt; {</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">            if (DEBUG) {</span>
+<span class="nc" id="L58">                Log.d(TAG, &quot;TabsManager.SavedTabsChangeListener: onTabsChanged called, isResumed = &quot; + isResumed());</span>
+            }
+<span class="nc bnc" id="L60" title="All 2 branches missed.">            if (isResumed()) {</span>
+<span class="nc" id="L61">                updateTabs();</span>
+            } else {
+<span class="nc" id="L63">                hasTabsChanged = true;</span>
+            }
+<span class="nc" id="L65">        });</span>
+<span class="nc" id="L66">    }</span>
+
+    private void destroyOldFragments() {
+<span class="nc bnc" id="L69" title="All 2 branches missed.">        for (Fragment fragment : getChildFragmentManager().getFragments()) {</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">            if (fragment != null) {</span>
+<span class="nc" id="L71">                getChildFragmentManager()</span>
+<span class="nc" id="L72">                        .beginTransaction()</span>
+<span class="nc" id="L73">                        .remove(fragment)</span>
+<span class="nc" id="L74">                        .commitNowAllowingStateLoss();</span>
+            }
+<span class="nc" id="L76">        }</span>
+<span class="nc" id="L77">    }</span>
+
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+<span class="nc" id="L81">        return inflater.inflate(R.layout.fragment_main, container, false);</span>
+    }
+
+    @Override
+    protected void initViews(View rootView, Bundle savedInstanceState) {
+<span class="nc" id="L86">        super.initViews(rootView, savedInstanceState);</span>
+
+<span class="nc" id="L88">        tabLayout = rootView.findViewById(R.id.main_tab_layout);</span>
+<span class="nc" id="L89">        viewPager = rootView.findViewById(R.id.pager);</span>
+
+        /*  Nested fragment, use child fragment here to maintain backstack in view pager. */
+<span class="nc" id="L92">        pagerAdapter = new SelectedTabsPagerAdapter(getChildFragmentManager());</span>
+<span class="nc" id="L93">        viewPager.setAdapter(pagerAdapter);</span>
+
+<span class="nc" id="L95">        tabLayout.setupWithViewPager(viewPager);</span>
+<span class="nc" id="L96">        tabLayout.addOnTabSelectedListener(this);</span>
+<span class="nc" id="L97">        updateTabs();</span>
+<span class="nc" id="L98">    }</span>
+
+    @Override
+    public void onResume() {
+<span class="nc" id="L102">        super.onResume();</span>
+
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        if (hasTabsChanged) {</span>
+<span class="nc" id="L105">            hasTabsChanged = false;</span>
+<span class="nc" id="L106">            updateTabs();</span>
+        }
+<span class="nc" id="L108">    }</span>
+
+    @Override
+    public void onDestroy() {
+<span class="nc" id="L112">        super.onDestroy();</span>
+<span class="nc" id="L113">        tabsManager.unsetSavedTabsListener();</span>
+<span class="nc" id="L114">        pagerAdapter = null;</span>
+<span class="nc" id="L115">        viewPager.setAdapter(pagerAdapter);</span>
+<span class="nc" id="L116">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Menu
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+<span class="nc" id="L124">        super.onCreateOptionsMenu(menu, inflater);</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onCreateOptionsMenu() called with: menu = [&quot; + menu + &quot;], inflater = [&quot; + inflater + &quot;]&quot;);</span>
+<span class="nc" id="L126">        inflater.inflate(R.menu.main_fragment_menu, menu);</span>
+
+<span class="nc" id="L128">        ActionBar supportActionBar = activity.getSupportActionBar();</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">        if (supportActionBar != null) {</span>
+<span class="nc" id="L130">            supportActionBar.setDisplayHomeAsUpEnabled(false);</span>
+        }
+<span class="nc" id="L132">    }</span>
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        switch (item.getItemId()) {</span>
+            case R.id.action_search:
+                try {
+<span class="nc" id="L139">                    NavigationHelper.openSearchFragment(</span>
+<span class="nc" id="L140">                            getFragmentManager(),</span>
+<span class="nc" id="L141">                            ServiceHelper.getSelectedServiceId(activity),</span>
+                            &quot;&quot;);
+<span class="nc" id="L143">                } catch (Exception e) {</span>
+<span class="nc" id="L144">                    ErrorActivity.reportUiError((AppCompatActivity) getActivity(), e);</span>
+<span class="nc" id="L145">                }</span>
+<span class="nc" id="L146">                return true;</span>
+        }
+<span class="nc" id="L148">        return super.onOptionsItemSelected(item);</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Tabs
+    //////////////////////////////////////////////////////////////////////////*/
+
+    public void updateTabs() {
+<span class="nc" id="L156">        tabsList.clear();</span>
+<span class="nc" id="L157">        tabsList.addAll(tabsManager.getTabs());</span>
+<span class="nc" id="L158">        pagerAdapter.notifyDataSetChanged();</span>
+
+<span class="nc" id="L160">        viewPager.setOffscreenPageLimit(pagerAdapter.getCount());</span>
+<span class="nc" id="L161">        updateTabsIcon();</span>
+<span class="nc" id="L162">        updateCurrentTitle();</span>
+<span class="nc" id="L163">    }</span>
+
+    private void updateTabsIcon() {
+<span class="nc bnc" id="L166" title="All 2 branches missed.">        for (int i = 0; i &lt; tabsList.size(); i++) {</span>
+<span class="nc" id="L167">            final TabLayout.Tab tabToSet = tabLayout.getTabAt(i);</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">            if (tabToSet != null) {</span>
+<span class="nc" id="L169">                tabToSet.setIcon(tabsList.get(i).getTabIconRes(activity));</span>
+            }
+        }
+<span class="nc" id="L172">    }</span>
+
+    private void updateCurrentTitle() {
+<span class="nc" id="L175">        setTitle(tabsList.get(viewPager.getCurrentItem()).getTabName(requireContext()));</span>
+<span class="nc" id="L176">    }</span>
+
+    @Override
+    public void onTabSelected(TabLayout.Tab selectedTab) {
+<span class="nc bnc" id="L180" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onTabSelected() called with: selectedTab = [&quot; + selectedTab + &quot;]&quot;);</span>
+<span class="nc" id="L181">        updateCurrentTitle();</span>
+<span class="nc" id="L182">    }</span>
+
+    @Override
+    public void onTabUnselected(TabLayout.Tab tab) {
+<span class="nc" id="L186">    }</span>
+
+    @Override
+    public void onTabReselected(TabLayout.Tab tab) {
+<span class="nc bnc" id="L190" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onTabReselected() called with: tab = [&quot; + tab + &quot;]&quot;);</span>
+<span class="nc" id="L191">        updateCurrentTitle();</span>
+<span class="nc" id="L192">    }</span>
+
+    private class SelectedTabsPagerAdapter extends FragmentPagerAdapter {
+
+<span class="nc" id="L196">        private SelectedTabsPagerAdapter(FragmentManager fragmentManager) {</span>
+<span class="nc" id="L197">            super(fragmentManager);</span>
+<span class="nc" id="L198">        }</span>
+
+        @Override
+        public Fragment getItem(int position) {
+<span class="nc" id="L202">            final Tab tab = tabsList.get(position);</span>
+
+<span class="nc" id="L204">            Throwable throwable = null;</span>
+<span class="nc" id="L205">            Fragment fragment = null;</span>
+            try {
+<span class="nc" id="L207">                fragment = tab.getFragment();</span>
+<span class="nc" id="L208">            } catch (ExtractionException e) {</span>
+<span class="nc" id="L209">                throwable = e;</span>
+<span class="nc" id="L210">            }</span>
+
+<span class="nc bnc" id="L212" title="All 2 branches missed.">            if (throwable != null) {</span>
+<span class="nc" id="L213">                ErrorActivity.reportError(activity, throwable, activity.getClass(), null,</span>
+<span class="nc" id="L214">                        ErrorActivity.ErrorInfo.make(UserAction.UI_ERROR, &quot;none&quot;, &quot;&quot;, R.string.app_ui_crash));</span>
+<span class="nc" id="L215">                return new BlankFragment();</span>
+            }
+
+<span class="nc bnc" id="L218" title="All 2 branches missed.">            if (fragment instanceof BaseFragment) {</span>
+<span class="nc" id="L219">                ((BaseFragment) fragment).useAsFrontPage(true);</span>
+            }
+
+<span class="nc" id="L222">            return fragment;</span>
+        }
+
+        @Override
+        public int getItemPosition(Object object) {
+            // Causes adapter to reload all Fragments when
+            // notifyDataSetChanged is called
+<span class="nc" id="L229">            return POSITION_NONE;</span>
+        }
+
+        @Override
+        public int getCount() {
+<span class="nc" id="L234">            return tabsList.size();</span>
+        }
+
+        @Override
+        public void destroyItem(ViewGroup container, int position, Object object) {
+<span class="nc" id="L239">            getChildFragmentManager()</span>
+<span class="nc" id="L240">                    .beginTransaction()</span>
+<span class="nc" id="L241">                    .remove((Fragment) object)</span>
+<span class="nc" id="L242">                    .commitNowAllowingStateLoss();</span>
+<span class="nc" id="L243">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

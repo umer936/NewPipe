@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Utility.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">us.shandian.giga.util</a> &gt; <span class="el_source">Utility.java</span></div><h1>Utility.java</h1><pre class="source lang-java linenums">package us.shandian.giga.util;
+
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
+import android.os.Build;
+import android.support.annotation.ColorInt;
+import android.support.annotation.DrawableRes;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v4.content.ContextCompat;
+import android.util.Log;
+import android.widget.Toast;
+
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.streams.io.SharpStream;
+
+import java.io.BufferedOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.net.HttpURLConnection;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
+import us.shandian.giga.io.StoredFileHelper;
+
+<span class="nc" id="L32">public class Utility {</span>
+
+<span class="nc" id="L34">    public enum FileType {</span>
+<span class="nc" id="L35">        VIDEO,</span>
+<span class="nc" id="L36">        MUSIC,</span>
+<span class="nc" id="L37">        SUBTITLE,</span>
+<span class="nc" id="L38">        UNKNOWN</span>
+    }
+
+    public static String formatBytes(long bytes) {
+<span class="nc bnc" id="L42" title="All 2 branches missed.">        if (bytes &lt; 1024) {</span>
+<span class="nc" id="L43">            return String.format(&quot;%d B&quot;, bytes);</span>
+<span class="nc bnc" id="L44" title="All 2 branches missed.">        } else if (bytes &lt; 1024 * 1024) {</span>
+<span class="nc" id="L45">            return String.format(&quot;%.2f kB&quot;, bytes / 1024d);</span>
+<span class="nc bnc" id="L46" title="All 2 branches missed.">        } else if (bytes &lt; 1024 * 1024 * 1024) {</span>
+<span class="nc" id="L47">            return String.format(&quot;%.2f MB&quot;, bytes / 1024d / 1024d);</span>
+        } else {
+<span class="nc" id="L49">            return String.format(&quot;%.2f GB&quot;, bytes / 1024d / 1024d / 1024d);</span>
+        }
+    }
+
+    public static String formatSpeed(float speed) {
+<span class="nc bnc" id="L54" title="All 2 branches missed.">        if (speed &lt; 1024) {</span>
+<span class="nc" id="L55">            return String.format(&quot;%.2f B/s&quot;, speed);</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">        } else if (speed &lt; 1024 * 1024) {</span>
+<span class="nc" id="L57">            return String.format(&quot;%.2f kB/s&quot;, speed / 1024);</span>
+<span class="nc bnc" id="L58" title="All 2 branches missed.">        } else if (speed &lt; 1024 * 1024 * 1024) {</span>
+<span class="nc" id="L59">            return String.format(&quot;%.2f MB/s&quot;, speed / 1024 / 1024);</span>
+        } else {
+<span class="nc" id="L61">            return String.format(&quot;%.2f GB/s&quot;, speed / 1024 / 1024 / 1024);</span>
+        }
+    }
+
+    public static void writeToFile(@NonNull File file, @NonNull Serializable serializable) {
+
+<span class="nc" id="L67">        try (ObjectOutputStream objectOutputStream = new ObjectOutputStream(new BufferedOutputStream(new FileOutputStream(file)))) {</span>
+<span class="nc" id="L68">            objectOutputStream.writeObject(serializable);</span>
+<span class="nc bnc" id="L69" title="All 8 branches missed.">        } catch (Exception e) {</span>
+            //nothing to do
+<span class="nc" id="L71">        }</span>
+        //nothing to do
+<span class="nc" id="L73">    }</span>
+
+    @Nullable
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;T&gt; T readFromFile(File file) {
+        T object;
+<span class="nc" id="L79">        ObjectInputStream objectInputStream = null;</span>
+
+        try {
+<span class="nc" id="L82">            objectInputStream = new ObjectInputStream(new FileInputStream(file));</span>
+<span class="nc" id="L83">            object = (T) objectInputStream.readObject();</span>
+<span class="nc" id="L84">        } catch (Exception e) {</span>
+<span class="nc" id="L85">            Log.e(&quot;Utility&quot;, &quot;Failed to deserialize the object&quot;, e);</span>
+<span class="nc" id="L86">            object = null;</span>
+<span class="nc" id="L87">        }</span>
+
+<span class="nc bnc" id="L89" title="All 2 branches missed.">        if (objectInputStream != null) {</span>
+            try {
+<span class="nc" id="L91">                objectInputStream.close();</span>
+<span class="nc" id="L92">            } catch (Exception e) {</span>
+                //nothing to do
+<span class="nc" id="L94">            }</span>
+        }
+
+<span class="nc" id="L97">        return object;</span>
+    }
+
+    @Nullable
+    public static String getFileExt(String url) {
+        int index;
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        if ((index = url.indexOf(&quot;?&quot;)) &gt; -1) {</span>
+<span class="nc" id="L104">            url = url.substring(0, index);</span>
+        }
+
+<span class="nc" id="L107">        index = url.lastIndexOf(&quot;.&quot;);</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        if (index == -1) {</span>
+<span class="nc" id="L109">            return null;</span>
+        } else {
+<span class="nc" id="L111">            String ext = url.substring(index);</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">            if ((index = ext.indexOf(&quot;%&quot;)) &gt; -1) {</span>
+<span class="nc" id="L113">                ext = ext.substring(0, index);</span>
+            }
+<span class="nc bnc" id="L115" title="All 2 branches missed.">            if ((index = ext.indexOf(&quot;/&quot;)) &gt; -1) {</span>
+<span class="nc" id="L116">                ext = ext.substring(0, index);</span>
+            }
+<span class="nc" id="L118">            return ext.toLowerCase();</span>
+        }
+    }
+
+    public static FileType getFileType(char kind, String file) {
+<span class="nc bnc" id="L123" title="All 4 branches missed.">        switch (kind) {</span>
+            case 'v':
+<span class="nc" id="L125">                return FileType.VIDEO;</span>
+            case 'a':
+<span class="nc" id="L127">                return FileType.MUSIC;</span>
+            case 's':
+<span class="nc" id="L129">                return FileType.SUBTITLE;</span>
+            //default '?':
+        }
+
+<span class="nc bnc" id="L133" title="All 6 branches missed.">        if (file.endsWith(&quot;.srt&quot;) || file.endsWith(&quot;.vtt&quot;) || file.endsWith(&quot;.ssa&quot;)) {</span>
+<span class="nc" id="L134">            return FileType.SUBTITLE;</span>
+<span class="nc bnc" id="L135" title="All 10 branches missed.">        } else if (file.endsWith(&quot;.mp3&quot;) || file.endsWith(&quot;.wav&quot;) || file.endsWith(&quot;.flac&quot;) || file.endsWith(&quot;.m4a&quot;) || file.endsWith(&quot;.opus&quot;)) {</span>
+<span class="nc" id="L136">            return FileType.MUSIC;</span>
+<span class="nc bnc" id="L137" title="All 8 branches missed.">        } else if (file.endsWith(&quot;.mp4&quot;) || file.endsWith(&quot;.mpeg&quot;) || file.endsWith(&quot;.rm&quot;) || file.endsWith(&quot;.rmvb&quot;)</span>
+<span class="nc bnc" id="L138" title="All 6 branches missed.">                || file.endsWith(&quot;.flv&quot;) || file.endsWith(&quot;.webp&quot;) || file.endsWith(&quot;.webm&quot;)) {</span>
+<span class="nc" id="L139">            return FileType.VIDEO;</span>
+        }
+
+<span class="nc" id="L142">        return FileType.UNKNOWN;</span>
+    }
+
+    @ColorInt
+    public static int getBackgroundForFileType(Context ctx, FileType type) {
+        int colorRes;
+<span class="nc bnc" id="L148" title="All 4 branches missed.">        switch (type) {</span>
+            case MUSIC:
+<span class="nc" id="L150">                colorRes = R.color.audio_left_to_load_color;</span>
+<span class="nc" id="L151">                break;</span>
+            case VIDEO:
+<span class="nc" id="L153">                colorRes = R.color.video_left_to_load_color;</span>
+<span class="nc" id="L154">                break;</span>
+            case SUBTITLE:
+<span class="nc" id="L156">                colorRes = R.color.subtitle_left_to_load_color;</span>
+<span class="nc" id="L157">                break;</span>
+            default:
+<span class="nc" id="L159">                colorRes = R.color.gray;</span>
+        }
+
+<span class="nc" id="L162">        return ContextCompat.getColor(ctx, colorRes);</span>
+    }
+
+    @ColorInt
+    public static int getForegroundForFileType(Context ctx, FileType type) {
+        int colorRes;
+<span class="nc bnc" id="L168" title="All 4 branches missed.">        switch (type) {</span>
+            case MUSIC:
+<span class="nc" id="L170">                colorRes = R.color.audio_already_load_color;</span>
+<span class="nc" id="L171">                break;</span>
+            case VIDEO:
+<span class="nc" id="L173">                colorRes = R.color.video_already_load_color;</span>
+<span class="nc" id="L174">                break;</span>
+            case SUBTITLE:
+<span class="nc" id="L176">                colorRes = R.color.subtitle_already_load_color;</span>
+<span class="nc" id="L177">                break;</span>
+            default:
+<span class="nc" id="L179">                colorRes = R.color.gray;</span>
+                break;
+        }
+
+<span class="nc" id="L183">        return ContextCompat.getColor(ctx, colorRes);</span>
+    }
+
+    @DrawableRes
+    public static int getIconForFileType(FileType type) {
+<span class="nc bnc" id="L188" title="All 4 branches missed.">        switch (type) {</span>
+            case MUSIC:
+<span class="nc" id="L190">                return R.drawable.music;</span>
+            case VIDEO:
+<span class="nc" id="L192">                return R.drawable.video;</span>
+            case SUBTITLE:
+<span class="nc" id="L194">                return R.drawable.subtitle;</span>
+            default:
+<span class="nc" id="L196">                return R.drawable.video;</span>
+        }
+    }
+
+    public static void copyToClipboard(Context context, String str) {
+<span class="nc" id="L201">        ClipboardManager cm = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);</span>
+
+<span class="nc bnc" id="L203" title="All 2 branches missed.">        if (cm == null) {</span>
+<span class="nc" id="L204">            Toast.makeText(context, R.string.permission_denied, Toast.LENGTH_LONG).show();</span>
+<span class="nc" id="L205">            return;</span>
+        }
+
+<span class="nc" id="L208">        cm.setPrimaryClip(ClipData.newPlainText(&quot;text&quot;, str));</span>
+<span class="nc" id="L209">        Toast.makeText(context, R.string.msg_copied, Toast.LENGTH_SHORT).show();</span>
+<span class="nc" id="L210">    }</span>
+
+    public static String checksum(StoredFileHelper source, String algorithm) {
+        MessageDigest md;
+
+        try {
+<span class="nc" id="L216">            md = MessageDigest.getInstance(algorithm);</span>
+<span class="nc" id="L217">        } catch (NoSuchAlgorithmException e) {</span>
+<span class="nc" id="L218">            throw new RuntimeException(e);</span>
+<span class="nc" id="L219">        }</span>
+
+        SharpStream i;
+
+        try {
+<span class="nc" id="L224">            i = source.getStream();</span>
+<span class="nc" id="L225">        } catch (Exception e) {</span>
+<span class="nc" id="L226">            throw new RuntimeException(e);</span>
+<span class="nc" id="L227">        }</span>
+
+<span class="nc" id="L229">        byte[] buf = new byte[1024];</span>
+        int len;
+
+        try {
+<span class="nc bnc" id="L233" title="All 2 branches missed.">            while ((len = i.read(buf)) != -1) {</span>
+<span class="nc" id="L234">                md.update(buf, 0, len);</span>
+            }
+<span class="nc" id="L236">        } catch (IOException e) {</span>
+            // nothing to do
+<span class="nc" id="L238">        }</span>
+
+<span class="nc" id="L240">        byte[] digest = md.digest();</span>
+
+        // HEX
+<span class="nc" id="L243">        StringBuilder sb = new StringBuilder();</span>
+<span class="nc bnc" id="L244" title="All 2 branches missed.">        for (byte b : digest) {</span>
+<span class="nc" id="L245">            sb.append(Integer.toString((b &amp; 0xff) + 0x100, 16).substring(1));</span>
+        }
+
+<span class="nc" id="L248">        return sb.toString();</span>
+
+    }
+
+    @SuppressWarnings(&quot;ResultOfMethodCallIgnored&quot;)
+    public static boolean mkdir(File p, boolean allDirs) {
+<span class="nc bnc" id="L254" title="All 2 branches missed.">        if (p.exists()) return true;</span>
+
+<span class="nc bnc" id="L256" title="All 2 branches missed.">        if (allDirs)</span>
+<span class="nc" id="L257">            p.mkdirs();</span>
+        else
+<span class="nc" id="L259">            p.mkdir();</span>
+
+<span class="nc" id="L261">        return p.exists();</span>
+    }
+
+    public static long getContentLength(HttpURLConnection connection) {
+<span class="nc bnc" id="L265" title="All 2 branches missed.">        if (Build.VERSION.SDK_INT &gt;= Build.VERSION_CODES.N) {</span>
+<span class="nc" id="L266">            return connection.getContentLengthLong();</span>
+        }
+
+        try {
+<span class="nc" id="L270">            return Long.parseLong(connection.getHeaderField(&quot;Content-Length&quot;));</span>
+<span class="nc" id="L271">        } catch (Exception err) {</span>
+            // nothing to do
+        }
+
+<span class="nc" id="L275">        return -1;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

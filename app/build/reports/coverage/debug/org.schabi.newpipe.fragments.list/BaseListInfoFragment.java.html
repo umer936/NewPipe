@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BaseListInfoFragment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.fragments.list</a> &gt; <span class="el_source">BaseListInfoFragment.java</span></div><h1>BaseListInfoFragment.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.fragments.list;
+
+import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.text.TextUtils;
+import android.util.Log;
+import android.view.View;
+
+import org.schabi.newpipe.extractor.ListExtractor;
+import org.schabi.newpipe.extractor.ListInfo;
+import org.schabi.newpipe.util.Constants;
+
+import java.util.Queue;
+
+import icepick.State;
+import io.reactivex.Single;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.schedulers.Schedulers;
+
+<span class="nc" id="L21">public abstract class BaseListInfoFragment&lt;I extends ListInfo&gt;</span>
+        extends BaseListFragment&lt;I, ListExtractor.InfoItemsPage&gt; {
+
+<span class="nc" id="L24">    @State</span>
+    protected int serviceId = Constants.NO_SERVICE_ID;
+    @State
+    protected String name;
+    @State
+    protected String url;
+
+    protected I currentInfo;
+    protected String currentNextPageUrl;
+    protected Disposable currentWorker;
+
+    @Override
+    protected void initViews(View rootView, Bundle savedInstanceState) {
+<span class="nc" id="L37">        super.initViews(rootView, savedInstanceState);</span>
+<span class="nc" id="L38">        setTitle(name);</span>
+<span class="nc" id="L39">        showListFooter(hasMoreItems());</span>
+<span class="nc" id="L40">    }</span>
+
+    @Override
+    public void onPause() {
+<span class="nc" id="L44">        super.onPause();</span>
+<span class="nc bnc" id="L45" title="All 2 branches missed.">        if (currentWorker != null) currentWorker.dispose();</span>
+<span class="nc" id="L46">    }</span>
+
+    @Override
+    public void onResume() {
+<span class="nc" id="L50">        super.onResume();</span>
+        // Check if it was loading when the fragment was stopped/paused,
+<span class="nc bnc" id="L52" title="All 2 branches missed.">        if (wasLoading.getAndSet(false)) {</span>
+<span class="nc bnc" id="L53" title="All 4 branches missed.">            if (hasMoreItems() &amp;&amp; infoListAdapter.getItemsList().size() &gt; 0) {</span>
+<span class="nc" id="L54">                loadMoreItems();</span>
+            } else {
+<span class="nc" id="L56">                doInitialLoadLogic();</span>
+            }
+        }
+<span class="nc" id="L59">    }</span>
+
+    @Override
+    public void onDestroy() {
+<span class="nc" id="L63">        super.onDestroy();</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">        if (currentWorker != null) currentWorker.dispose();</span>
+<span class="nc" id="L65">        currentWorker = null;</span>
+<span class="nc" id="L66">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // State Saving
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void writeTo(Queue&lt;Object&gt; objectsToSave) {
+<span class="nc" id="L74">        super.writeTo(objectsToSave);</span>
+<span class="nc" id="L75">        objectsToSave.add(currentInfo);</span>
+<span class="nc" id="L76">        objectsToSave.add(currentNextPageUrl);</span>
+<span class="nc" id="L77">    }</span>
+
+    @Override
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void readFrom(@NonNull Queue&lt;Object&gt; savedObjects) throws Exception {
+<span class="nc" id="L82">        super.readFrom(savedObjects);</span>
+<span class="nc" id="L83">        currentInfo = (I) savedObjects.poll();</span>
+<span class="nc" id="L84">        currentNextPageUrl = (String) savedObjects.poll();</span>
+<span class="nc" id="L85">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Load and handle
+    //////////////////////////////////////////////////////////////////////////*/
+
+    protected void doInitialLoadLogic() {
+<span class="nc bnc" id="L92" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;doInitialLoadLogic() called&quot;);</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        if (currentInfo == null) {</span>
+<span class="nc" id="L94">            startLoading(false);</span>
+<span class="nc" id="L95">        } else handleResult(currentInfo);</span>
+<span class="nc" id="L96">    }</span>
+
+    /**
+     * Implement the logic to load the info from the network.&lt;br/&gt;
+     * You can use the default implementations from {@link org.schabi.newpipe.util.ExtractorHelper}.
+     *
+     * @param forceLoad allow or disallow the result to come from the cache
+     */
+    protected abstract Single&lt;I&gt; loadResult(boolean forceLoad);
+
+    @Override
+    public void startLoading(boolean forceLoad) {
+<span class="nc" id="L108">        super.startLoading(forceLoad);</span>
+
+<span class="nc" id="L110">        showListFooter(false);</span>
+<span class="nc" id="L111">        currentInfo = null;</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        if (currentWorker != null) currentWorker.dispose();</span>
+<span class="nc" id="L113">        currentWorker = loadResult(forceLoad)</span>
+<span class="nc" id="L114">                .subscribeOn(Schedulers.io())</span>
+<span class="nc" id="L115">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L116">                .subscribe((@NonNull I result) -&gt; {</span>
+<span class="nc" id="L117">                    isLoading.set(false);</span>
+<span class="nc" id="L118">                    currentInfo = result;</span>
+<span class="nc" id="L119">                    currentNextPageUrl = result.getNextPageUrl();</span>
+<span class="nc" id="L120">                    handleResult(result);</span>
+<span class="nc" id="L121">                }, (@NonNull Throwable throwable) -&gt; onError(throwable));</span>
+<span class="nc" id="L122">    }</span>
+
+    /**
+     * Implement the logic to load more items&lt;br/&gt;
+     * You can use the default implementations from {@link org.schabi.newpipe.util.ExtractorHelper}
+     */
+    protected abstract Single&lt;ListExtractor.InfoItemsPage&gt; loadMoreItemsLogic();
+
+    protected void loadMoreItems() {
+<span class="nc" id="L131">        isLoading.set(true);</span>
+
+<span class="nc bnc" id="L133" title="All 2 branches missed.">        if (currentWorker != null) currentWorker.dispose();</span>
+<span class="nc" id="L134">        currentWorker = loadMoreItemsLogic()</span>
+<span class="nc" id="L135">                .subscribeOn(Schedulers.io())</span>
+<span class="nc" id="L136">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L137">                .subscribe((@io.reactivex.annotations.NonNull ListExtractor.InfoItemsPage InfoItemsPage) -&gt; {</span>
+<span class="nc" id="L138">                    isLoading.set(false);</span>
+<span class="nc" id="L139">                    handleNextItems(InfoItemsPage);</span>
+<span class="nc" id="L140">                }, (@io.reactivex.annotations.NonNull Throwable throwable) -&gt; {</span>
+<span class="nc" id="L141">                    isLoading.set(false);</span>
+<span class="nc" id="L142">                    onError(throwable);</span>
+<span class="nc" id="L143">                });</span>
+<span class="nc" id="L144">    }</span>
+
+    @Override
+    public void handleNextItems(ListExtractor.InfoItemsPage result) {
+<span class="nc" id="L148">        super.handleNextItems(result);</span>
+<span class="nc" id="L149">        currentNextPageUrl = result.getNextPageUrl();</span>
+<span class="nc" id="L150">        infoListAdapter.addInfoItemList(result.getItems());</span>
+
+<span class="nc" id="L152">        showListFooter(hasMoreItems());</span>
+<span class="nc" id="L153">    }</span>
+
+    @Override
+    protected boolean hasMoreItems() {
+<span class="nc bnc" id="L157" title="All 2 branches missed.">        return !TextUtils.isEmpty(currentNextPageUrl);</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Contract
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void handleResult(@NonNull I result) {
+<span class="nc" id="L166">        super.handleResult(result);</span>
+
+<span class="nc" id="L168">        name = result.getName();</span>
+<span class="nc" id="L169">        setTitle(name);</span>
+
+<span class="nc bnc" id="L171" title="All 2 branches missed.">        if (infoListAdapter.getItemsList().size() == 0) {</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">            if (result.getRelatedItems().size() &gt; 0) {</span>
+<span class="nc" id="L173">                infoListAdapter.addInfoItemList(result.getRelatedItems());</span>
+<span class="nc" id="L174">                showListFooter(hasMoreItems());</span>
+            } else {
+<span class="nc" id="L176">                infoListAdapter.clearStreamItemList();</span>
+<span class="nc" id="L177">                showEmptyState();</span>
+            }
+        }
+<span class="nc" id="L180">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Utils
+    //////////////////////////////////////////////////////////////////////////*/
+
+    protected void setInitialData(int serviceId, String url, String name) {
+<span class="nc" id="L187">        this.serviceId = serviceId;</span>
+<span class="nc" id="L188">        this.url = url;</span>
+<span class="nc bnc" id="L189" title="All 2 branches missed.">        this.name = !TextUtils.isEmpty(name) ? name : &quot;&quot;;</span>
+<span class="nc" id="L190">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

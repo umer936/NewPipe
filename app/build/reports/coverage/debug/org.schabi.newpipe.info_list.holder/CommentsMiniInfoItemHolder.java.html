@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CommentsMiniInfoItemHolder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.info_list.holder</a> &gt; <span class="el_source">CommentsMiniInfoItemHolder.java</span></div><h1>CommentsMiniInfoItemHolder.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.info_list.holder;
+
+import android.support.v7.app.AppCompatActivity;
+import android.text.util.Linkify;
+import android.view.ViewGroup;
+import android.widget.TextView;
+
+import org.jsoup.helper.StringUtil;
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.extractor.InfoItem;
+import org.schabi.newpipe.extractor.comments.CommentsInfoItem;
+import org.schabi.newpipe.info_list.InfoItemBuilder;
+import org.schabi.newpipe.local.history.HistoryRecordManager;
+import org.schabi.newpipe.report.ErrorActivity;
+import org.schabi.newpipe.util.CommentTextOnTouchListener;
+import org.schabi.newpipe.util.ImageDisplayConstants;
+import org.schabi.newpipe.util.NavigationHelper;
+
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import de.hdodenhof.circleimageview.CircleImageView;
+
+public class CommentsMiniInfoItemHolder extends InfoItemHolder {
+    public final CircleImageView itemThumbnailView;
+    private final TextView itemContentView;
+    private final TextView itemLikesCountView;
+    private final TextView itemDislikesCountView;
+    private final TextView itemPublishedTime;
+
+    private static final int commentDefaultLines = 2;
+    private static final int commentExpandedLines = 1000;
+
+    private String commentText;
+    private String streamUrl;
+
+<span class="nc" id="L37">    private static final Pattern pattern = Pattern.compile(&quot;(\\d+:)?(\\d+)?:(\\d+)&quot;);</span>
+
+<span class="nc" id="L39">    private final Linkify.TransformFilter timestampLink = new Linkify.TransformFilter() {</span>
+        @Override
+        public String transformUrl(Matcher match, String url) {
+<span class="nc" id="L42">            int timestamp = 0;</span>
+<span class="nc" id="L43">            String hours = match.group(1);</span>
+<span class="nc" id="L44">            String minutes = match.group(2);</span>
+<span class="nc" id="L45">            String seconds = match.group(3);</span>
+<span class="nc bnc" id="L46" title="All 2 branches missed.">            if(hours != null) timestamp += (Integer.parseInt(hours.replace(&quot;:&quot;, &quot;&quot;))*3600);</span>
+<span class="nc bnc" id="L47" title="All 2 branches missed.">            if(minutes != null) timestamp += (Integer.parseInt(minutes.replace(&quot;:&quot;, &quot;&quot;))*60);</span>
+<span class="nc bnc" id="L48" title="All 2 branches missed.">            if(seconds != null) timestamp += (Integer.parseInt(seconds));</span>
+<span class="nc" id="L49">            return streamUrl + url.replace(match.group(0), &quot;#timestamp=&quot; + timestamp);</span>
+        }
+    };
+
+    CommentsMiniInfoItemHolder(InfoItemBuilder infoItemBuilder, int layoutId, ViewGroup parent) {
+<span class="nc" id="L54">        super(infoItemBuilder, layoutId, parent);</span>
+
+<span class="nc" id="L56">        itemThumbnailView = itemView.findViewById(R.id.itemThumbnailView);</span>
+<span class="nc" id="L57">        itemLikesCountView = itemView.findViewById(R.id.detail_thumbs_up_count_view);</span>
+<span class="nc" id="L58">        itemDislikesCountView = itemView.findViewById(R.id.detail_thumbs_down_count_view);</span>
+<span class="nc" id="L59">        itemPublishedTime = itemView.findViewById(R.id.itemPublishedTime);</span>
+<span class="nc" id="L60">        itemContentView = itemView.findViewById(R.id.itemCommentContentView);</span>
+<span class="nc" id="L61">    }</span>
+
+    public CommentsMiniInfoItemHolder(InfoItemBuilder infoItemBuilder, ViewGroup parent) {
+<span class="nc" id="L64">        this(infoItemBuilder, R.layout.list_comments_mini_item, parent);</span>
+<span class="nc" id="L65">    }</span>
+
+    @Override
+    public void updateFromItem(final InfoItem infoItem, final HistoryRecordManager historyRecordManager) {
+<span class="nc bnc" id="L69" title="All 2 branches missed.">        if (!(infoItem instanceof CommentsInfoItem)) return;</span>
+<span class="nc" id="L70">        final CommentsInfoItem item = (CommentsInfoItem) infoItem;</span>
+
+<span class="nc" id="L72">        itemBuilder.getImageLoader()</span>
+<span class="nc" id="L73">                .displayImage(item.getAuthorThumbnail(),</span>
+                        itemThumbnailView,
+                        ImageDisplayConstants.DISPLAY_THUMBNAIL_OPTIONS);
+
+<span class="nc" id="L77">        itemThumbnailView.setOnClickListener(view -&gt; {</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">            if(StringUtil.isBlank(item.getAuthorEndpoint())) return;</span>
+            try {
+<span class="nc" id="L80">                final AppCompatActivity activity = (AppCompatActivity) itemBuilder.getContext();</span>
+<span class="nc" id="L81">                NavigationHelper.openChannelFragment(</span>
+<span class="nc" id="L82">                        activity.getSupportFragmentManager(),</span>
+<span class="nc" id="L83">                        item.getServiceId(),</span>
+<span class="nc" id="L84">                        item.getAuthorEndpoint(),</span>
+<span class="nc" id="L85">                        item.getAuthorName());</span>
+<span class="nc" id="L86">            } catch (Exception e) {</span>
+<span class="nc" id="L87">                ErrorActivity.reportUiError((AppCompatActivity) itemBuilder.getContext(), e);</span>
+<span class="nc" id="L88">            }</span>
+<span class="nc" id="L89">        });</span>
+
+<span class="nc" id="L91">        streamUrl = item.getUrl();</span>
+
+<span class="nc" id="L93">        itemContentView.setLines(commentDefaultLines);</span>
+<span class="nc" id="L94">        commentText = item.getCommentText();</span>
+<span class="nc" id="L95">        itemContentView.setText(commentText);</span>
+<span class="nc" id="L96">        itemContentView.setOnTouchListener(CommentTextOnTouchListener.INSTANCE);</span>
+
+<span class="nc bnc" id="L98" title="All 2 branches missed.">        if (itemContentView.getLineCount() == 0) {</span>
+<span class="nc" id="L99">            itemContentView.post(this::ellipsize);</span>
+        } else {
+<span class="nc" id="L101">            ellipsize();</span>
+        }
+
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        if (null != item.getLikeCount()) {</span>
+<span class="nc" id="L105">            itemLikesCountView.setText(String.valueOf(item.getLikeCount()));</span>
+        }
+<span class="nc" id="L107">        itemPublishedTime.setText(item.getPublishedTime());</span>
+
+<span class="nc" id="L109">        itemView.setOnClickListener(view -&gt; {</span>
+<span class="nc" id="L110">            toggleEllipsize();</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">            if (itemBuilder.getOnCommentsSelectedListener() != null) {</span>
+<span class="nc" id="L112">                itemBuilder.getOnCommentsSelectedListener().selected(item);</span>
+            }
+<span class="nc" id="L114">        });</span>
+<span class="nc" id="L115">    }</span>
+
+    private void ellipsize() {
+<span class="nc bnc" id="L118" title="All 2 branches missed.">        if (itemContentView.getLineCount() &gt; commentDefaultLines){</span>
+<span class="nc" id="L119">            int endOfLastLine = itemContentView.getLayout().getLineEnd(commentDefaultLines - 1);</span>
+<span class="nc" id="L120">            int end = itemContentView.getText().toString().lastIndexOf(' ', endOfLastLine -2);</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">            if(end == -1) end = Math.max(endOfLastLine -2, 0);</span>
+<span class="nc" id="L122">            String newVal = itemContentView.getText().subSequence(0, end) + &quot; …&quot;;</span>
+<span class="nc" id="L123">            itemContentView.setText(newVal);</span>
+        }
+<span class="nc" id="L125">        linkify();</span>
+<span class="nc" id="L126">    }</span>
+
+    private void toggleEllipsize() {
+<span class="nc bnc" id="L129" title="All 2 branches missed.">        if (itemContentView.getText().toString().equals(commentText)) {</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">            if (itemContentView.getLineCount() &gt; commentDefaultLines) ellipsize();</span>
+        } else {
+<span class="nc" id="L132">            expand();</span>
+        }
+<span class="nc" id="L134">    }</span>
+
+    private void expand() {
+<span class="nc" id="L137">        itemContentView.setMaxLines(commentExpandedLines);</span>
+<span class="nc" id="L138">        itemContentView.setText(commentText);</span>
+<span class="nc" id="L139">        linkify();</span>
+<span class="nc" id="L140">    }</span>
+
+    private void linkify(){
+<span class="nc" id="L143">        Linkify.addLinks(itemContentView, Linkify.WEB_URLS);</span>
+<span class="nc" id="L144">        Linkify.addLinks(itemContentView, pattern, null, null, timestampLink);</span>
+<span class="nc" id="L145">        itemContentView.setMovementMethod(null);</span>
+<span class="nc" id="L146">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

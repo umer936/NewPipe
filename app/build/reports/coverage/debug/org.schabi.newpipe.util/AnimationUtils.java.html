@@ -1,0 +1,388 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AnimationUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.util</a> &gt; <span class="el_source">AnimationUtils.java</span></div><h1>AnimationUtils.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2018 Mauricio Colli &lt;mauriciocolli@outlook.com&gt;
+ * AnimationUtils.java is part of NewPipe
+ *
+ * License: GPL-3.0+
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package org.schabi.newpipe.util;
+
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ArgbEvaluator;
+import android.animation.ValueAnimator;
+import android.content.res.ColorStateList;
+import android.support.annotation.ColorInt;
+import android.support.annotation.FloatRange;
+import android.support.v4.view.ViewCompat;
+import android.support.v4.view.animation.FastOutSlowInInterpolator;
+import android.util.Log;
+import android.view.View;
+import android.widget.TextView;
+
+import org.schabi.newpipe.MainActivity;
+
+<span class="nc" id="L37">public class AnimationUtils {</span>
+    private static final String TAG = &quot;AnimationUtils&quot;;
+<span class="nc" id="L39">    private static final boolean DEBUG = MainActivity.DEBUG;</span>
+
+<span class="nc" id="L41">    public enum Type {</span>
+<span class="nc" id="L42">        ALPHA,</span>
+<span class="nc" id="L43">        SCALE_AND_ALPHA, LIGHT_SCALE_AND_ALPHA,</span>
+<span class="nc" id="L44">        SLIDE_AND_ALPHA, LIGHT_SLIDE_AND_ALPHA</span>
+    }
+
+    public static void animateView(View view, boolean enterOrExit, long duration) {
+<span class="nc" id="L48">        animateView(view, Type.ALPHA, enterOrExit, duration, 0, null);</span>
+<span class="nc" id="L49">    }</span>
+
+    public static void animateView(View view, boolean enterOrExit, long duration, long delay) {
+<span class="nc" id="L52">        animateView(view, Type.ALPHA, enterOrExit, duration, delay, null);</span>
+<span class="nc" id="L53">    }</span>
+
+    public static void animateView(View view, boolean enterOrExit, long duration, long delay, Runnable execOnEnd) {
+<span class="nc" id="L56">        animateView(view, Type.ALPHA, enterOrExit, duration, delay, execOnEnd);</span>
+<span class="nc" id="L57">    }</span>
+
+    public static void animateView(View view, Type animationType, boolean enterOrExit, long duration) {
+<span class="nc" id="L60">        animateView(view, animationType, enterOrExit, duration, 0, null);</span>
+<span class="nc" id="L61">    }</span>
+
+    public static void animateView(View view, Type animationType, boolean enterOrExit, long duration, long delay) {
+<span class="nc" id="L64">        animateView(view, animationType, enterOrExit, duration, delay, null);</span>
+<span class="nc" id="L65">    }</span>
+
+    /**
+     * Animate the view
+     *
+     * @param view          view that will be animated
+     * @param animationType {@link Type} of the animation
+     * @param enterOrExit   true to enter, false to exit
+     * @param duration      how long the animation will take, in milliseconds
+     * @param delay         how long the animation will wait to start, in milliseconds
+     * @param execOnEnd     runnable that will be executed when the animation ends
+     */
+    public static void animateView(final View view, Type animationType, boolean enterOrExit, long duration, long delay, Runnable execOnEnd) {
+<span class="nc bnc" id="L78" title="All 2 branches missed.">        if (DEBUG) {</span>
+            String id;
+            try {
+<span class="nc" id="L81">                id = view.getResources().getResourceEntryName(view.getId());</span>
+<span class="nc" id="L82">            } catch (Exception e) {</span>
+<span class="nc" id="L83">                id = view.getId() + &quot;&quot;;</span>
+<span class="nc" id="L84">            }</span>
+
+<span class="nc" id="L86">            String msg = String.format(&quot;%8s →  [%s:%s] [%s %s:%s] execOnEnd=%s&quot;,</span>
+<span class="nc" id="L87">                    enterOrExit, view.getClass().getSimpleName(), id, animationType, duration, delay, execOnEnd);</span>
+<span class="nc" id="L88">            Log.d(TAG, &quot;animateView()&quot; + msg);</span>
+        }
+
+<span class="nc bnc" id="L91" title="All 4 branches missed.">        if (view.getVisibility() == View.VISIBLE &amp;&amp; enterOrExit) {</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;animateView() view was already visible &gt; view = [&quot; + view + &quot;]&quot;);</span>
+<span class="nc" id="L93">            view.animate().setListener(null).cancel();</span>
+<span class="nc" id="L94">            view.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L95">            view.setAlpha(1f);</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">            if (execOnEnd != null) execOnEnd.run();</span>
+<span class="nc" id="L97">            return;</span>
+<span class="nc bnc" id="L98" title="All 6 branches missed.">        } else if ((view.getVisibility() == View.GONE || view.getVisibility() == View.INVISIBLE) &amp;&amp; !enterOrExit) {</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;animateView() view was already gone &gt; view = [&quot; + view + &quot;]&quot;);</span>
+<span class="nc" id="L100">            view.animate().setListener(null).cancel();</span>
+<span class="nc" id="L101">            view.setVisibility(View.GONE);</span>
+<span class="nc" id="L102">            view.setAlpha(0f);</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">            if (execOnEnd != null) execOnEnd.run();</span>
+<span class="nc" id="L104">            return;</span>
+        }
+
+<span class="nc" id="L107">        view.animate().setListener(null).cancel();</span>
+<span class="nc" id="L108">        view.setVisibility(View.VISIBLE);</span>
+
+<span class="nc bnc" id="L110" title="All 6 branches missed.">        switch (animationType) {</span>
+            case ALPHA:
+<span class="nc" id="L112">                animateAlpha(view, enterOrExit, duration, delay, execOnEnd);</span>
+<span class="nc" id="L113">                break;</span>
+            case SCALE_AND_ALPHA:
+<span class="nc" id="L115">                animateScaleAndAlpha(view, enterOrExit, duration, delay, execOnEnd);</span>
+<span class="nc" id="L116">                break;</span>
+            case LIGHT_SCALE_AND_ALPHA:
+<span class="nc" id="L118">                animateLightScaleAndAlpha(view, enterOrExit, duration, delay, execOnEnd);</span>
+<span class="nc" id="L119">                break;</span>
+            case SLIDE_AND_ALPHA:
+<span class="nc" id="L121">                animateSlideAndAlpha(view, enterOrExit, duration, delay, execOnEnd);</span>
+<span class="nc" id="L122">                break;</span>
+            case LIGHT_SLIDE_AND_ALPHA:
+<span class="nc" id="L124">                animateLightSlideAndAlpha(view, enterOrExit, duration, delay, execOnEnd);</span>
+                break;
+        }
+<span class="nc" id="L127">    }</span>
+
+
+    /**
+     * Animate the background color of a view
+     */
+    public static void animateBackgroundColor(final View view, long duration, @ColorInt final int colorStart, @ColorInt final int colorEnd) {
+<span class="nc bnc" id="L134" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L135">            Log.d(TAG, &quot;animateBackgroundColor() called with: view = [&quot; + view + &quot;], duration = [&quot; + duration + &quot;], colorStart = [&quot; + colorStart + &quot;], colorEnd = [&quot; + colorEnd + &quot;]&quot;);</span>
+        }
+
+<span class="nc" id="L138">        final int[][] EMPTY = new int[][]{new int[0]};</span>
+<span class="nc" id="L139">        ValueAnimator viewPropertyAnimator = ValueAnimator.ofObject(new ArgbEvaluator(), colorStart, colorEnd);</span>
+<span class="nc" id="L140">        viewPropertyAnimator.setInterpolator(new FastOutSlowInInterpolator());</span>
+<span class="nc" id="L141">        viewPropertyAnimator.setDuration(duration);</span>
+<span class="nc" id="L142">        viewPropertyAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {</span>
+            @Override
+            public void onAnimationUpdate(ValueAnimator animation) {
+<span class="nc" id="L145">                ViewCompat.setBackgroundTintList(view, new ColorStateList(EMPTY, new int[]{(int) animation.getAnimatedValue()}));</span>
+<span class="nc" id="L146">            }</span>
+        });
+<span class="nc" id="L148">        viewPropertyAnimator.addListener(new AnimatorListenerAdapter() {</span>
+            @Override
+            public void onAnimationEnd(Animator animation) {
+<span class="nc" id="L151">                ViewCompat.setBackgroundTintList(view, new ColorStateList(EMPTY, new int[]{colorEnd}));</span>
+<span class="nc" id="L152">            }</span>
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+<span class="nc" id="L156">                onAnimationEnd(animation);</span>
+<span class="nc" id="L157">            }</span>
+        });
+<span class="nc" id="L159">        viewPropertyAnimator.start();</span>
+<span class="nc" id="L160">    }</span>
+
+    /**
+     * Animate the text color of any view that extends {@link TextView} (Buttons, EditText...)
+     */
+    public static void animateTextColor(final TextView view, long duration, @ColorInt final int colorStart, @ColorInt final int colorEnd) {
+<span class="nc bnc" id="L166" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L167">            Log.d(TAG, &quot;animateTextColor() called with: view = [&quot; + view + &quot;], duration = [&quot; + duration + &quot;], colorStart = [&quot; + colorStart + &quot;], colorEnd = [&quot; + colorEnd + &quot;]&quot;);</span>
+        }
+
+<span class="nc" id="L170">        ValueAnimator viewPropertyAnimator = ValueAnimator.ofObject(new ArgbEvaluator(), colorStart, colorEnd);</span>
+<span class="nc" id="L171">        viewPropertyAnimator.setInterpolator(new FastOutSlowInInterpolator());</span>
+<span class="nc" id="L172">        viewPropertyAnimator.setDuration(duration);</span>
+<span class="nc" id="L173">        viewPropertyAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {</span>
+            @Override
+            public void onAnimationUpdate(ValueAnimator animation) {
+<span class="nc" id="L176">                view.setTextColor((int) animation.getAnimatedValue());</span>
+<span class="nc" id="L177">            }</span>
+        });
+<span class="nc" id="L179">        viewPropertyAnimator.addListener(new AnimatorListenerAdapter() {</span>
+            @Override
+            public void onAnimationEnd(Animator animation) {
+<span class="nc" id="L182">                view.setTextColor(colorEnd);</span>
+<span class="nc" id="L183">            }</span>
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+<span class="nc" id="L187">                view.setTextColor(colorEnd);</span>
+<span class="nc" id="L188">            }</span>
+        });
+<span class="nc" id="L190">        viewPropertyAnimator.start();</span>
+<span class="nc" id="L191">    }</span>
+
+    public static ValueAnimator animateHeight(final View view, long duration, int targetHeight) {
+<span class="nc" id="L194">        final int height = view.getHeight();</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L196">            Log.d(TAG, &quot;animateHeight: duration = [&quot; + duration + &quot;], from &quot; + height + &quot; to → &quot; + targetHeight + &quot; in: &quot; + view);</span>
+        }
+
+<span class="nc" id="L199">        ValueAnimator animator = ValueAnimator.ofFloat(height, targetHeight);</span>
+<span class="nc" id="L200">        animator.setInterpolator(new FastOutSlowInInterpolator());</span>
+<span class="nc" id="L201">        animator.setDuration(duration);</span>
+<span class="nc" id="L202">        animator.addUpdateListener(animation -&gt; {</span>
+<span class="nc" id="L203">            final float value = (float) animation.getAnimatedValue();</span>
+<span class="nc" id="L204">            view.getLayoutParams().height = (int) value;</span>
+<span class="nc" id="L205">            view.requestLayout();</span>
+<span class="nc" id="L206">        });</span>
+<span class="nc" id="L207">        animator.addListener(new AnimatorListenerAdapter() {</span>
+            @Override
+            public void onAnimationEnd(Animator animation) {
+<span class="nc" id="L210">                view.getLayoutParams().height = targetHeight;</span>
+<span class="nc" id="L211">                view.requestLayout();</span>
+<span class="nc" id="L212">            }</span>
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+<span class="nc" id="L216">                view.getLayoutParams().height = targetHeight;</span>
+<span class="nc" id="L217">                view.requestLayout();</span>
+<span class="nc" id="L218">            }</span>
+        });
+<span class="nc" id="L220">        animator.start();</span>
+
+<span class="nc" id="L222">        return animator;</span>
+    }
+
+    public static void animateRotation(final View view, long duration, int targetRotation) {
+<span class="nc bnc" id="L226" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L227">            Log.d(TAG, &quot;animateRotation: duration = [&quot; + duration + &quot;], from &quot; + view.getRotation() + &quot; to → &quot; + targetRotation + &quot; in: &quot; + view);</span>
+        }
+<span class="nc" id="L229">        view.animate().setListener(null).cancel();</span>
+
+<span class="nc" id="L231">        view.animate().rotation(targetRotation).setDuration(duration).setInterpolator(new FastOutSlowInInterpolator())</span>
+<span class="nc" id="L232">                .setListener(new AnimatorListenerAdapter() {</span>
+                    @Override
+                    public void onAnimationCancel(Animator animation) {
+<span class="nc" id="L235">                        view.setRotation(targetRotation);</span>
+<span class="nc" id="L236">                    }</span>
+
+                    @Override
+                    public void onAnimationEnd(Animator animation) {
+<span class="nc" id="L240">                        view.setRotation(targetRotation);</span>
+<span class="nc" id="L241">                    }</span>
+<span class="nc" id="L242">                }).start();</span>
+<span class="nc" id="L243">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Internals
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private static void animateAlpha(final View view, boolean enterOrExit, long duration, long delay, final Runnable execOnEnd) {
+<span class="nc bnc" id="L250" title="All 2 branches missed.">        if (enterOrExit) {</span>
+<span class="nc" id="L251">            view.animate().setInterpolator(new FastOutSlowInInterpolator()).alpha(1f)</span>
+<span class="nc" id="L252">                    .setDuration(duration).setStartDelay(delay).setListener(new AnimatorListenerAdapter() {</span>
+                @Override
+                public void onAnimationEnd(Animator animation) {
+<span class="nc bnc" id="L255" title="All 2 branches missed.">                    if (execOnEnd != null) execOnEnd.run();</span>
+<span class="nc" id="L256">                }</span>
+<span class="nc" id="L257">            }).start();</span>
+        } else {
+<span class="nc" id="L259">            view.animate().setInterpolator(new FastOutSlowInInterpolator()).alpha(0f)</span>
+<span class="nc" id="L260">                    .setDuration(duration).setStartDelay(delay).setListener(new AnimatorListenerAdapter() {</span>
+                @Override
+                public void onAnimationEnd(Animator animation) {
+<span class="nc" id="L263">                    view.setVisibility(View.GONE);</span>
+<span class="nc bnc" id="L264" title="All 2 branches missed.">                    if (execOnEnd != null) execOnEnd.run();</span>
+<span class="nc" id="L265">                }</span>
+<span class="nc" id="L266">            }).start();</span>
+        }
+<span class="nc" id="L268">    }</span>
+
+    private static void animateScaleAndAlpha(final View view, boolean enterOrExit, long duration, long delay, final Runnable execOnEnd) {
+<span class="nc bnc" id="L271" title="All 2 branches missed.">        if (enterOrExit) {</span>
+<span class="nc" id="L272">            view.setScaleX(.8f);</span>
+<span class="nc" id="L273">            view.setScaleY(.8f);</span>
+<span class="nc" id="L274">            view.animate().setInterpolator(new FastOutSlowInInterpolator()).alpha(1f).scaleX(1f).scaleY(1f)</span>
+<span class="nc" id="L275">                    .setDuration(duration).setStartDelay(delay).setListener(new AnimatorListenerAdapter() {</span>
+                @Override
+                public void onAnimationEnd(Animator animation) {
+<span class="nc bnc" id="L278" title="All 2 branches missed.">                    if (execOnEnd != null) execOnEnd.run();</span>
+<span class="nc" id="L279">                }</span>
+<span class="nc" id="L280">            }).start();</span>
+        } else {
+<span class="nc" id="L282">            view.setScaleX(1f);</span>
+<span class="nc" id="L283">            view.setScaleY(1f);</span>
+<span class="nc" id="L284">            view.animate().setInterpolator(new FastOutSlowInInterpolator()).alpha(0f).scaleX(.8f).scaleY(.8f)</span>
+<span class="nc" id="L285">                    .setDuration(duration).setStartDelay(delay).setListener(new AnimatorListenerAdapter() {</span>
+                @Override
+                public void onAnimationEnd(Animator animation) {
+<span class="nc" id="L288">                    view.setVisibility(View.GONE);</span>
+<span class="nc bnc" id="L289" title="All 2 branches missed.">                    if (execOnEnd != null) execOnEnd.run();</span>
+<span class="nc" id="L290">                }</span>
+<span class="nc" id="L291">            }).start();</span>
+        }
+<span class="nc" id="L293">    }</span>
+
+    private static void animateLightScaleAndAlpha(final View view, boolean enterOrExit, long duration, long delay, final Runnable execOnEnd) {
+<span class="nc bnc" id="L296" title="All 2 branches missed.">        if (enterOrExit) {</span>
+<span class="nc" id="L297">            view.setAlpha(.5f);</span>
+<span class="nc" id="L298">            view.setScaleX(.95f);</span>
+<span class="nc" id="L299">            view.setScaleY(.95f);</span>
+<span class="nc" id="L300">            view.animate().setInterpolator(new FastOutSlowInInterpolator()).alpha(1f).scaleX(1f).scaleY(1f)</span>
+<span class="nc" id="L301">                    .setDuration(duration).setStartDelay(delay).setListener(new AnimatorListenerAdapter() {</span>
+                @Override
+                public void onAnimationEnd(Animator animation) {
+<span class="nc bnc" id="L304" title="All 2 branches missed.">                    if (execOnEnd != null) execOnEnd.run();</span>
+<span class="nc" id="L305">                }</span>
+<span class="nc" id="L306">            }).start();</span>
+        } else {
+<span class="nc" id="L308">            view.setAlpha(1f);</span>
+<span class="nc" id="L309">            view.setScaleX(1f);</span>
+<span class="nc" id="L310">            view.setScaleY(1f);</span>
+<span class="nc" id="L311">            view.animate().setInterpolator(new FastOutSlowInInterpolator()).alpha(0f).scaleX(.95f).scaleY(.95f)</span>
+<span class="nc" id="L312">                    .setDuration(duration).setStartDelay(delay).setListener(new AnimatorListenerAdapter() {</span>
+                @Override
+                public void onAnimationEnd(Animator animation) {
+<span class="nc" id="L315">                    view.setVisibility(View.GONE);</span>
+<span class="nc bnc" id="L316" title="All 2 branches missed.">                    if (execOnEnd != null) execOnEnd.run();</span>
+<span class="nc" id="L317">                }</span>
+<span class="nc" id="L318">            }).start();</span>
+        }
+<span class="nc" id="L320">    }</span>
+
+    private static void animateSlideAndAlpha(final View view, boolean enterOrExit, long duration, long delay, final Runnable execOnEnd) {
+<span class="nc bnc" id="L323" title="All 2 branches missed.">        if (enterOrExit) {</span>
+<span class="nc" id="L324">            view.setTranslationY(-view.getHeight());</span>
+<span class="nc" id="L325">            view.setAlpha(0f);</span>
+<span class="nc" id="L326">            view.animate().setInterpolator(new FastOutSlowInInterpolator()).alpha(1f).translationY(0)</span>
+<span class="nc" id="L327">                    .setDuration(duration).setStartDelay(delay).setListener(new AnimatorListenerAdapter() {</span>
+                @Override
+                public void onAnimationEnd(Animator animation) {
+<span class="nc bnc" id="L330" title="All 2 branches missed.">                    if (execOnEnd != null) execOnEnd.run();</span>
+<span class="nc" id="L331">                }</span>
+<span class="nc" id="L332">            }).start();</span>
+        } else {
+<span class="nc" id="L334">            view.animate().setInterpolator(new FastOutSlowInInterpolator()).alpha(0f).translationY(-view.getHeight())</span>
+<span class="nc" id="L335">                    .setDuration(duration).setStartDelay(delay).setListener(new AnimatorListenerAdapter() {</span>
+                @Override
+                public void onAnimationEnd(Animator animation) {
+<span class="nc" id="L338">                    view.setVisibility(View.GONE);</span>
+<span class="nc bnc" id="L339" title="All 2 branches missed.">                    if (execOnEnd != null) execOnEnd.run();</span>
+<span class="nc" id="L340">                }</span>
+<span class="nc" id="L341">            }).start();</span>
+        }
+<span class="nc" id="L343">    }</span>
+
+    private static void animateLightSlideAndAlpha(final View view, boolean enterOrExit, long duration, long delay, final Runnable execOnEnd) {
+<span class="nc bnc" id="L346" title="All 2 branches missed.">        if (enterOrExit) {</span>
+<span class="nc" id="L347">            view.setTranslationY(-view.getHeight() / 2);</span>
+<span class="nc" id="L348">            view.setAlpha(0f);</span>
+<span class="nc" id="L349">            view.animate().setInterpolator(new FastOutSlowInInterpolator()).alpha(1f).translationY(0)</span>
+<span class="nc" id="L350">                    .setDuration(duration).setStartDelay(delay).setListener(new AnimatorListenerAdapter() {</span>
+                @Override
+                public void onAnimationEnd(Animator animation) {
+<span class="nc bnc" id="L353" title="All 2 branches missed.">                    if (execOnEnd != null) execOnEnd.run();</span>
+<span class="nc" id="L354">                }</span>
+<span class="nc" id="L355">            }).start();</span>
+        } else {
+<span class="nc" id="L357">            view.animate().setInterpolator(new FastOutSlowInInterpolator()).alpha(0f).translationY(-view.getHeight() / 2)</span>
+<span class="nc" id="L358">                    .setDuration(duration).setStartDelay(delay).setListener(new AnimatorListenerAdapter() {</span>
+                @Override
+                public void onAnimationEnd(Animator animation) {
+<span class="nc" id="L361">                    view.setVisibility(View.GONE);</span>
+<span class="nc bnc" id="L362" title="All 2 branches missed.">                    if (execOnEnd != null) execOnEnd.run();</span>
+<span class="nc" id="L363">                }</span>
+<span class="nc" id="L364">            }).start();</span>
+        }
+<span class="nc" id="L366">    }</span>
+
+    public static void slideUp(final View view,
+                               long duration,
+                               long delay,
+                               @FloatRange(from = 0.0f, to = 1.0f) float translationPercent) {
+<span class="nc" id="L372">        int translationY = (int) (view.getResources().getDisplayMetrics().heightPixels *</span>
+                (translationPercent));
+
+<span class="nc" id="L375">        view.animate().setListener(null).cancel();</span>
+<span class="nc" id="L376">        view.setAlpha(0f);</span>
+<span class="nc" id="L377">        view.setTranslationY(translationY);</span>
+<span class="nc" id="L378">        view.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L379">        view.animate()</span>
+<span class="nc" id="L380">                .alpha(1f)</span>
+<span class="nc" id="L381">                .translationY(0)</span>
+<span class="nc" id="L382">                .setStartDelay(delay)</span>
+<span class="nc" id="L383">                .setDuration(duration)</span>
+<span class="nc" id="L384">                .setInterpolator(new FastOutSlowInInterpolator())</span>
+<span class="nc" id="L385">                .start();</span>
+<span class="nc" id="L386">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

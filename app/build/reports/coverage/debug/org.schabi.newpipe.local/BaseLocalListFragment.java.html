@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BaseLocalListFragment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.local</a> &gt; <span class="el_source">BaseLocalListFragment.java</span></div><h1>BaseLocalListFragment.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.local;
+
+import android.content.SharedPreferences;
+import android.content.res.Configuration;
+import android.content.res.Resources;
+import android.os.Bundle;
+import android.preference.PreferenceManager;
+import android.support.v4.app.Fragment;
+import android.support.v7.app.ActionBar;
+import android.support.v7.widget.GridLayoutManager;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
+import android.util.Log;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.View;
+
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.fragments.BaseStateFragment;
+import org.schabi.newpipe.fragments.list.ListViewContract;
+
+import static org.schabi.newpipe.util.AnimationUtils.animateView;
+
+/**
+ * This fragment is design to be used with persistent data such as
+ * {@link org.schabi.newpipe.database.LocalItem}, and does not cache the data contained
+ * in the list adapter to avoid extra writes when the it exits or re-enters its lifecycle.
+ *
+ * This fragment destroys its adapter and views when {@link Fragment#onDestroyView()} is
+ * called and is memory efficient when in backstack.
+ * */
+<span class="nc" id="L32">public abstract class BaseLocalListFragment&lt;I, N&gt; extends BaseStateFragment&lt;I&gt;</span>
+        implements ListViewContract&lt;I, N&gt;, SharedPreferences.OnSharedPreferenceChangeListener {
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Views
+    //////////////////////////////////////////////////////////////////////////*/
+
+    protected View headerRootView;
+    protected View footerRootView;
+
+    protected LocalItemListAdapter itemListAdapter;
+    protected RecyclerView itemsList;
+<span class="nc" id="L44">    private int updateFlags = 0;</span>
+
+    private static final int LIST_MODE_UPDATE_FLAG = 0x32;
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Lifecycle - Creation
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+<span class="nc" id="L54">        super.onCreate(savedInstanceState);</span>
+<span class="nc" id="L55">        setHasOptionsMenu(true);</span>
+<span class="nc" id="L56">        PreferenceManager.getDefaultSharedPreferences(activity)</span>
+<span class="nc" id="L57">                .registerOnSharedPreferenceChangeListener(this);</span>
+<span class="nc" id="L58">    }</span>
+
+    @Override
+    public void onDestroy() {
+<span class="nc" id="L62">        super.onDestroy();</span>
+<span class="nc" id="L63">        PreferenceManager.getDefaultSharedPreferences(activity)</span>
+<span class="nc" id="L64">                .unregisterOnSharedPreferenceChangeListener(this);</span>
+<span class="nc" id="L65">    }</span>
+
+    @Override
+    public void onResume() {
+<span class="nc" id="L69">        super.onResume();</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">        if (updateFlags != 0) {</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">            if ((updateFlags &amp; LIST_MODE_UPDATE_FLAG) != 0) {</span>
+<span class="nc" id="L72">                final boolean useGrid = isGridLayout();</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">                itemsList.setLayoutManager(useGrid ? getGridLayoutManager() : getListLayoutManager());</span>
+<span class="nc" id="L74">                itemListAdapter.setGridItemVariants(useGrid);</span>
+<span class="nc" id="L75">                itemListAdapter.notifyDataSetChanged();</span>
+            }
+<span class="nc" id="L77">            updateFlags = 0;</span>
+        }
+<span class="nc" id="L79">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Lifecycle - View
+    //////////////////////////////////////////////////////////////////////////*/
+
+    protected View getListHeader() {
+<span class="nc" id="L86">        return null;</span>
+    }
+
+    protected View getListFooter() {
+<span class="nc" id="L90">        return activity.getLayoutInflater().inflate(R.layout.pignate_footer, itemsList, false);</span>
+    }
+
+    protected RecyclerView.LayoutManager getGridLayoutManager() {
+<span class="nc" id="L94">        final Resources resources = activity.getResources();</span>
+<span class="nc" id="L95">        int width = resources.getDimensionPixelSize(R.dimen.video_item_grid_thumbnail_image_width);</span>
+<span class="nc" id="L96">        width += (24 * resources.getDisplayMetrics().density);</span>
+<span class="nc" id="L97">        final int spanCount = (int) Math.floor(resources.getDisplayMetrics().widthPixels / (double)width);</span>
+<span class="nc" id="L98">        final GridLayoutManager lm = new GridLayoutManager(activity, spanCount);</span>
+<span class="nc" id="L99">        lm.setSpanSizeLookup(itemListAdapter.getSpanSizeLookup(spanCount));</span>
+<span class="nc" id="L100">        return lm;</span>
+    }
+
+    protected RecyclerView.LayoutManager getListLayoutManager() {
+<span class="nc" id="L104">        return new LinearLayoutManager(activity);</span>
+    }
+
+    @Override
+    protected void initViews(View rootView, Bundle savedInstanceState) {
+<span class="nc" id="L109">        super.initViews(rootView, savedInstanceState);</span>
+
+<span class="nc" id="L111">        itemListAdapter = new LocalItemListAdapter(activity);</span>
+
+<span class="nc" id="L113">        final boolean useGrid = isGridLayout();</span>
+<span class="nc" id="L114">        itemsList = rootView.findViewById(R.id.items_list);</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">        itemsList.setLayoutManager(useGrid ? getGridLayoutManager() : getListLayoutManager());</span>
+
+<span class="nc" id="L117">        itemListAdapter.setGridItemVariants(useGrid);</span>
+<span class="nc" id="L118">        itemListAdapter.setHeader(headerRootView = getListHeader());</span>
+<span class="nc" id="L119">        itemListAdapter.setFooter(footerRootView = getListFooter());</span>
+
+<span class="nc" id="L121">        itemsList.setAdapter(itemListAdapter);</span>
+<span class="nc" id="L122">    }</span>
+
+    @Override
+    protected void initListeners() {
+<span class="nc" id="L126">        super.initListeners();</span>
+<span class="nc" id="L127">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Lifecycle - Menu
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+<span class="nc" id="L135">        super.onCreateOptionsMenu(menu, inflater);</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onCreateOptionsMenu() called with: menu = [&quot; + menu +</span>
+                &quot;], inflater = [&quot; + inflater + &quot;]&quot;);
+
+<span class="nc" id="L139">        final ActionBar supportActionBar = activity.getSupportActionBar();</span>
+<span class="nc bnc" id="L140" title="All 2 branches missed.">        if (supportActionBar == null) return;</span>
+
+<span class="nc" id="L142">        supportActionBar.setDisplayShowTitleEnabled(true);</span>
+<span class="nc" id="L143">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Lifecycle - Destruction
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onDestroyView() {
+<span class="nc" id="L151">        super.onDestroyView();</span>
+<span class="nc" id="L152">        itemsList = null;</span>
+<span class="nc" id="L153">        itemListAdapter = null;</span>
+<span class="nc" id="L154">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Contract
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void startLoading(boolean forceLoad) {
+<span class="nc" id="L162">        super.startLoading(forceLoad);</span>
+<span class="nc" id="L163">        resetFragment();</span>
+<span class="nc" id="L164">    }</span>
+
+    @Override
+    public void showLoading() {
+<span class="nc" id="L168">        super.showLoading();</span>
+<span class="nc bnc" id="L169" title="All 2 branches missed.">        if (itemsList != null) animateView(itemsList, false, 200);</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">        if (headerRootView != null) animateView(headerRootView, false, 200);</span>
+<span class="nc" id="L171">    }</span>
+
+    @Override
+    public void hideLoading() {
+<span class="nc" id="L175">        super.hideLoading();</span>
+<span class="nc bnc" id="L176" title="All 2 branches missed.">        if (itemsList != null) animateView(itemsList, true, 200);</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        if (headerRootView != null) animateView(headerRootView, true, 200);</span>
+<span class="nc" id="L178">    }</span>
+
+    @Override
+    public void showError(String message, boolean showRetryButton) {
+<span class="nc" id="L182">        super.showError(message, showRetryButton);</span>
+<span class="nc" id="L183">        showListFooter(false);</span>
+
+<span class="nc bnc" id="L185" title="All 2 branches missed.">        if (itemsList != null) animateView(itemsList, false, 200);</span>
+<span class="nc bnc" id="L186" title="All 2 branches missed.">        if (headerRootView != null) animateView(headerRootView, false, 200);</span>
+<span class="nc" id="L187">    }</span>
+
+    @Override
+    public void showEmptyState() {
+<span class="nc" id="L191">        super.showEmptyState();</span>
+<span class="nc" id="L192">        showListFooter(false);</span>
+<span class="nc" id="L193">    }</span>
+
+    @Override
+    public void showListFooter(final boolean show) {
+<span class="nc bnc" id="L197" title="All 2 branches missed.">        if (itemsList == null) return;</span>
+<span class="nc" id="L198">        itemsList.post(() -&gt; {</span>
+<span class="nc bnc" id="L199" title="All 2 branches missed.">            if (itemListAdapter != null) itemListAdapter.showFooter(show);</span>
+<span class="nc" id="L200">        });</span>
+<span class="nc" id="L201">    }</span>
+
+    @Override
+    public void handleNextItems(N result) {
+<span class="nc" id="L205">        isLoading.set(false);</span>
+<span class="nc" id="L206">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Error handling
+    //////////////////////////////////////////////////////////////////////////*/
+
+    protected void resetFragment() {
+<span class="nc bnc" id="L213" title="All 2 branches missed.">        if (itemListAdapter != null) itemListAdapter.clearStreamItemList();</span>
+<span class="nc" id="L214">    }</span>
+
+    @Override
+    protected boolean onError(Throwable exception) {
+<span class="nc" id="L218">        resetFragment();</span>
+<span class="nc" id="L219">        return super.onError(exception);</span>
+    }
+
+    @Override
+    public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+<span class="nc bnc" id="L224" title="All 2 branches missed.">        if (key.equals(getString(R.string.list_view_mode_key))) {</span>
+<span class="nc" id="L225">            updateFlags |= LIST_MODE_UPDATE_FLAG;</span>
+        }
+<span class="nc" id="L227">    }</span>
+
+    protected boolean isGridLayout() {
+<span class="nc" id="L230">        final String list_mode = PreferenceManager.getDefaultSharedPreferences(activity).getString(getString(R.string.list_view_mode_key), getString(R.string.list_view_mode_value));</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">        if (&quot;auto&quot;.equals(list_mode)) {</span>
+<span class="nc" id="L232">            final Configuration configuration = getResources().getConfiguration();</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">            return configuration.orientation == Configuration.ORIENTATION_LANDSCAPE</span>
+<span class="nc bnc" id="L234" title="All 2 branches missed.">                    &amp;&amp; configuration.isLayoutSizeAtLeast(Configuration.SCREENLAYOUT_SIZE_LARGE);</span>
+        } else {
+<span class="nc" id="L236">            return &quot;grid&quot;.equals(list_mode);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

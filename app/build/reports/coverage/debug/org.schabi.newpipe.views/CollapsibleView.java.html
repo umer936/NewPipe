@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CollapsibleView.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.views</a> &gt; <span class="el_source">CollapsibleView.java</span></div><h1>CollapsibleView.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2018 Mauricio Colli &lt;mauriciocolli@outlook.com&gt;
+ * CollapsibleView.java is part of NewPipe
+ *
+ * License: GPL-3.0+
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package org.schabi.newpipe.views;
+
+import android.animation.ValueAnimator;
+import android.content.Context;
+import android.os.Build;
+import android.os.Parcelable;
+import android.support.annotation.IntDef;
+import android.support.annotation.Nullable;
+import android.support.annotation.RequiresApi;
+import android.util.AttributeSet;
+import android.util.Log;
+import android.widget.LinearLayout;
+
+import org.schabi.newpipe.util.AnimationUtils;
+
+import java.lang.annotation.Retention;
+import java.util.ArrayList;
+import java.util.List;
+
+import icepick.Icepick;
+import icepick.State;
+
+import static java.lang.annotation.RetentionPolicy.SOURCE;
+import static org.schabi.newpipe.MainActivity.DEBUG;
+
+/**
+ * A view that can be fully collapsed and expanded.
+ */
+public class CollapsibleView extends LinearLayout {
+<span class="nc" id="L49">    private static final String TAG = CollapsibleView.class.getSimpleName();</span>
+
+    public CollapsibleView(Context context) {
+<span class="nc" id="L52">        super(context);</span>
+<span class="nc" id="L53">    }</span>
+
+    public CollapsibleView(Context context, @Nullable AttributeSet attrs) {
+<span class="nc" id="L56">        super(context, attrs);</span>
+<span class="nc" id="L57">    }</span>
+
+    public CollapsibleView(Context context, @Nullable AttributeSet attrs, int defStyleAttr) {
+<span class="nc" id="L60">        super(context, attrs, defStyleAttr);</span>
+<span class="nc" id="L61">    }</span>
+
+    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+    public CollapsibleView(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
+<span class="nc" id="L65">        super(context, attrs, defStyleAttr, defStyleRes);</span>
+<span class="nc" id="L66">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Collapse/expand logic
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private static final int ANIMATION_DURATION = 420;
+    public static final int COLLAPSED = 0, EXPANDED = 1;
+
+    @Retention(SOURCE)
+    @IntDef({COLLAPSED, EXPANDED})
+    public @interface ViewMode {}
+
+<span class="nc" id="L79">    @State @ViewMode int currentState = COLLAPSED;</span>
+    private boolean readyToChangeState;
+
+<span class="nc" id="L82">    private int targetHeight = -1;</span>
+    private ValueAnimator currentAnimator;
+<span class="nc" id="L84">    private final List&lt;StateListener&gt; listeners = new ArrayList&lt;&gt;();</span>
+
+    /**
+     * This method recalculates the height of this view so it &lt;b&gt;must&lt;/b&gt; be called when
+     * some child changes (e.g. add new views, change text).
+     */
+    public void ready() {
+<span class="nc bnc" id="L91" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L92">            Log.d(TAG, getDebugLogString(&quot;ready() called&quot;));</span>
+        }
+
+<span class="nc" id="L95">        measure(MeasureSpec.makeMeasureSpec(getWidth(), MeasureSpec.AT_MOST), MeasureSpec.UNSPECIFIED);</span>
+<span class="nc" id="L96">        targetHeight = getMeasuredHeight();</span>
+
+<span class="nc bnc" id="L98" title="All 2 branches missed.">        getLayoutParams().height = currentState == COLLAPSED ? 0 : targetHeight;</span>
+<span class="nc" id="L99">        requestLayout();</span>
+<span class="nc" id="L100">        broadcastState();</span>
+
+<span class="nc" id="L102">        readyToChangeState = true;</span>
+
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L105">            Log.d(TAG, getDebugLogString(&quot;ready() *after* measuring&quot;));</span>
+        }
+<span class="nc" id="L107">    }</span>
+
+    public void collapse() {
+<span class="nc bnc" id="L110" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L111">            Log.d(TAG, getDebugLogString(&quot;collapse() called&quot;));</span>
+        }
+
+<span class="nc bnc" id="L114" title="All 2 branches missed.">        if (!readyToChangeState) return;</span>
+
+<span class="nc" id="L116">        final int height = getHeight();</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">        if (height == 0) {</span>
+<span class="nc" id="L118">            setCurrentState(COLLAPSED);</span>
+<span class="nc" id="L119">            return;</span>
+        }
+
+<span class="nc bnc" id="L122" title="All 4 branches missed.">        if (currentAnimator != null &amp;&amp; currentAnimator.isRunning()) currentAnimator.cancel();</span>
+<span class="nc" id="L123">        currentAnimator = AnimationUtils.animateHeight(this, ANIMATION_DURATION, 0);</span>
+
+<span class="nc" id="L125">        setCurrentState(COLLAPSED);</span>
+<span class="nc" id="L126">    }</span>
+
+    public void expand() {
+<span class="nc bnc" id="L129" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L130">            Log.d(TAG, getDebugLogString(&quot;expand() called&quot;));</span>
+        }
+
+<span class="nc bnc" id="L133" title="All 2 branches missed.">        if (!readyToChangeState) return;</span>
+
+<span class="nc" id="L135">        final int height = getHeight();</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        if (height == this.targetHeight) {</span>
+<span class="nc" id="L137">            setCurrentState(EXPANDED);</span>
+<span class="nc" id="L138">            return;</span>
+        }
+
+<span class="nc bnc" id="L141" title="All 4 branches missed.">        if (currentAnimator != null &amp;&amp; currentAnimator.isRunning()) currentAnimator.cancel();</span>
+<span class="nc" id="L142">        currentAnimator = AnimationUtils.animateHeight(this, ANIMATION_DURATION, this.targetHeight);</span>
+<span class="nc" id="L143">        setCurrentState(EXPANDED);</span>
+<span class="nc" id="L144">    }</span>
+
+    public void switchState() {
+<span class="nc bnc" id="L147" title="All 2 branches missed.">        if (!readyToChangeState) return;</span>
+
+<span class="nc bnc" id="L149" title="All 2 branches missed.">        if (currentState == COLLAPSED) {</span>
+<span class="nc" id="L150">            expand();</span>
+        } else {
+<span class="nc" id="L152">            collapse();</span>
+        }
+<span class="nc" id="L154">    }</span>
+
+    @ViewMode
+    public int getCurrentState() {
+<span class="nc" id="L158">        return currentState;</span>
+    }
+
+    public void setCurrentState(@ViewMode int currentState) {
+<span class="nc" id="L162">        this.currentState = currentState;</span>
+<span class="nc" id="L163">        broadcastState();</span>
+<span class="nc" id="L164">    }</span>
+
+    public void broadcastState() {
+<span class="nc bnc" id="L167" title="All 2 branches missed.">        for (StateListener listener : listeners) {</span>
+<span class="nc" id="L168">            listener.onStateChanged(currentState);</span>
+<span class="nc" id="L169">        }</span>
+<span class="nc" id="L170">    }</span>
+
+    /**
+     * Add a listener which will be listening for changes in this view (i.e. collapsed or expanded).
+     */
+    public void addListener(final StateListener listener) {
+<span class="nc bnc" id="L176" title="All 2 branches missed.">        if (listeners.contains(listener)) {</span>
+<span class="nc" id="L177">            throw new IllegalStateException(&quot;Trying to add the same listener multiple times&quot;);</span>
+        }
+
+<span class="nc" id="L180">        listeners.add(listener);</span>
+<span class="nc" id="L181">    }</span>
+
+    /**
+     * Remove a listener so it doesn't receive more state changes.
+     */
+    public void removeListener(final StateListener listener) {
+<span class="nc" id="L187">        listeners.remove(listener);</span>
+<span class="nc" id="L188">    }</span>
+
+    /**
+     * Simple interface used for listening state changes of the {@link CollapsibleView}.
+     */
+    public interface StateListener {
+        /**
+         * Called when the state changes.
+         *
+         * @param newState the state that the {@link CollapsibleView} transitioned to,&lt;br/&gt;
+         *                 it's an integer being either {@link #COLLAPSED} or {@link #EXPANDED}
+         */
+        void onStateChanged(@ViewMode int newState);
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // State Saving
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Nullable
+    @Override
+    public Parcelable onSaveInstanceState() {
+<span class="nc" id="L210">        return Icepick.saveInstanceState(this, super.onSaveInstanceState());</span>
+    }
+
+    @Override
+    public void onRestoreInstanceState(Parcelable state) {
+<span class="nc" id="L215">        super.onRestoreInstanceState(Icepick.restoreInstanceState(this, state));</span>
+
+<span class="nc" id="L217">        ready();</span>
+<span class="nc" id="L218">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Internal
+    //////////////////////////////////////////////////////////////////////////*/
+
+    public String getDebugLogString(String description) {
+<span class="nc" id="L225">        return String.format(&quot;%-100s → %s&quot;,</span>
+                description, &quot;readyToChangeState = [&quot; + readyToChangeState + &quot;], currentState = [&quot; + currentState + &quot;], targetHeight = [&quot; + targetHeight + &quot;],&quot; +
+<span class="nc" id="L227">                        &quot; mW x mH = [&quot; + getMeasuredWidth() + &quot;x&quot; + getMeasuredHeight() + &quot;]&quot; +</span>
+<span class="nc" id="L228">                        &quot; W x H = [&quot; + getWidth() + &quot;x&quot; + getHeight() + &quot;]&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

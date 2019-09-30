@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SubscriptionsImportFragment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.local.subscription</a> &gt; <span class="el_source">SubscriptionsImportFragment.java</span></div><h1>SubscriptionsImportFragment.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.local.subscription;
+
+import android.app.Activity;
+import android.content.Intent;
+import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.annotation.StringRes;
+import android.support.v4.text.util.LinkifyCompat;
+import android.support.v7.app.ActionBar;
+import android.text.TextUtils;
+import android.text.util.Linkify;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.TextView;
+
+import com.nononsenseapps.filepicker.Utils;
+
+import org.schabi.newpipe.BaseFragment;
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.extractor.NewPipe;
+import org.schabi.newpipe.extractor.exceptions.ExtractionException;
+import org.schabi.newpipe.extractor.subscription.SubscriptionExtractor;
+import org.schabi.newpipe.report.ErrorActivity;
+import org.schabi.newpipe.report.UserAction;
+import org.schabi.newpipe.local.subscription.services.SubscriptionsImportService;
+import org.schabi.newpipe.util.Constants;
+import org.schabi.newpipe.util.FilePickerActivityHelper;
+import org.schabi.newpipe.util.ServiceHelper;
+
+import java.util.Collections;
+import java.util.List;
+
+import icepick.State;
+
+import static org.schabi.newpipe.extractor.subscription.SubscriptionExtractor.ContentSource.CHANNEL_URL;
+import static org.schabi.newpipe.local.subscription.services.SubscriptionsImportService.CHANNEL_URL_MODE;
+import static org.schabi.newpipe.local.subscription.services.SubscriptionsImportService.INPUT_STREAM_MODE;
+import static org.schabi.newpipe.local.subscription.services.SubscriptionsImportService.KEY_MODE;
+import static org.schabi.newpipe.local.subscription.services.SubscriptionsImportService.KEY_VALUE;
+
+<span class="nc" id="L45">public class SubscriptionsImportFragment extends BaseFragment {</span>
+    private static final int REQUEST_IMPORT_FILE_CODE = 666;
+
+<span class="nc" id="L48">    @State</span>
+    protected int currentServiceId = Constants.NO_SERVICE_ID;
+
+    private List&lt;SubscriptionExtractor.ContentSource&gt; supportedSources;
+    private String relatedUrl;
+    @StringRes
+    private int instructionsString;
+
+    public static SubscriptionsImportFragment getInstance(int serviceId) {
+<span class="nc" id="L57">        SubscriptionsImportFragment instance = new SubscriptionsImportFragment();</span>
+<span class="nc" id="L58">        instance.setInitialData(serviceId);</span>
+<span class="nc" id="L59">        return instance;</span>
+    }
+
+    public void setInitialData(int serviceId) {
+<span class="nc" id="L63">        this.currentServiceId = serviceId;</span>
+<span class="nc" id="L64">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Views
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private TextView infoTextView;
+
+    private EditText inputText;
+    private Button inputButton;
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Fragment LifeCycle
+    ///////////////////////////////////////////////////////////////////////////
+
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+<span class="nc" id="L82">        super.onCreate(savedInstanceState);</span>
+
+<span class="nc" id="L84">        setupServiceVariables();</span>
+<span class="nc bnc" id="L85" title="All 4 branches missed.">        if (supportedSources.isEmpty() &amp;&amp; currentServiceId != Constants.NO_SERVICE_ID) {</span>
+<span class="nc" id="L86">            ErrorActivity.reportError(activity, Collections.emptyList(), null, null, ErrorActivity.ErrorInfo.make(UserAction.SOMETHING_ELSE,</span>
+<span class="nc" id="L87">                    NewPipe.getNameOfService(currentServiceId), &quot;Service don't support importing&quot;, R.string.general_error));</span>
+<span class="nc" id="L88">            activity.finish();</span>
+        }
+<span class="nc" id="L90">    }</span>
+
+    @Override
+    public void setUserVisibleHint(boolean isVisibleToUser) {
+<span class="nc" id="L94">        super.setUserVisibleHint(isVisibleToUser);</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">        if (isVisibleToUser) {</span>
+<span class="nc" id="L96">            setTitle(getString(R.string.import_title));</span>
+        }
+<span class="nc" id="L98">    }</span>
+
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, Bundle savedInstanceState) {
+<span class="nc" id="L103">        return inflater.inflate(R.layout.fragment_import, container, false);</span>
+    }
+
+    /*/////////////////////////////////////////////////////////////////////////
+    // Fragment Views
+    /////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    protected void initViews(View rootView, Bundle savedInstanceState) {
+<span class="nc" id="L112">        super.initViews(rootView, savedInstanceState);</span>
+
+<span class="nc" id="L114">        inputButton = rootView.findViewById(R.id.input_button);</span>
+<span class="nc" id="L115">        inputText = rootView.findViewById(R.id.input_text);</span>
+
+<span class="nc" id="L117">        infoTextView = rootView.findViewById(R.id.info_text_view);</span>
+
+        // TODO: Support services that can import from more than one source (show the option to the user)
+<span class="nc bnc" id="L120" title="All 2 branches missed.">        if (supportedSources.contains(CHANNEL_URL)) {</span>
+<span class="nc" id="L121">            inputButton.setText(R.string.import_title);</span>
+<span class="nc" id="L122">            inputText.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L123">            inputText.setHint(ServiceHelper.getImportInstructionsHint(currentServiceId));</span>
+        } else {
+<span class="nc" id="L125">            inputButton.setText(R.string.import_file_title);</span>
+        }
+
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        if (instructionsString != 0) {</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">            if (TextUtils.isEmpty(relatedUrl)) {</span>
+<span class="nc" id="L130">                setInfoText(getString(instructionsString));</span>
+            } else {
+<span class="nc" id="L132">                setInfoText(getString(instructionsString, relatedUrl));</span>
+            }
+        } else {
+<span class="nc" id="L135">            setInfoText(&quot;&quot;);</span>
+        }
+
+<span class="nc" id="L138">        ActionBar supportActionBar = activity.getSupportActionBar();</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">        if (supportActionBar != null) {</span>
+<span class="nc" id="L140">            supportActionBar.setDisplayShowTitleEnabled(true);</span>
+<span class="nc" id="L141">            setTitle(getString(R.string.import_title));</span>
+        }
+<span class="nc" id="L143">    }</span>
+
+    @Override
+    protected void initListeners() {
+<span class="nc" id="L147">        super.initListeners();</span>
+<span class="nc" id="L148">        inputButton.setOnClickListener(v -&gt; onImportClicked());</span>
+<span class="nc" id="L149">    }</span>
+
+    private void onImportClicked() {
+<span class="nc bnc" id="L152" title="All 2 branches missed.">        if (inputText.getVisibility() == View.VISIBLE) {</span>
+<span class="nc" id="L153">            final String value = inputText.getText().toString();</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">            if (!value.isEmpty()) onImportUrl(value);</span>
+<span class="nc" id="L155">        } else {</span>
+<span class="nc" id="L156">            onImportFile();</span>
+        }
+<span class="nc" id="L158">    }</span>
+
+    public void onImportUrl(String value) {
+<span class="nc" id="L161">        ImportConfirmationDialog.show(this, new Intent(activity, SubscriptionsImportService.class)</span>
+<span class="nc" id="L162">                .putExtra(KEY_MODE, CHANNEL_URL_MODE)</span>
+<span class="nc" id="L163">                .putExtra(KEY_VALUE, value)</span>
+<span class="nc" id="L164">                .putExtra(Constants.KEY_SERVICE_ID, currentServiceId));</span>
+<span class="nc" id="L165">    }</span>
+
+    public void onImportFile() {
+<span class="nc" id="L168">        startActivityForResult(FilePickerActivityHelper.chooseSingleFile(activity), REQUEST_IMPORT_FILE_CODE);</span>
+<span class="nc" id="L169">    }</span>
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+<span class="nc" id="L173">        super.onActivityResult(requestCode, resultCode, data);</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">        if (data == null) return;</span>
+
+<span class="nc bnc" id="L176" title="All 6 branches missed.">        if (resultCode == Activity.RESULT_OK &amp;&amp; requestCode == REQUEST_IMPORT_FILE_CODE &amp;&amp; data.getData() != null) {</span>
+<span class="nc" id="L177">            final String path = Utils.getFileForUri(data.getData()).getAbsolutePath();</span>
+<span class="nc" id="L178">            ImportConfirmationDialog.show(this, new Intent(activity, SubscriptionsImportService.class)</span>
+<span class="nc" id="L179">                    .putExtra(KEY_MODE, INPUT_STREAM_MODE)</span>
+<span class="nc" id="L180">                    .putExtra(KEY_VALUE, path)</span>
+<span class="nc" id="L181">                    .putExtra(Constants.KEY_SERVICE_ID, currentServiceId));</span>
+        }
+<span class="nc" id="L183">    }</span>
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Subscriptions
+    ///////////////////////////////////////////////////////////////////////////
+
+    private void setupServiceVariables() {
+<span class="nc bnc" id="L190" title="All 2 branches missed.">        if (currentServiceId != Constants.NO_SERVICE_ID) {</span>
+            try {
+<span class="nc" id="L192">                final SubscriptionExtractor extractor = NewPipe.getService(currentServiceId).getSubscriptionExtractor();</span>
+<span class="nc" id="L193">                supportedSources = extractor.getSupportedSources();</span>
+<span class="nc" id="L194">                relatedUrl = extractor.getRelatedUrl();</span>
+<span class="nc" id="L195">                instructionsString = ServiceHelper.getImportInstructions(currentServiceId);</span>
+<span class="nc" id="L196">                return;</span>
+<span class="nc" id="L197">            } catch (ExtractionException ignored) {</span>
+            }
+        }
+
+<span class="nc" id="L201">        supportedSources = Collections.emptyList();</span>
+<span class="nc" id="L202">        relatedUrl = null;</span>
+<span class="nc" id="L203">        instructionsString = 0;</span>
+<span class="nc" id="L204">    }</span>
+
+    private void setInfoText(String infoString) {
+<span class="nc" id="L207">        infoTextView.setText(infoString);</span>
+<span class="nc" id="L208">        LinkifyCompat.addLinks(infoTextView, Linkify.WEB_URLS);</span>
+<span class="nc" id="L209">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

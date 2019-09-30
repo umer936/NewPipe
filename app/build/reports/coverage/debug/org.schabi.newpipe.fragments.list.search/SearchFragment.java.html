@@ -1,0 +1,945 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SearchFragment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.fragments.list.search</a> &gt; <span class="el_source">SearchFragment.java</span></div><h1>SearchFragment.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.fragments.list.search;
+
+import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.os.Bundle;
+import android.preference.PreferenceManager;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v7.app.ActionBar;
+import android.support.v7.app.AlertDialog;
+import android.support.v7.widget.RecyclerView;
+import android.support.v7.widget.TooltipCompat;
+import android.support.v7.widget.helper.ItemTouchHelper;
+import android.text.Editable;
+import android.text.TextUtils;
+import android.text.TextWatcher;
+import android.util.Log;
+import android.view.KeyEvent;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.animation.DecelerateInterpolator;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
+import android.widget.TextView;
+
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.ReCaptchaActivity;
+import org.schabi.newpipe.database.history.model.SearchHistoryEntry;
+import org.schabi.newpipe.extractor.InfoItem;
+import org.schabi.newpipe.extractor.ListExtractor;
+import org.schabi.newpipe.extractor.NewPipe;
+import org.schabi.newpipe.extractor.StreamingService;
+import org.schabi.newpipe.extractor.exceptions.ParsingException;
+import org.schabi.newpipe.extractor.search.SearchExtractor;
+import org.schabi.newpipe.extractor.search.SearchInfo;
+import org.schabi.newpipe.util.FireTvUtils;
+import org.schabi.newpipe.fragments.BackPressable;
+import org.schabi.newpipe.fragments.list.BaseListFragment;
+import org.schabi.newpipe.local.history.HistoryRecordManager;
+import org.schabi.newpipe.report.ErrorActivity;
+import org.schabi.newpipe.report.UserAction;
+import org.schabi.newpipe.util.AnimationUtils;
+import org.schabi.newpipe.util.Constants;
+import org.schabi.newpipe.util.ExtractorHelper;
+import org.schabi.newpipe.util.NavigationHelper;
+import org.schabi.newpipe.util.ServiceHelper;
+
+import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.net.SocketException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.TimeUnit;
+
+import icepick.State;
+import io.reactivex.Flowable;
+import io.reactivex.Observable;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subjects.PublishSubject;
+
+import static android.support.v7.widget.helper.ItemTouchHelper.Callback.makeMovementFlags;
+import static java.util.Arrays.asList;
+import static org.schabi.newpipe.util.AnimationUtils.animateView;
+
+<span class="nc" id="L80">public class SearchFragment</span>
+        extends BaseListFragment&lt;SearchInfo, ListExtractor.InfoItemsPage&gt;
+        implements BackPressable {
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Search
+    //////////////////////////////////////////////////////////////////////////*/
+
+    /**
+     * The suggestions will only be fetched from network if the query meet this threshold (&gt;=).
+     * (local ones will be fetched regardless of the length)
+     */
+    private static final int THRESHOLD_NETWORK_SUGGESTION = 1;
+
+    /**
+     * How much time have to pass without emitting a item (i.e. the user stop typing) to fetch/show the suggestions, in milliseconds.
+     */
+    private static final int SUGGESTIONS_DEBOUNCE = 120; //ms
+
+<span class="nc" id="L99">    @State</span>
+    protected int filterItemCheckedId = -1;
+
+<span class="nc" id="L102">    @State</span>
+    protected int serviceId = Constants.NO_SERVICE_ID;
+    
+    // this three represet the current search query
+    @State
+    protected String searchString;
+
+    /**
+     * No content filter should add like contentfilter = all
+     * be aware of this when implementing an extractor.
+     */
+<span class="nc" id="L113">    @State</span>
+    protected String[] contentFilter = new String[0];
+    @State
+    protected String sortFilter;
+    
+    // these represtent the last search
+    @State
+    protected String lastSearchedString;
+    
+<span class="nc" id="L122">    @State</span>
+    protected boolean wasSearchFocused = false;
+
+    private Map&lt;Integer, String&gt; menuItemToFilterName;
+    private StreamingService service;
+    private String currentPageUrl;
+    private String nextPageUrl;
+    private String contentCountry;
+<span class="nc" id="L130">    private boolean isSuggestionsEnabled = true;</span>
+
+<span class="nc" id="L132">    private final PublishSubject&lt;String&gt; suggestionPublisher = PublishSubject.create();</span>
+    private Disposable searchDisposable;
+    private Disposable suggestionDisposable;
+<span class="nc" id="L135">    private final CompositeDisposable disposables = new CompositeDisposable();</span>
+
+    private SuggestionListAdapter suggestionListAdapter;
+    private HistoryRecordManager historyRecordManager;
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Views
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private View searchToolbarContainer;
+    private EditText searchEditText;
+    private View searchClear;
+
+    private View suggestionsPanel;
+    private RecyclerView suggestionsRecyclerView;
+
+    /*////////////////////////////////////////////////////////////////////////*/
+
+    public static SearchFragment getInstance(int serviceId, String searchString) {
+<span class="nc" id="L154">        SearchFragment searchFragment = new SearchFragment();</span>
+<span class="nc" id="L155">        searchFragment.setQuery(serviceId, searchString, new String[0], &quot;&quot;);</span>
+
+<span class="nc bnc" id="L157" title="All 2 branches missed.">        if (!TextUtils.isEmpty(searchString)) {</span>
+<span class="nc" id="L158">            searchFragment.setSearchOnResume();</span>
+        }
+
+<span class="nc" id="L161">        return searchFragment;</span>
+    }
+
+    /**
+     * Set wasLoading to true so when the fragment onResume is called, the initial search is done.
+     */
+    private void setSearchOnResume() {
+<span class="nc" id="L168">        wasLoading.set(true);</span>
+<span class="nc" id="L169">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Fragment's LifeCycle
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onAttach(Context context) {
+<span class="nc" id="L177">        super.onAttach(context);</span>
+
+<span class="nc" id="L179">        suggestionListAdapter = new SuggestionListAdapter(activity);</span>
+<span class="nc" id="L180">        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(activity);</span>
+<span class="nc" id="L181">        boolean isSearchHistoryEnabled = preferences.getBoolean(getString(R.string.enable_search_history_key), true);</span>
+<span class="nc" id="L182">        suggestionListAdapter.setShowSuggestionHistory(isSearchHistoryEnabled);</span>
+
+<span class="nc" id="L184">        historyRecordManager = new HistoryRecordManager(context);</span>
+<span class="nc" id="L185">    }</span>
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+<span class="nc" id="L189">        super.onCreate(savedInstanceState);</span>
+
+<span class="nc" id="L191">        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(activity);</span>
+<span class="nc" id="L192">        isSuggestionsEnabled = preferences.getBoolean(getString(R.string.show_search_suggestions_key), true);</span>
+<span class="nc" id="L193">        contentCountry = preferences.getString(getString(R.string.content_country_key), getString(R.string.default_country_value));</span>
+<span class="nc" id="L194">    }</span>
+
+    @Override
+    public View onCreateView(LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+<span class="nc" id="L198">        return inflater.inflate(R.layout.fragment_search, container, false);</span>
+    }
+
+    @Override
+    public void onViewCreated(View rootView, Bundle savedInstanceState) {
+<span class="nc" id="L203">        super.onViewCreated(rootView, savedInstanceState);</span>
+<span class="nc" id="L204">        showSearchOnStart();</span>
+<span class="nc" id="L205">        initSearchListeners();</span>
+<span class="nc" id="L206">    }</span>
+
+    @Override
+    public void onPause() {
+<span class="nc" id="L210">        super.onPause();</span>
+
+<span class="nc" id="L212">        wasSearchFocused = searchEditText.hasFocus();</span>
+
+<span class="nc bnc" id="L214" title="All 2 branches missed.">        if (searchDisposable != null) searchDisposable.dispose();</span>
+<span class="nc bnc" id="L215" title="All 2 branches missed.">        if (suggestionDisposable != null) suggestionDisposable.dispose();</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">        if (disposables != null) disposables.clear();</span>
+<span class="nc" id="L217">        hideKeyboardSearch();</span>
+<span class="nc" id="L218">    }</span>
+
+    @Override
+    public void onResume() {
+<span class="nc bnc" id="L222" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onResume() called&quot;);</span>
+<span class="nc" id="L223">        super.onResume();</span>
+
+        try {
+<span class="nc" id="L226">            service = NewPipe.getService(serviceId);</span>
+<span class="nc" id="L227">        } catch (Exception e) {</span>
+<span class="nc" id="L228">            ErrorActivity.reportError(getActivity(), e, getActivity().getClass(),</span>
+<span class="nc" id="L229">                    getActivity().findViewById(android.R.id.content),</span>
+<span class="nc" id="L230">                    ErrorActivity.ErrorInfo.make(UserAction.UI_ERROR,</span>
+                            &quot;&quot;,
+                            &quot;&quot;, R.string.general_error));
+<span class="nc" id="L233">        }</span>
+
+<span class="nc bnc" id="L235" title="All 2 branches missed.">        if (!TextUtils.isEmpty(searchString)) {</span>
+<span class="nc bnc" id="L236" title="All 2 branches missed.">            if (wasLoading.getAndSet(false)) {</span>
+<span class="nc" id="L237">                search(searchString, contentFilter, sortFilter);</span>
+<span class="nc bnc" id="L238" title="All 2 branches missed.">            } else if (infoListAdapter.getItemsList().size() == 0) {</span>
+<span class="nc bnc" id="L239" title="All 2 branches missed.">                if (savedState == null) {</span>
+<span class="nc" id="L240">                    search(searchString, contentFilter, sortFilter);</span>
+<span class="nc bnc" id="L241" title="All 4 branches missed.">                } else if (!isLoading.get() &amp;&amp; !wasSearchFocused) {</span>
+<span class="nc" id="L242">                    infoListAdapter.clearStreamItemList();</span>
+<span class="nc" id="L243">                    showEmptyState();</span>
+                }
+            }
+        }
+
+<span class="nc bnc" id="L248" title="All 4 branches missed.">        if (suggestionDisposable == null || suggestionDisposable.isDisposed()) initSuggestionObserver();</span>
+
+<span class="nc bnc" id="L250" title="All 4 branches missed.">        if (TextUtils.isEmpty(searchString) || wasSearchFocused) {</span>
+<span class="nc" id="L251">            showKeyboardSearch();</span>
+<span class="nc" id="L252">            showSuggestionsPanel();</span>
+        } else {
+<span class="nc" id="L254">            hideKeyboardSearch();</span>
+<span class="nc" id="L255">            hideSuggestionsPanel();</span>
+        }
+<span class="nc" id="L257">        wasSearchFocused = false;</span>
+<span class="nc" id="L258">    }</span>
+
+    @Override
+    public void onDestroyView() {
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onDestroyView() called&quot;);</span>
+<span class="nc" id="L263">        unsetSearchListeners();</span>
+<span class="nc" id="L264">        super.onDestroyView();</span>
+<span class="nc" id="L265">    }</span>
+
+    @Override
+    public void onDestroy() {
+<span class="nc" id="L269">        super.onDestroy();</span>
+<span class="nc bnc" id="L270" title="All 2 branches missed.">        if (searchDisposable != null) searchDisposable.dispose();</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">        if (suggestionDisposable != null) suggestionDisposable.dispose();</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">        if (disposables != null) disposables.clear();</span>
+<span class="nc" id="L273">    }</span>
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+<span class="nc bnc" id="L277" title="All 2 branches missed.">        switch (requestCode) {</span>
+            case ReCaptchaActivity.RECAPTCHA_REQUEST:
+<span class="nc bnc" id="L279" title="All 2 branches missed.">                if (resultCode == Activity.RESULT_OK</span>
+<span class="nc bnc" id="L280" title="All 2 branches missed.">                        &amp;&amp; !TextUtils.isEmpty(searchString)) {</span>
+<span class="nc" id="L281">                    search(searchString, contentFilter, sortFilter);</span>
+<span class="nc" id="L282">                } else Log.e(TAG, &quot;ReCaptcha failed&quot;);</span>
+<span class="nc" id="L283">                break;</span>
+
+            default:
+<span class="nc" id="L286">                Log.e(TAG, &quot;Request code from activity not supported [&quot; + requestCode + &quot;]&quot;);</span>
+                break;
+        }
+<span class="nc" id="L289">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Init
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    protected void initViews(View rootView, Bundle savedInstanceState) {
+<span class="nc" id="L297">        super.initViews(rootView, savedInstanceState);</span>
+<span class="nc" id="L298">        suggestionsPanel = rootView.findViewById(R.id.suggestions_panel);</span>
+<span class="nc" id="L299">        suggestionsRecyclerView = rootView.findViewById(R.id.suggestions_list);</span>
+<span class="nc" id="L300">        suggestionsRecyclerView.setAdapter(suggestionListAdapter);</span>
+<span class="nc" id="L301">        new ItemTouchHelper(new ItemTouchHelper.Callback() {</span>
+            @Override
+            public int getMovementFlags(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder) {
+<span class="nc" id="L304">                return getSuggestionMovementFlags(recyclerView, viewHolder);</span>
+            }
+
+            @Override
+            public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder,
+                                  @NonNull RecyclerView.ViewHolder viewHolder1) {
+<span class="nc" id="L310">                return false;</span>
+            }
+
+            @Override
+            public void onSwiped(@NonNull RecyclerView.ViewHolder viewHolder, int i) {
+<span class="nc" id="L315">                onSuggestionItemSwiped(viewHolder, i);</span>
+<span class="nc" id="L316">            }</span>
+<span class="nc" id="L317">        }).attachToRecyclerView(suggestionsRecyclerView);</span>
+
+<span class="nc" id="L319">        searchToolbarContainer = activity.findViewById(R.id.toolbar_search_container);</span>
+<span class="nc" id="L320">        searchEditText = searchToolbarContainer.findViewById(R.id.toolbar_search_edit_text);</span>
+<span class="nc" id="L321">        searchClear = searchToolbarContainer.findViewById(R.id.toolbar_search_clear);</span>
+<span class="nc" id="L322">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // State Saving
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void writeTo(Queue&lt;Object&gt; objectsToSave) {
+<span class="nc" id="L330">        super.writeTo(objectsToSave);</span>
+<span class="nc" id="L331">        objectsToSave.add(currentPageUrl);</span>
+<span class="nc" id="L332">        objectsToSave.add(nextPageUrl);</span>
+<span class="nc" id="L333">    }</span>
+
+    @Override
+    public void readFrom(@NonNull Queue&lt;Object&gt; savedObjects) throws Exception {
+<span class="nc" id="L337">        super.readFrom(savedObjects);</span>
+<span class="nc" id="L338">        currentPageUrl = (String) savedObjects.poll();</span>
+<span class="nc" id="L339">        nextPageUrl = (String) savedObjects.poll();</span>
+<span class="nc" id="L340">    }</span>
+
+    @Override
+    public void onSaveInstanceState(Bundle bundle) {
+<span class="nc bnc" id="L344" title="All 2 branches missed.">        searchString = searchEditText != null</span>
+<span class="nc" id="L345">                ? searchEditText.getText().toString()</span>
+                : searchString;
+<span class="nc" id="L347">        super.onSaveInstanceState(bundle);</span>
+<span class="nc" id="L348">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Init's
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void reloadContent() {
+<span class="nc bnc" id="L356" title="All 4 branches missed.">        if (!TextUtils.isEmpty(searchString)</span>
+<span class="nc bnc" id="L357" title="All 2 branches missed.">                || (searchEditText != null &amp;&amp; !TextUtils.isEmpty(searchEditText.getText()))) {</span>
+<span class="nc bnc" id="L358" title="All 2 branches missed.">            search(!TextUtils.isEmpty(searchString)</span>
+                    ? searchString
+<span class="nc" id="L360">                    : searchEditText.getText().toString(), this.contentFilter, &quot;&quot;);</span>
+        } else {
+<span class="nc bnc" id="L362" title="All 2 branches missed.">            if (searchEditText != null) {</span>
+<span class="nc" id="L363">                searchEditText.setText(&quot;&quot;);</span>
+<span class="nc" id="L364">                showKeyboardSearch();</span>
+            }
+<span class="nc" id="L366">            animateView(errorPanelRoot, false, 200);</span>
+        }
+<span class="nc" id="L368">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Menu
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+<span class="nc" id="L376">        super.onCreateOptionsMenu(menu, inflater);</span>
+
+<span class="nc" id="L378">        ActionBar supportActionBar = activity.getSupportActionBar();</span>
+<span class="nc bnc" id="L379" title="All 2 branches missed.">        if (supportActionBar != null) {</span>
+<span class="nc" id="L380">            supportActionBar.setDisplayShowTitleEnabled(false);</span>
+<span class="nc" id="L381">            supportActionBar.setDisplayHomeAsUpEnabled(true);</span>
+        }
+
+<span class="nc" id="L384">        menuItemToFilterName = new HashMap&lt;&gt;();</span>
+
+<span class="nc" id="L386">        int itemId = 0;</span>
+<span class="nc" id="L387">        boolean isFirstItem = true;</span>
+<span class="nc" id="L388">        final Context c = getContext();</span>
+<span class="nc bnc" id="L389" title="All 2 branches missed.">        for(String filter : service.getSearchQHFactory().getAvailableContentFilter()) {</span>
+<span class="nc" id="L390">            menuItemToFilterName.put(itemId, filter);</span>
+<span class="nc" id="L391">            MenuItem item = menu.add(1,</span>
+                    itemId++,
+                    0,
+<span class="nc" id="L394">                    ServiceHelper.getTranslatedFilterString(filter, c));</span>
+<span class="nc bnc" id="L395" title="All 2 branches missed.">            if(isFirstItem) {</span>
+<span class="nc" id="L396">                item.setChecked(true);</span>
+<span class="nc" id="L397">                isFirstItem = false;</span>
+            }
+        }
+<span class="nc" id="L400">        menu.setGroupCheckable(1, true, true);</span>
+
+<span class="nc" id="L402">        restoreFilterChecked(menu, filterItemCheckedId);</span>
+<span class="nc" id="L403">    }</span>
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+
+<span class="nc" id="L408">        List&lt;String&gt; contentFilter = new ArrayList&lt;&gt;(1);</span>
+<span class="nc" id="L409">        contentFilter.add(menuItemToFilterName.get(item.getItemId()));</span>
+<span class="nc" id="L410">        changeContentFilter(item, contentFilter);</span>
+
+<span class="nc" id="L412">        return true;</span>
+    }
+
+    private void restoreFilterChecked(Menu menu, int itemId) {
+<span class="nc bnc" id="L416" title="All 2 branches missed.">        if (itemId != -1) {</span>
+<span class="nc" id="L417">            MenuItem item = menu.findItem(itemId);</span>
+<span class="nc bnc" id="L418" title="All 2 branches missed.">            if (item == null) return;</span>
+
+<span class="nc" id="L420">            item.setChecked(true);</span>
+        }
+<span class="nc" id="L422">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Search
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private TextWatcher textWatcher;
+
+    private void showSearchOnStart() {
+<span class="nc bnc" id="L431" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;showSearchOnStart() called, searchQuery → &quot;</span>
+                + searchString
+                + &quot;, lastSearchedQuery → &quot;
+                + lastSearchedString);
+<span class="nc" id="L435">        searchEditText.setText(searchString);</span>
+
+<span class="nc bnc" id="L437" title="All 4 branches missed.">        if (TextUtils.isEmpty(searchString) || TextUtils.isEmpty(searchEditText.getText())) {</span>
+<span class="nc" id="L438">            searchToolbarContainer.setTranslationX(100);</span>
+<span class="nc" id="L439">            searchToolbarContainer.setAlpha(0f);</span>
+<span class="nc" id="L440">            searchToolbarContainer.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L441">            searchToolbarContainer.animate()</span>
+<span class="nc" id="L442">                    .translationX(0)</span>
+<span class="nc" id="L443">                    .alpha(1f)</span>
+<span class="nc" id="L444">                    .setDuration(200)</span>
+<span class="nc" id="L445">                    .setInterpolator(new DecelerateInterpolator()).start();</span>
+        } else {
+<span class="nc" id="L447">            searchToolbarContainer.setTranslationX(0);</span>
+<span class="nc" id="L448">            searchToolbarContainer.setAlpha(1f);</span>
+<span class="nc" id="L449">            searchToolbarContainer.setVisibility(View.VISIBLE);</span>
+        }
+<span class="nc" id="L451">    }</span>
+
+    private void initSearchListeners() {
+<span class="nc bnc" id="L454" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;initSearchListeners() called&quot;);</span>
+<span class="nc" id="L455">        searchClear.setOnClickListener(v -&gt; {</span>
+<span class="nc bnc" id="L456" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;onClick() called with: v = [&quot; + v + &quot;]&quot;);</span>
+<span class="nc bnc" id="L457" title="All 2 branches missed.">            if (TextUtils.isEmpty(searchEditText.getText())) {</span>
+<span class="nc" id="L458">                NavigationHelper.gotoMainFragment(getFragmentManager());</span>
+<span class="nc" id="L459">                return;</span>
+            }
+
+<span class="nc" id="L462">            searchEditText.setText(&quot;&quot;);</span>
+<span class="nc" id="L463">            suggestionListAdapter.setItems(new ArrayList&lt;&gt;());</span>
+<span class="nc" id="L464">            showKeyboardSearch();</span>
+<span class="nc" id="L465">        });</span>
+
+<span class="nc" id="L467">        TooltipCompat.setTooltipText(searchClear, getString(R.string.clear));</span>
+
+<span class="nc" id="L469">        searchEditText.setOnClickListener(v -&gt; {</span>
+<span class="nc bnc" id="L470" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;onClick() called with: v = [&quot; + v + &quot;]&quot;);</span>
+<span class="nc bnc" id="L471" title="All 4 branches missed.">            if (isSuggestionsEnabled &amp;&amp; errorPanelRoot.getVisibility() != View.VISIBLE) {</span>
+<span class="nc" id="L472">                showSuggestionsPanel();</span>
+            }
+<span class="nc bnc" id="L474" title="All 2 branches missed.">            if(FireTvUtils.isFireTv()){</span>
+<span class="nc" id="L475">                showKeyboardSearch();</span>
+            }
+<span class="nc" id="L477">        });</span>
+
+<span class="nc" id="L479">        searchEditText.setOnFocusChangeListener((View v, boolean hasFocus) -&gt; {</span>
+<span class="nc bnc" id="L480" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;onFocusChange() called with: v = [&quot; + v + &quot;], hasFocus = [&quot; + hasFocus + &quot;]&quot;);</span>
+<span class="nc bnc" id="L481" title="All 6 branches missed.">            if (isSuggestionsEnabled &amp;&amp; hasFocus &amp;&amp; errorPanelRoot.getVisibility() != View.VISIBLE) {</span>
+<span class="nc" id="L482">                showSuggestionsPanel();</span>
+            }
+<span class="nc" id="L484">        });</span>
+
+<span class="nc" id="L486">        suggestionListAdapter.setListener(new SuggestionListAdapter.OnSuggestionItemSelected() {</span>
+            @Override
+            public void onSuggestionItemSelected(SuggestionItem item) {
+<span class="nc" id="L489">                search(item.query, new String[0], &quot;&quot;);</span>
+<span class="nc" id="L490">                searchEditText.setText(item.query);</span>
+<span class="nc" id="L491">            }</span>
+
+            @Override
+            public void onSuggestionItemInserted(SuggestionItem item) {
+<span class="nc" id="L495">                searchEditText.setText(item.query);</span>
+<span class="nc" id="L496">                searchEditText.setSelection(searchEditText.getText().length());</span>
+<span class="nc" id="L497">            }</span>
+
+            @Override
+            public void onSuggestionItemLongClick(SuggestionItem item) {
+<span class="nc bnc" id="L501" title="All 2 branches missed.">                if (item.fromHistory) showDeleteSuggestionDialog(item);</span>
+<span class="nc" id="L502">            }</span>
+        });
+
+<span class="nc bnc" id="L505" title="All 2 branches missed.">        if (textWatcher != null) searchEditText.removeTextChangedListener(textWatcher);</span>
+<span class="nc" id="L506">        textWatcher = new TextWatcher() {</span>
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+<span class="nc" id="L509">            }</span>
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+<span class="nc" id="L513">            }</span>
+
+            @Override
+            public void afterTextChanged(Editable s) {
+<span class="nc" id="L517">                String newText = searchEditText.getText().toString();</span>
+<span class="nc" id="L518">                suggestionPublisher.onNext(newText);</span>
+<span class="nc" id="L519">            }</span>
+        };
+<span class="nc" id="L521">        searchEditText.addTextChangedListener(textWatcher);</span>
+<span class="nc" id="L522">        searchEditText.setOnEditorActionListener(</span>
+                (TextView v, int actionId, KeyEvent event) -&gt; {
+<span class="nc bnc" id="L524" title="All 2 branches missed.">                    if (DEBUG) {</span>
+<span class="nc" id="L525">                        Log.d(TAG, &quot;onEditorAction() called with: v = [&quot; + v + &quot;], actionId = [&quot; + actionId + &quot;], event = [&quot; + event + &quot;]&quot;);</span>
+                    }
+<span class="nc bnc" id="L527" title="All 2 branches missed.">                    if(actionId == EditorInfo.IME_ACTION_PREVIOUS){</span>
+<span class="nc" id="L528">                        hideKeyboardSearch();</span>
+<span class="nc bnc" id="L529" title="All 2 branches missed.">                    } else if (event != null</span>
+<span class="nc bnc" id="L530" title="All 2 branches missed.">                            &amp;&amp; (event.getKeyCode() == KeyEvent.KEYCODE_ENTER</span>
+<span class="nc bnc" id="L531" title="All 2 branches missed.">                                || event.getAction() == EditorInfo.IME_ACTION_SEARCH)) {</span>
+<span class="nc" id="L532">                        search(searchEditText.getText().toString(), new String[0], &quot;&quot;);</span>
+<span class="nc" id="L533">                        return true;</span>
+                    }
+<span class="nc" id="L535">                    return false;</span>
+                });
+
+<span class="nc bnc" id="L538" title="All 4 branches missed.">        if (suggestionDisposable == null || suggestionDisposable.isDisposed())</span>
+<span class="nc" id="L539">            initSuggestionObserver();</span>
+<span class="nc" id="L540">    }</span>
+
+    private void unsetSearchListeners() {
+<span class="nc bnc" id="L543" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;unsetSearchListeners() called&quot;);</span>
+<span class="nc" id="L544">        searchClear.setOnClickListener(null);</span>
+<span class="nc" id="L545">        searchClear.setOnLongClickListener(null);</span>
+<span class="nc" id="L546">        searchEditText.setOnClickListener(null);</span>
+<span class="nc" id="L547">        searchEditText.setOnFocusChangeListener(null);</span>
+<span class="nc" id="L548">        searchEditText.setOnEditorActionListener(null);</span>
+
+<span class="nc bnc" id="L550" title="All 2 branches missed.">        if (textWatcher != null) searchEditText.removeTextChangedListener(textWatcher);</span>
+<span class="nc" id="L551">        textWatcher = null;</span>
+<span class="nc" id="L552">    }</span>
+
+    private void showSuggestionsPanel() {
+<span class="nc bnc" id="L555" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;showSuggestionsPanel() called&quot;);</span>
+<span class="nc" id="L556">        animateView(suggestionsPanel, AnimationUtils.Type.LIGHT_SLIDE_AND_ALPHA, true, 200);</span>
+<span class="nc" id="L557">    }</span>
+
+    private void hideSuggestionsPanel() {
+<span class="nc bnc" id="L560" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;hideSuggestionsPanel() called&quot;);</span>
+<span class="nc" id="L561">        animateView(suggestionsPanel, AnimationUtils.Type.LIGHT_SLIDE_AND_ALPHA, false, 200);</span>
+<span class="nc" id="L562">    }</span>
+
+    private void showKeyboardSearch() {
+<span class="nc bnc" id="L565" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;showKeyboardSearch() called&quot;);</span>
+<span class="nc bnc" id="L566" title="All 2 branches missed.">        if (searchEditText == null) return;</span>
+
+<span class="nc bnc" id="L568" title="All 2 branches missed.">        if (searchEditText.requestFocus()) {</span>
+<span class="nc" id="L569">            InputMethodManager imm = (InputMethodManager) activity.getSystemService(</span>
+                    Context.INPUT_METHOD_SERVICE);
+<span class="nc" id="L571">            imm.showSoftInput(searchEditText, InputMethodManager.SHOW_FORCED);</span>
+        }
+<span class="nc" id="L573">    }</span>
+
+    private void hideKeyboardSearch() {
+<span class="nc bnc" id="L576" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;hideKeyboardSearch() called&quot;);</span>
+<span class="nc bnc" id="L577" title="All 2 branches missed.">        if (searchEditText == null) return;</span>
+
+<span class="nc" id="L579">        InputMethodManager imm = (InputMethodManager) activity.getSystemService(</span>
+                Context.INPUT_METHOD_SERVICE);
+<span class="nc" id="L581">        imm.hideSoftInputFromWindow(searchEditText.getWindowToken(), InputMethodManager.RESULT_UNCHANGED_SHOWN);</span>
+
+<span class="nc" id="L583">        searchEditText.clearFocus();</span>
+<span class="nc" id="L584">    }</span>
+
+    private void showDeleteSuggestionDialog(final SuggestionItem item) {
+<span class="nc bnc" id="L587" title="All 10 branches missed.">        if (activity == null || historyRecordManager == null || suggestionPublisher == null ||</span>
+<span class="nc" id="L588">                searchEditText == null || disposables == null) return;</span>
+<span class="nc" id="L589">        final String query = item.query;</span>
+<span class="nc" id="L590">        new AlertDialog.Builder(activity)</span>
+<span class="nc" id="L591">                .setTitle(query)</span>
+<span class="nc" id="L592">                .setMessage(R.string.delete_item_search_history)</span>
+<span class="nc" id="L593">                .setCancelable(true)</span>
+<span class="nc" id="L594">                .setNegativeButton(R.string.cancel, null)</span>
+<span class="nc" id="L595">                .setPositiveButton(R.string.delete, (dialog, which) -&gt; {</span>
+<span class="nc" id="L596">                    final Disposable onDelete = historyRecordManager.deleteSearchHistory(query)</span>
+<span class="nc" id="L597">                            .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L598">                            .subscribe(</span>
+<span class="nc" id="L599">                                    howManyDeleted -&gt; suggestionPublisher</span>
+<span class="nc" id="L600">                                            .onNext(searchEditText.getText().toString()),</span>
+<span class="nc" id="L601">                                    throwable -&gt; showSnackBarError(throwable,</span>
+                                            UserAction.DELETE_FROM_HISTORY, &quot;none&quot;,
+                                            &quot;Deleting item failed&quot;, R.string.general_error));
+<span class="nc" id="L604">                    disposables.add(onDelete);</span>
+<span class="nc" id="L605">                })</span>
+<span class="nc" id="L606">                .show();</span>
+<span class="nc" id="L607">    }</span>
+
+    @Override
+    public boolean onBackPressed() {
+<span class="nc bnc" id="L611" title="All 2 branches missed.">        if (suggestionsPanel.getVisibility() == View.VISIBLE</span>
+<span class="nc bnc" id="L612" title="All 2 branches missed.">                &amp;&amp; infoListAdapter.getItemsList().size() &gt; 0</span>
+<span class="nc bnc" id="L613" title="All 2 branches missed.">                &amp;&amp; !isLoading.get()) {</span>
+<span class="nc" id="L614">            hideSuggestionsPanel();</span>
+<span class="nc" id="L615">            hideKeyboardSearch();</span>
+<span class="nc" id="L616">            searchEditText.setText(lastSearchedString);</span>
+<span class="nc" id="L617">            return true;</span>
+        }
+<span class="nc" id="L619">        return false;</span>
+    }
+
+    public void giveSearchEditTextFocus() {
+<span class="nc" id="L623">        showKeyboardSearch();</span>
+<span class="nc" id="L624">    }</span>
+
+    private void initSuggestionObserver() {
+<span class="nc bnc" id="L627" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;initSuggestionObserver() called&quot;);</span>
+<span class="nc bnc" id="L628" title="All 2 branches missed.">        if (suggestionDisposable != null) suggestionDisposable.dispose();</span>
+
+<span class="nc" id="L630">        final Observable&lt;String&gt; observable = suggestionPublisher</span>
+<span class="nc bnc" id="L631" title="All 2 branches missed.">                .debounce(SUGGESTIONS_DEBOUNCE, TimeUnit.MILLISECONDS)</span>
+<span class="nc" id="L632">                .startWith(searchString != null</span>
+                        ? searchString
+                        : &quot;&quot;)
+<span class="nc" id="L635">                .filter(searchString -&gt; isSuggestionsEnabled);</span>
+
+<span class="nc" id="L637">        suggestionDisposable = observable</span>
+<span class="nc" id="L638">                .switchMap(query -&gt; {</span>
+<span class="nc" id="L639">                    final Flowable&lt;List&lt;SearchHistoryEntry&gt;&gt; flowable = historyRecordManager</span>
+<span class="nc" id="L640">                            .getRelatedSearches(query, 3, 25);</span>
+<span class="nc" id="L641">                    final Observable&lt;List&lt;SuggestionItem&gt;&gt; local = flowable.toObservable()</span>
+<span class="nc" id="L642">                            .map(searchHistoryEntries -&gt; {</span>
+<span class="nc" id="L643">                                List&lt;SuggestionItem&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L644" title="All 2 branches missed.">                                for (SearchHistoryEntry entry : searchHistoryEntries)</span>
+<span class="nc" id="L645">                                    result.add(new SuggestionItem(true, entry.getSearch()));</span>
+<span class="nc" id="L646">                                return result;</span>
+                            });
+
+<span class="nc bnc" id="L649" title="All 2 branches missed.">                    if (query.length() &lt; THRESHOLD_NETWORK_SUGGESTION) {</span>
+                        // Only pass through if the query length is equal or greater than THRESHOLD_NETWORK_SUGGESTION
+<span class="nc" id="L651">                        return local.materialize();</span>
+                    }
+
+<span class="nc" id="L654">                    final Observable&lt;List&lt;SuggestionItem&gt;&gt; network = ExtractorHelper</span>
+<span class="nc" id="L655">                            .suggestionsFor(serviceId, query)</span>
+<span class="nc" id="L656">                            .toObservable()</span>
+<span class="nc" id="L657">                            .map(strings -&gt; {</span>
+<span class="nc" id="L658">                                List&lt;SuggestionItem&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L659" title="All 2 branches missed.">                                for (String entry : strings) {</span>
+<span class="nc" id="L660">                                    result.add(new SuggestionItem(false, entry));</span>
+<span class="nc" id="L661">                                }</span>
+<span class="nc" id="L662">                                return result;</span>
+                            });
+
+<span class="nc" id="L665">                    return Observable.zip(local, network, (localResult, networkResult) -&gt; {</span>
+<span class="nc" id="L666">                        List&lt;SuggestionItem&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L667" title="All 2 branches missed.">                        if (localResult.size() &gt; 0) result.addAll(localResult);</span>
+
+                        // Remove duplicates
+<span class="nc" id="L670">                        final Iterator&lt;SuggestionItem&gt; iterator = networkResult.iterator();</span>
+<span class="nc bnc" id="L671" title="All 4 branches missed.">                        while (iterator.hasNext() &amp;&amp; localResult.size() &gt; 0) {</span>
+<span class="nc" id="L672">                            final SuggestionItem next = iterator.next();</span>
+<span class="nc bnc" id="L673" title="All 2 branches missed.">                            for (SuggestionItem item : localResult) {</span>
+<span class="nc bnc" id="L674" title="All 2 branches missed.">                                if (item.query.equals(next.query)) {</span>
+<span class="nc" id="L675">                                    iterator.remove();</span>
+<span class="nc" id="L676">                                    break;</span>
+                                }
+<span class="nc" id="L678">                            }</span>
+<span class="nc" id="L679">                        }</span>
+
+<span class="nc bnc" id="L681" title="All 2 branches missed.">                        if (networkResult.size() &gt; 0) result.addAll(networkResult);</span>
+<span class="nc" id="L682">                        return result;</span>
+<span class="nc" id="L683">                    }).materialize();</span>
+                })
+<span class="nc" id="L685">                .subscribeOn(Schedulers.io())</span>
+<span class="nc" id="L686">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L687">                .subscribe(listNotification -&gt; {</span>
+<span class="nc bnc" id="L688" title="All 2 branches missed.">                    if (listNotification.isOnNext()) {</span>
+<span class="nc" id="L689">                        handleSuggestions(listNotification.getValue());</span>
+<span class="nc bnc" id="L690" title="All 2 branches missed.">                    } else if (listNotification.isOnError()) {</span>
+<span class="nc" id="L691">                        Throwable error = listNotification.getError();</span>
+<span class="nc bnc" id="L692" title="All 2 branches missed.">                        if (!ExtractorHelper.hasAssignableCauseThrowable(error,</span>
+                                IOException.class, SocketException.class,
+                                InterruptedException.class, InterruptedIOException.class)) {
+<span class="nc" id="L695">                            onSuggestionError(error);</span>
+                        }
+                    }
+<span class="nc" id="L698">                });</span>
+<span class="nc" id="L699">    }</span>
+
+    @Override
+    protected void doInitialLoadLogic() {
+        // no-op
+<span class="nc" id="L704">    }</span>
+
+    private void search(final String searchString, String[] contentFilter, String sortFilter) {
+<span class="nc bnc" id="L707" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;search() called with: query = [&quot; + searchString + &quot;]&quot;);</span>
+<span class="nc bnc" id="L708" title="All 2 branches missed.">        if (searchString.isEmpty()) return;</span>
+
+        try {
+<span class="nc" id="L711">            final StreamingService service = NewPipe.getServiceByUrl(searchString);</span>
+<span class="nc bnc" id="L712" title="All 2 branches missed.">            if (service != null) {</span>
+<span class="nc" id="L713">                showLoading();</span>
+<span class="nc" id="L714">                disposables.add(Observable</span>
+<span class="nc" id="L715">                        .fromCallable(() -&gt;</span>
+<span class="nc" id="L716">                                NavigationHelper.getIntentByLink(activity, service, searchString))</span>
+<span class="nc" id="L717">                        .subscribeOn(Schedulers.io())</span>
+<span class="nc" id="L718">                        .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L719">                        .subscribe(intent -&gt; {</span>
+<span class="nc" id="L720">                            getFragmentManager().popBackStackImmediate();</span>
+<span class="nc" id="L721">                            activity.startActivity(intent);</span>
+<span class="nc" id="L722">                        }, throwable -&gt;</span>
+<span class="nc" id="L723">                                showError(getString(R.string.url_not_supported_toast), false)));</span>
+<span class="nc" id="L724">                return;</span>
+            }
+<span class="nc" id="L726">        } catch (Exception e) {</span>
+            // Exception occurred, it's not a url
+<span class="nc" id="L728">        }</span>
+
+<span class="nc" id="L730">        lastSearchedString = this.searchString;</span>
+<span class="nc" id="L731">        this.searchString = searchString;</span>
+<span class="nc" id="L732">        infoListAdapter.clearStreamItemList();</span>
+<span class="nc" id="L733">        hideSuggestionsPanel();</span>
+<span class="nc" id="L734">        hideKeyboardSearch();</span>
+
+<span class="nc" id="L736">        historyRecordManager.onSearched(serviceId, searchString)</span>
+<span class="nc" id="L737">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L738">                .subscribe(</span>
+<span class="nc" id="L739">                        ignored -&gt; {},</span>
+<span class="nc" id="L740">                        error -&gt; showSnackBarError(error, UserAction.SEARCHED,</span>
+<span class="nc" id="L741">                                NewPipe.getNameOfService(serviceId), searchString, 0)</span>
+                );
+<span class="nc" id="L743">        suggestionPublisher.onNext(searchString);</span>
+<span class="nc" id="L744">        startLoading(false);</span>
+<span class="nc" id="L745">    }</span>
+
+    @Override
+    public void startLoading(boolean forceLoad) {
+<span class="nc" id="L749">        super.startLoading(forceLoad);</span>
+<span class="nc bnc" id="L750" title="All 2 branches missed.">        if (disposables != null) disposables.clear();</span>
+<span class="nc bnc" id="L751" title="All 2 branches missed.">        if (searchDisposable != null) searchDisposable.dispose();</span>
+<span class="nc" id="L752">        searchDisposable = ExtractorHelper.searchFor(serviceId,</span>
+                    searchString,
+<span class="nc" id="L754">                    Arrays.asList(contentFilter),</span>
+                    sortFilter)
+<span class="nc" id="L756">                .subscribeOn(Schedulers.io())</span>
+<span class="nc" id="L757">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L758">                .doOnEvent((searchResult, throwable) -&gt; isLoading.set(false))</span>
+<span class="nc" id="L759">                .subscribe(this::handleResult, this::onError);</span>
+
+<span class="nc" id="L761">    }</span>
+
+    @Override
+    protected void loadMoreItems() {
+<span class="nc bnc" id="L765" title="All 4 branches missed.">        if(nextPageUrl == null || nextPageUrl.isEmpty()) return;</span>
+<span class="nc" id="L766">        isLoading.set(true);</span>
+<span class="nc" id="L767">        showListFooter(true);</span>
+<span class="nc bnc" id="L768" title="All 2 branches missed.">        if (searchDisposable != null) searchDisposable.dispose();</span>
+<span class="nc" id="L769">        searchDisposable = ExtractorHelper.getMoreSearchItems(</span>
+                    serviceId,
+                    searchString,
+<span class="nc" id="L772">                    asList(contentFilter),</span>
+                    sortFilter,
+                    nextPageUrl)
+<span class="nc" id="L775">                .subscribeOn(Schedulers.io())</span>
+<span class="nc" id="L776">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L777">                .doOnEvent((nextItemsResult, throwable) -&gt; isLoading.set(false))</span>
+<span class="nc" id="L778">                .subscribe(this::handleNextItems, this::onError);</span>
+<span class="nc" id="L779">    }</span>
+
+    @Override
+    protected boolean hasMoreItems() {
+        // TODO: No way to tell if search has more items in the moment
+<span class="nc" id="L784">        return true;</span>
+    }
+
+    @Override
+    protected void onItemSelected(InfoItem selectedItem) {
+<span class="nc" id="L789">        super.onItemSelected(selectedItem);</span>
+<span class="nc" id="L790">        hideKeyboardSearch();</span>
+<span class="nc" id="L791">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Utils
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private void changeContentFilter(MenuItem item, List&lt;String&gt; contentFilter) {
+<span class="nc" id="L798">        this.filterItemCheckedId = item.getItemId();</span>
+<span class="nc" id="L799">        item.setChecked(true);</span>
+
+<span class="nc" id="L801">        this.contentFilter = new String[] {contentFilter.get(0)};</span>
+
+<span class="nc bnc" id="L803" title="All 2 branches missed.">        if (!TextUtils.isEmpty(searchString)) {</span>
+<span class="nc" id="L804">            search(searchString, this.contentFilter, sortFilter);</span>
+        }
+<span class="nc" id="L806">    }</span>
+
+    private void setQuery(int serviceId, String searchString, String[] contentfilter, String sortFilter) {
+<span class="nc" id="L809">        this.serviceId = serviceId;</span>
+<span class="nc" id="L810">        this.searchString = searchString;</span>
+<span class="nc" id="L811">        this.contentFilter = contentfilter;</span>
+<span class="nc" id="L812">        this.sortFilter = sortFilter;</span>
+<span class="nc" id="L813">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Suggestion Results
+    //////////////////////////////////////////////////////////////////////////*/
+
+    public void handleSuggestions(@NonNull final List&lt;SuggestionItem&gt; suggestions) {
+<span class="nc bnc" id="L820" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;handleSuggestions() called with: suggestions = [&quot; + suggestions + &quot;]&quot;);</span>
+<span class="nc" id="L821">        suggestionsRecyclerView.smoothScrollToPosition(0);</span>
+<span class="nc" id="L822">        suggestionsRecyclerView.post(() -&gt; suggestionListAdapter.setItems(suggestions));</span>
+
+<span class="nc bnc" id="L824" title="All 2 branches missed.">        if (errorPanelRoot.getVisibility() == View.VISIBLE) {</span>
+<span class="nc" id="L825">            hideLoading();</span>
+        }
+<span class="nc" id="L827">    }</span>
+
+    public void onSuggestionError(Throwable exception) {
+<span class="nc bnc" id="L830" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onSuggestionError() called with: exception = [&quot; + exception + &quot;]&quot;);</span>
+<span class="nc bnc" id="L831" title="All 2 branches missed.">        if (super.onError(exception)) return;</span>
+
+<span class="nc bnc" id="L833" title="All 2 branches missed.">        int errorId = exception instanceof ParsingException</span>
+                ? R.string.parsing_error
+                : R.string.general_error;
+<span class="nc" id="L836">        onUnrecoverableError(exception, UserAction.GET_SUGGESTIONS,</span>
+<span class="nc" id="L837">                NewPipe.getNameOfService(serviceId), searchString, errorId);</span>
+<span class="nc" id="L838">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Contract
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void hideLoading() {
+<span class="nc" id="L846">        super.hideLoading();</span>
+<span class="nc" id="L847">        showListFooter(false);</span>
+<span class="nc" id="L848">    }</span>
+
+    @Override
+    public void showError(String message, boolean showRetryButton) {
+<span class="nc" id="L852">        super.showError(message, showRetryButton);</span>
+<span class="nc" id="L853">        hideSuggestionsPanel();</span>
+<span class="nc" id="L854">        hideKeyboardSearch();</span>
+<span class="nc" id="L855">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Search Results
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void handleResult(@NonNull SearchInfo result) {
+<span class="nc" id="L863">        final List&lt;Throwable&gt; exceptions = result.getErrors();</span>
+<span class="nc bnc" id="L864" title="All 2 branches missed.">        if (!exceptions.isEmpty()</span>
+<span class="nc bnc" id="L865" title="All 2 branches missed.">            &amp;&amp; !(exceptions.size() == 1</span>
+<span class="nc bnc" id="L866" title="All 2 branches missed.">                &amp;&amp; exceptions.get(0) instanceof SearchExtractor.NothingFoundException)){</span>
+<span class="nc" id="L867">            showSnackBarError(result.getErrors(), UserAction.SEARCHED,</span>
+<span class="nc" id="L868">                    NewPipe.getNameOfService(serviceId), searchString, 0);</span>
+        }
+
+<span class="nc" id="L871">        lastSearchedString = searchString;</span>
+<span class="nc" id="L872">        nextPageUrl = result.getNextPageUrl();</span>
+<span class="nc" id="L873">        currentPageUrl = result.getUrl();</span>
+
+<span class="nc bnc" id="L875" title="All 2 branches missed.">        if (infoListAdapter.getItemsList().size() == 0) {</span>
+<span class="nc bnc" id="L876" title="All 2 branches missed.">            if (!result.getRelatedItems().isEmpty()) {</span>
+<span class="nc" id="L877">                infoListAdapter.addInfoItemList(result.getRelatedItems());</span>
+            } else {
+<span class="nc" id="L879">                infoListAdapter.clearStreamItemList();</span>
+<span class="nc" id="L880">                showEmptyState();</span>
+<span class="nc" id="L881">                return;</span>
+            }
+        }
+
+<span class="nc" id="L885">        super.handleResult(result);</span>
+<span class="nc" id="L886">    }</span>
+
+    @Override
+    public void handleNextItems(ListExtractor.InfoItemsPage result) {
+<span class="nc" id="L890">        showListFooter(false);</span>
+<span class="nc" id="L891">        currentPageUrl = result.getNextPageUrl();</span>
+<span class="nc" id="L892">        infoListAdapter.addInfoItemList(result.getItems());</span>
+<span class="nc" id="L893">        nextPageUrl = result.getNextPageUrl();</span>
+
+<span class="nc bnc" id="L895" title="All 2 branches missed.">        if (!result.getErrors().isEmpty()) {</span>
+<span class="nc" id="L896">            showSnackBarError(result.getErrors(), UserAction.SEARCHED,</span>
+<span class="nc" id="L897">                    NewPipe.getNameOfService(serviceId)</span>
+                    , &quot;\&quot;&quot; + searchString + &quot;\&quot; → page: &quot; + nextPageUrl, 0);
+        }
+<span class="nc" id="L900">        super.handleNextItems(result);</span>
+<span class="nc" id="L901">    }</span>
+
+    @Override
+    protected boolean onError(Throwable exception) {
+<span class="nc bnc" id="L905" title="All 2 branches missed.">        if (super.onError(exception)) return true;</span>
+
+<span class="nc bnc" id="L907" title="All 2 branches missed.">        if (exception instanceof SearchExtractor.NothingFoundException) {</span>
+<span class="nc" id="L908">            infoListAdapter.clearStreamItemList();</span>
+<span class="nc" id="L909">            showEmptyState();</span>
+        } else {
+<span class="nc bnc" id="L911" title="All 2 branches missed.">            int errorId = exception instanceof ParsingException</span>
+                    ? R.string.parsing_error
+                    : R.string.general_error;
+<span class="nc" id="L914">            onUnrecoverableError(exception, UserAction.SEARCHED,</span>
+<span class="nc" id="L915">                    NewPipe.getNameOfService(serviceId), searchString, errorId);</span>
+        }
+
+<span class="nc" id="L918">        return true;</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Suggestion item touch helper
+    //////////////////////////////////////////////////////////////////////////*/
+
+    public int getSuggestionMovementFlags(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder) {
+<span class="nc" id="L926">        final int position = viewHolder.getAdapterPosition();</span>
+<span class="nc" id="L927">        final SuggestionItem item = suggestionListAdapter.getItem(position);</span>
+<span class="nc bnc" id="L928" title="All 2 branches missed.">        return item.fromHistory ? makeMovementFlags(0, ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT) : 0;</span>
+    }
+
+    public void onSuggestionItemSwiped(@NonNull RecyclerView.ViewHolder viewHolder, int i) {
+<span class="nc" id="L932">        final int position = viewHolder.getAdapterPosition();</span>
+<span class="nc" id="L933">        final String query = suggestionListAdapter.getItem(position).query;</span>
+<span class="nc" id="L934">        final Disposable onDelete = historyRecordManager.deleteSearchHistory(query)</span>
+<span class="nc" id="L935">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L936">                .subscribe(</span>
+<span class="nc" id="L937">                        howManyDeleted -&gt; suggestionPublisher</span>
+<span class="nc" id="L938">                                .onNext(searchEditText.getText().toString()),</span>
+<span class="nc" id="L939">                        throwable -&gt; showSnackBarError(throwable,</span>
+                                UserAction.DELETE_FROM_HISTORY, &quot;none&quot;,
+                                &quot;Deleting item failed&quot;, R.string.general_error));
+<span class="nc" id="L942">        disposables.add(onDelete);</span>
+<span class="nc" id="L943">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

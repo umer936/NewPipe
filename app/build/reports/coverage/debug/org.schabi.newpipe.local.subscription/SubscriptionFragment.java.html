@@ -1,0 +1,596 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SubscriptionFragment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.local.subscription</a> &gt; <span class="el_source">SubscriptionFragment.java</span></div><h1>SubscriptionFragment.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.local.subscription;
+
+import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
+import android.content.res.Configuration;
+import android.content.res.Resources;
+import android.graphics.Color;
+import android.graphics.PorterDuff;
+import android.os.Bundle;
+import android.os.Environment;
+import android.os.Parcelable;
+import android.preference.PreferenceManager;
+import android.support.annotation.DrawableRes;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v4.app.FragmentManager;
+import android.support.v4.content.LocalBroadcastManager;
+import android.support.v7.app.ActionBar;
+import android.support.v7.widget.GridLayoutManager;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ImageView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import com.nononsenseapps.filepicker.Utils;
+
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.database.subscription.SubscriptionEntity;
+import org.schabi.newpipe.extractor.InfoItem;
+import org.schabi.newpipe.extractor.NewPipe;
+import org.schabi.newpipe.extractor.StreamingService;
+import org.schabi.newpipe.extractor.channel.ChannelInfoItem;
+import org.schabi.newpipe.extractor.exceptions.ExtractionException;
+import org.schabi.newpipe.extractor.subscription.SubscriptionExtractor;
+import org.schabi.newpipe.fragments.BaseStateFragment;
+import org.schabi.newpipe.info_list.InfoListAdapter;
+import org.schabi.newpipe.local.subscription.services.SubscriptionsExportService;
+import org.schabi.newpipe.local.subscription.services.SubscriptionsImportService;
+import org.schabi.newpipe.report.UserAction;
+import org.schabi.newpipe.util.FilePickerActivityHelper;
+import org.schabi.newpipe.util.NavigationHelper;
+import org.schabi.newpipe.util.OnClickGesture;
+import org.schabi.newpipe.util.ServiceHelper;
+import org.schabi.newpipe.util.ShareUtils;
+import org.schabi.newpipe.util.ThemeHelper;
+import org.schabi.newpipe.views.CollapsibleView;
+
+import java.io.File;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
+
+import icepick.State;
+import io.reactivex.Observer;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.schedulers.Schedulers;
+
+import static org.schabi.newpipe.local.subscription.services.SubscriptionsImportService.KEY_MODE;
+import static org.schabi.newpipe.local.subscription.services.SubscriptionsImportService.KEY_VALUE;
+import static org.schabi.newpipe.local.subscription.services.SubscriptionsImportService.PREVIOUS_EXPORT_MODE;
+import static org.schabi.newpipe.util.AnimationUtils.animateRotation;
+import static org.schabi.newpipe.util.AnimationUtils.animateView;
+
+<span class="nc" id="L82">public class SubscriptionFragment extends BaseStateFragment&lt;List&lt;SubscriptionEntity&gt;&gt; implements SharedPreferences.OnSharedPreferenceChangeListener {</span>
+    private static final int REQUEST_EXPORT_CODE = 666;
+    private static final int REQUEST_IMPORT_CODE = 667;
+
+    private RecyclerView itemsList;
+    @State
+    protected Parcelable itemsListState;
+    private InfoListAdapter infoListAdapter;
+<span class="nc" id="L90">    private int updateFlags = 0;</span>
+
+    private static final int LIST_MODE_UPDATE_FLAG = 0x32;
+
+    private View whatsNewItemListHeader;
+    private View importExportListHeader;
+
+    @State
+    protected Parcelable importExportOptionsState;
+    private CollapsibleView importExportOptions;
+
+<span class="nc" id="L101">    private CompositeDisposable disposables = new CompositeDisposable();</span>
+    private SubscriptionService subscriptionService;
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Fragment LifeCycle
+    ///////////////////////////////////////////////////////////////////////////
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+<span class="nc" id="L110">        super.onCreate(savedInstanceState);</span>
+<span class="nc" id="L111">        setHasOptionsMenu(true);</span>
+<span class="nc" id="L112">        PreferenceManager.getDefaultSharedPreferences(activity)</span>
+<span class="nc" id="L113">                .registerOnSharedPreferenceChangeListener(this);</span>
+<span class="nc" id="L114">    }</span>
+
+    @Override
+    public void setUserVisibleHint(boolean isVisibleToUser) {
+<span class="nc" id="L118">        super.setUserVisibleHint(isVisibleToUser);</span>
+<span class="nc bnc" id="L119" title="All 4 branches missed.">        if (activity != null &amp;&amp; isVisibleToUser) {</span>
+<span class="nc" id="L120">            setTitle(activity.getString(R.string.tab_subscriptions));</span>
+        }
+<span class="nc" id="L122">    }</span>
+
+    @Override
+    public void onAttach(Context context) {
+<span class="nc" id="L126">        super.onAttach(context);</span>
+<span class="nc" id="L127">        infoListAdapter = new InfoListAdapter(activity);</span>
+<span class="nc" id="L128">        subscriptionService = SubscriptionService.getInstance(activity);</span>
+<span class="nc" id="L129">    }</span>
+
+    @Override
+    public void onDetach() {
+<span class="nc" id="L133">        super.onDetach();</span>
+<span class="nc" id="L134">    }</span>
+
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, Bundle savedInstanceState) {
+<span class="nc" id="L139">        return inflater.inflate(R.layout.fragment_subscription, container, false);</span>
+    }
+
+    @Override
+    public void onResume() {
+<span class="nc" id="L144">        super.onResume();</span>
+<span class="nc" id="L145">        setupBroadcastReceiver();</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">        if (updateFlags != 0) {</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">            if ((updateFlags &amp; LIST_MODE_UPDATE_FLAG) != 0) {</span>
+<span class="nc" id="L148">                final boolean useGrid = isGridLayout();</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">                itemsList.setLayoutManager(useGrid ? getGridLayoutManager() : getListLayoutManager());</span>
+<span class="nc" id="L150">                infoListAdapter.setGridItemVariants(useGrid);</span>
+<span class="nc" id="L151">                infoListAdapter.notifyDataSetChanged();</span>
+            }
+<span class="nc" id="L153">            updateFlags = 0;</span>
+        }
+<span class="nc" id="L155">    }</span>
+
+    @Override
+    public void onPause() {
+<span class="nc" id="L159">        super.onPause();</span>
+<span class="nc" id="L160">        itemsListState = itemsList.getLayoutManager().onSaveInstanceState();</span>
+<span class="nc" id="L161">        importExportOptionsState = importExportOptions.onSaveInstanceState();</span>
+
+<span class="nc bnc" id="L163" title="All 4 branches missed.">        if (subscriptionBroadcastReceiver != null &amp;&amp; activity != null) {</span>
+<span class="nc" id="L164">            LocalBroadcastManager.getInstance(activity).unregisterReceiver(subscriptionBroadcastReceiver);</span>
+        }
+<span class="nc" id="L166">    }</span>
+
+    @Override
+    public void onDestroyView() {
+<span class="nc bnc" id="L170" title="All 2 branches missed.">        if (disposables != null) disposables.clear();</span>
+
+<span class="nc" id="L172">        super.onDestroyView();</span>
+<span class="nc" id="L173">    }</span>
+
+    @Override
+    public void onDestroy() {
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        if (disposables != null) disposables.dispose();</span>
+<span class="nc" id="L178">        disposables = null;</span>
+<span class="nc" id="L179">        subscriptionService = null;</span>
+
+<span class="nc" id="L181">        PreferenceManager.getDefaultSharedPreferences(activity)</span>
+<span class="nc" id="L182">                .unregisterOnSharedPreferenceChangeListener(this);</span>
+<span class="nc" id="L183">        super.onDestroy();</span>
+<span class="nc" id="L184">    }</span>
+
+    protected RecyclerView.LayoutManager getListLayoutManager() {
+<span class="nc" id="L187">        return new LinearLayoutManager(activity);</span>
+    }
+
+    protected RecyclerView.LayoutManager getGridLayoutManager() {
+<span class="nc" id="L191">        final Resources resources = activity.getResources();</span>
+<span class="nc" id="L192">        int width = resources.getDimensionPixelSize(R.dimen.video_item_grid_thumbnail_image_width);</span>
+<span class="nc" id="L193">        width += (24 * resources.getDisplayMetrics().density);</span>
+<span class="nc" id="L194">        final int spanCount = (int) Math.floor(resources.getDisplayMetrics().widthPixels / (double)width);</span>
+<span class="nc" id="L195">        final GridLayoutManager lm = new GridLayoutManager(activity, spanCount);</span>
+<span class="nc" id="L196">        lm.setSpanSizeLookup(infoListAdapter.getSpanSizeLookup(spanCount));</span>
+<span class="nc" id="L197">        return lm;</span>
+    }
+
+    /*/////////////////////////////////////////////////////////////////////////
+    // Menu
+    /////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+<span class="nc" id="L206">        super.onCreateOptionsMenu(menu, inflater);</span>
+
+<span class="nc" id="L208">        ActionBar supportActionBar = activity.getSupportActionBar();</span>
+<span class="nc bnc" id="L209" title="All 2 branches missed.">        if (supportActionBar != null) {</span>
+<span class="nc" id="L210">            supportActionBar.setDisplayShowTitleEnabled(true);</span>
+<span class="nc" id="L211">            setTitle(getString(R.string.tab_subscriptions));</span>
+        }
+<span class="nc" id="L213">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Subscriptions import/export
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private BroadcastReceiver subscriptionBroadcastReceiver;
+
+    private void setupBroadcastReceiver() {
+<span class="nc bnc" id="L222" title="All 2 branches missed.">        if (activity == null) return;</span>
+
+<span class="nc bnc" id="L224" title="All 2 branches missed.">        if (subscriptionBroadcastReceiver != null) {</span>
+<span class="nc" id="L225">            LocalBroadcastManager.getInstance(activity).unregisterReceiver(subscriptionBroadcastReceiver);</span>
+        }
+
+<span class="nc" id="L228">        final IntentFilter filters = new IntentFilter();</span>
+<span class="nc" id="L229">        filters.addAction(SubscriptionsExportService.EXPORT_COMPLETE_ACTION);</span>
+<span class="nc" id="L230">        filters.addAction(SubscriptionsImportService.IMPORT_COMPLETE_ACTION);</span>
+<span class="nc" id="L231">        subscriptionBroadcastReceiver = new BroadcastReceiver() {</span>
+            @Override
+            public void onReceive(Context context, Intent intent) {
+<span class="nc bnc" id="L234" title="All 2 branches missed.">                if (importExportOptions != null) importExportOptions.collapse();</span>
+<span class="nc" id="L235">            }</span>
+        };
+
+<span class="nc" id="L238">        LocalBroadcastManager.getInstance(activity).registerReceiver(subscriptionBroadcastReceiver, filters);</span>
+<span class="nc" id="L239">    }</span>
+
+    private View addItemView(final String title, @DrawableRes final int icon, ViewGroup container) {
+<span class="nc" id="L242">        final View itemRoot = View.inflate(getContext(), R.layout.subscription_import_export_item, null);</span>
+<span class="nc" id="L243">        final TextView titleView = itemRoot.findViewById(android.R.id.text1);</span>
+<span class="nc" id="L244">        final ImageView iconView = itemRoot.findViewById(android.R.id.icon1);</span>
+
+<span class="nc" id="L246">        titleView.setText(title);</span>
+<span class="nc" id="L247">        iconView.setImageResource(icon);</span>
+
+<span class="nc" id="L249">        container.addView(itemRoot);</span>
+<span class="nc" id="L250">        return itemRoot;</span>
+    }
+
+    private void setupImportFromItems(final ViewGroup listHolder) {
+<span class="nc" id="L254">        final View previousBackupItem = addItemView(getString(R.string.previous_export),</span>
+<span class="nc" id="L255">                ThemeHelper.resolveResourceIdFromAttr(getContext(), R.attr.ic_backup), listHolder);</span>
+<span class="nc" id="L256">        previousBackupItem.setOnClickListener(item -&gt; onImportPreviousSelected());</span>
+
+<span class="nc bnc" id="L258" title="All 2 branches missed.">        final int iconColor = ThemeHelper.isLightThemeSelected(getContext()) ? Color.BLACK : Color.WHITE;</span>
+<span class="nc" id="L259">        final String[] services = getResources().getStringArray(R.array.service_list);</span>
+<span class="nc bnc" id="L260" title="All 2 branches missed.">        for (String serviceName : services) {</span>
+            try {
+<span class="nc" id="L262">                final StreamingService service = NewPipe.getService(serviceName);</span>
+
+<span class="nc" id="L264">                final SubscriptionExtractor subscriptionExtractor = service.getSubscriptionExtractor();</span>
+<span class="nc bnc" id="L265" title="All 2 branches missed.">                if (subscriptionExtractor == null) continue;</span>
+
+<span class="nc" id="L267">                final List&lt;SubscriptionExtractor.ContentSource&gt; supportedSources = subscriptionExtractor.getSupportedSources();</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">                if (supportedSources.isEmpty()) continue;</span>
+
+<span class="nc" id="L270">                final View itemView = addItemView(serviceName, ServiceHelper.getIcon(service.getServiceId()), listHolder);</span>
+<span class="nc" id="L271">                final ImageView iconView = itemView.findViewById(android.R.id.icon1);</span>
+<span class="nc" id="L272">                iconView.setColorFilter(iconColor, PorterDuff.Mode.SRC_IN);</span>
+
+<span class="nc" id="L274">                itemView.setOnClickListener(selectedItem -&gt; onImportFromServiceSelected(service.getServiceId()));</span>
+<span class="nc" id="L275">            } catch (ExtractionException e) {</span>
+<span class="nc" id="L276">                throw new RuntimeException(&quot;Services array contains an entry that it's not a valid service name (&quot; + serviceName + &quot;)&quot;, e);</span>
+<span class="nc" id="L277">            }</span>
+        }
+<span class="nc" id="L279">    }</span>
+
+    private void setupExportToItems(final ViewGroup listHolder) {
+<span class="nc" id="L282">        final View previousBackupItem = addItemView(getString(R.string.file), ThemeHelper.resolveResourceIdFromAttr(getContext(), R.attr.ic_save), listHolder);</span>
+<span class="nc" id="L283">        previousBackupItem.setOnClickListener(item -&gt; onExportSelected());</span>
+<span class="nc" id="L284">    }</span>
+
+    private void onImportFromServiceSelected(int serviceId) {
+<span class="nc" id="L287">        FragmentManager fragmentManager = getFM();</span>
+<span class="nc" id="L288">        NavigationHelper.openSubscriptionsImportFragment(fragmentManager, serviceId);</span>
+<span class="nc" id="L289">    }</span>
+
+    private void onImportPreviousSelected() {
+<span class="nc" id="L292">        startActivityForResult(FilePickerActivityHelper.chooseSingleFile(activity), REQUEST_IMPORT_CODE);</span>
+<span class="nc" id="L293">    }</span>
+
+    private void onExportSelected() {
+<span class="nc" id="L296">        final String date = new SimpleDateFormat(&quot;yyyyMMddHHmm&quot;, Locale.ENGLISH).format(new Date());</span>
+<span class="nc" id="L297">        final String exportName = &quot;newpipe_subscriptions_&quot; + date + &quot;.json&quot;;</span>
+<span class="nc" id="L298">        final File exportFile = new File(Environment.getExternalStorageDirectory(), exportName);</span>
+
+<span class="nc" id="L300">        startActivityForResult(FilePickerActivityHelper.chooseFileToSave(activity, exportFile.getAbsolutePath()), REQUEST_EXPORT_CODE);</span>
+<span class="nc" id="L301">    }</span>
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+<span class="nc" id="L305">        super.onActivityResult(requestCode, resultCode, data);</span>
+<span class="nc bnc" id="L306" title="All 6 branches missed.">        if (data != null &amp;&amp; data.getData() != null &amp;&amp; resultCode == Activity.RESULT_OK) {</span>
+<span class="nc bnc" id="L307" title="All 2 branches missed.">            if (requestCode == REQUEST_EXPORT_CODE) {</span>
+<span class="nc" id="L308">                final File exportFile = Utils.getFileForUri(data.getData());</span>
+<span class="nc bnc" id="L309" title="All 4 branches missed.">                if (!exportFile.getParentFile().canWrite() || !exportFile.getParentFile().canRead()) {</span>
+<span class="nc" id="L310">                    Toast.makeText(activity, R.string.invalid_directory, Toast.LENGTH_SHORT).show();</span>
+                } else {
+<span class="nc" id="L312">                    activity.startService(new Intent(activity, SubscriptionsExportService.class)</span>
+<span class="nc" id="L313">                            .putExtra(SubscriptionsExportService.KEY_FILE_PATH, exportFile.getAbsolutePath()));</span>
+                }
+<span class="nc bnc" id="L315" title="All 2 branches missed.">            } else if (requestCode == REQUEST_IMPORT_CODE) {</span>
+<span class="nc" id="L316">                final String path = Utils.getFileForUri(data.getData()).getAbsolutePath();</span>
+<span class="nc" id="L317">                ImportConfirmationDialog.show(this, new Intent(activity, SubscriptionsImportService.class)</span>
+<span class="nc" id="L318">                        .putExtra(KEY_MODE, PREVIOUS_EXPORT_MODE)</span>
+<span class="nc" id="L319">                        .putExtra(KEY_VALUE, path));</span>
+            }
+        }
+<span class="nc" id="L322">    }</span>
+    /*/////////////////////////////////////////////////////////////////////////
+    // Fragment Views
+    /////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    protected void initViews(View rootView, Bundle savedInstanceState) {
+<span class="nc" id="L329">        super.initViews(rootView, savedInstanceState);</span>
+
+<span class="nc" id="L331">        final boolean useGrid = isGridLayout();</span>
+<span class="nc" id="L332">        infoListAdapter = new InfoListAdapter(getActivity());</span>
+<span class="nc" id="L333">        itemsList = rootView.findViewById(R.id.items_list);</span>
+<span class="nc bnc" id="L334" title="All 2 branches missed.">        itemsList.setLayoutManager(useGrid ? getGridLayoutManager() : getListLayoutManager());</span>
+
+        View headerRootLayout;
+<span class="nc" id="L337">        infoListAdapter.setHeader(headerRootLayout = activity.getLayoutInflater().inflate(R.layout.subscription_header, itemsList, false));</span>
+<span class="nc" id="L338">        whatsNewItemListHeader = headerRootLayout.findViewById(R.id.whats_new);</span>
+<span class="nc" id="L339">        importExportListHeader = headerRootLayout.findViewById(R.id.import_export);</span>
+<span class="nc" id="L340">        importExportOptions = headerRootLayout.findViewById(R.id.import_export_options);</span>
+
+<span class="nc" id="L342">        infoListAdapter.useMiniItemVariants(true);</span>
+<span class="nc" id="L343">        infoListAdapter.setGridItemVariants(useGrid);</span>
+<span class="nc" id="L344">        itemsList.setAdapter(infoListAdapter);</span>
+
+<span class="nc" id="L346">        setupImportFromItems(headerRootLayout.findViewById(R.id.import_from_options));</span>
+<span class="nc" id="L347">        setupExportToItems(headerRootLayout.findViewById(R.id.export_to_options));</span>
+
+<span class="nc bnc" id="L349" title="All 2 branches missed.">        if (importExportOptionsState != null) {</span>
+<span class="nc" id="L350">            importExportOptions.onRestoreInstanceState(importExportOptionsState);</span>
+<span class="nc" id="L351">            importExportOptionsState = null;</span>
+        }
+
+<span class="nc" id="L354">        importExportOptions.addListener(getExpandIconSyncListener(headerRootLayout.findViewById(R.id.import_export_expand_icon)));</span>
+<span class="nc" id="L355">        importExportOptions.ready();</span>
+<span class="nc" id="L356">    }</span>
+
+    private CollapsibleView.StateListener getExpandIconSyncListener(final ImageView iconView) {
+<span class="nc bnc" id="L359" title="All 2 branches missed.">        return newState -&gt; animateRotation(iconView, 250, newState == CollapsibleView.COLLAPSED ? 0 : 180);</span>
+    }
+
+    @Override
+    protected void initListeners() {
+<span class="nc" id="L364">        super.initListeners();</span>
+
+<span class="nc" id="L366">        infoListAdapter.setOnChannelSelectedListener(new OnClickGesture&lt;ChannelInfoItem&gt;() {</span>
+
+            public void selected(ChannelInfoItem selectedItem) {
+<span class="nc" id="L369">                final FragmentManager fragmentManager = getFM();</span>
+<span class="nc" id="L370">                NavigationHelper.openChannelFragment(fragmentManager,</span>
+<span class="nc" id="L371">                        selectedItem.getServiceId(),</span>
+<span class="nc" id="L372">                        selectedItem.getUrl(),</span>
+<span class="nc" id="L373">                        selectedItem.getName());</span>
+<span class="nc" id="L374">            }</span>
+
+            public void held(ChannelInfoItem selectedItem) {
+<span class="nc" id="L377">                showLongTapDialog(selectedItem);</span>
+<span class="nc" id="L378">            }</span>
+
+        });
+
+<span class="nc" id="L382">        whatsNewItemListHeader.setOnClickListener(v -&gt; {</span>
+<span class="nc" id="L383">            FragmentManager fragmentManager = getFM();</span>
+<span class="nc" id="L384">            NavigationHelper.openWhatsNewFragment(fragmentManager);</span>
+<span class="nc" id="L385">        });</span>
+<span class="nc" id="L386">        importExportListHeader.setOnClickListener(v -&gt; importExportOptions.switchState());</span>
+<span class="nc" id="L387">    }</span>
+
+    private void showLongTapDialog(ChannelInfoItem selectedItem) {
+<span class="nc" id="L390">        final Context context = getContext();</span>
+<span class="nc" id="L391">        final Activity activity = getActivity();</span>
+<span class="nc bnc" id="L392" title="All 6 branches missed.">        if (context == null || context.getResources() == null || getActivity() == null) return;</span>
+
+<span class="nc" id="L394">        final String[] commands = new String[]{</span>
+<span class="nc" id="L395">                context.getResources().getString(R.string.unsubscribe),</span>
+<span class="nc" id="L396">                context.getResources().getString(R.string.share)</span>
+        };
+
+<span class="nc" id="L399">        final DialogInterface.OnClickListener actions = (dialogInterface, i) -&gt; {</span>
+<span class="nc bnc" id="L400" title="All 3 branches missed.">            switch (i) {</span>
+                case 0:
+<span class="nc" id="L402">                    deleteChannel(selectedItem);</span>
+<span class="nc" id="L403">                    break;</span>
+                case 1:
+<span class="nc" id="L405">                    shareChannel(selectedItem);</span>
+<span class="nc" id="L406">                    break;</span>
+                default:
+                    break;
+            }
+<span class="nc" id="L410">        };</span>
+
+<span class="nc" id="L412">        final View bannerView = View.inflate(activity, R.layout.dialog_title, null);</span>
+<span class="nc" id="L413">        bannerView.setSelected(true);</span>
+
+<span class="nc" id="L415">        TextView titleView = bannerView.findViewById(R.id.itemTitleView);</span>
+<span class="nc" id="L416">        titleView.setText(selectedItem.getName());</span>
+
+<span class="nc" id="L418">        TextView detailsView = bannerView.findViewById(R.id.itemAdditionalDetails);</span>
+<span class="nc" id="L419">        detailsView.setVisibility(View.GONE);</span>
+
+<span class="nc" id="L421">        new AlertDialog.Builder(activity)</span>
+<span class="nc" id="L422">                .setCustomTitle(bannerView)</span>
+<span class="nc" id="L423">                .setItems(commands, actions)</span>
+<span class="nc" id="L424">                .create()</span>
+<span class="nc" id="L425">                .show();</span>
+
+<span class="nc" id="L427">    }</span>
+
+    private void shareChannel(ChannelInfoItem selectedItem) {
+<span class="nc" id="L430">        ShareUtils.shareUrl(getContext(), selectedItem.getName(), selectedItem.getUrl());</span>
+<span class="nc" id="L431">    }</span>
+
+    @SuppressLint(&quot;CheckResult&quot;)
+    private void deleteChannel(ChannelInfoItem selectedItem) {
+<span class="nc" id="L435">        subscriptionService.subscriptionTable()</span>
+<span class="nc" id="L436">                .getSubscription(selectedItem.getServiceId(), selectedItem.getUrl())</span>
+<span class="nc" id="L437">                .toObservable()</span>
+<span class="nc" id="L438">                .observeOn(Schedulers.io())</span>
+<span class="nc" id="L439">                .subscribe(getDeleteObserver());</span>
+
+<span class="nc" id="L441">        Toast.makeText(activity, getString(R.string.channel_unsubscribed), Toast.LENGTH_SHORT).show();</span>
+<span class="nc" id="L442">    }</span>
+
+
+
+    private Observer&lt;List&lt;SubscriptionEntity&gt;&gt; getDeleteObserver() {
+<span class="nc" id="L447">        return new Observer&lt;List&lt;SubscriptionEntity&gt;&gt;() {</span>
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="nc" id="L450">                disposables.add(d);</span>
+<span class="nc" id="L451">            }</span>
+
+            @Override
+            public void onNext(List&lt;SubscriptionEntity&gt; subscriptionEntities) {
+<span class="nc" id="L455">                subscriptionService.subscriptionTable().delete(subscriptionEntities);</span>
+<span class="nc" id="L456">            }</span>
+
+            @Override
+            public void onError(Throwable exception) {
+<span class="nc" id="L460">                SubscriptionFragment.this.onError(exception);</span>
+<span class="nc" id="L461">            }</span>
+
+            @Override
+<span class="nc" id="L464">            public void onComplete() {  }</span>
+        };
+    }
+
+    private void resetFragment() {
+<span class="nc bnc" id="L469" title="All 2 branches missed.">        if (disposables != null) disposables.clear();</span>
+<span class="nc bnc" id="L470" title="All 2 branches missed.">        if (infoListAdapter != null) infoListAdapter.clearStreamItemList();</span>
+<span class="nc" id="L471">    }</span>
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Subscriptions Loader
+    ///////////////////////////////////////////////////////////////////////////
+
+    @Override
+    public void startLoading(boolean forceLoad) {
+<span class="nc" id="L479">        super.startLoading(forceLoad);</span>
+<span class="nc" id="L480">        resetFragment();</span>
+
+<span class="nc" id="L482">        subscriptionService.getSubscription().toObservable()</span>
+<span class="nc" id="L483">                .subscribeOn(Schedulers.io())</span>
+<span class="nc" id="L484">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L485">                .subscribe(getSubscriptionObserver());</span>
+<span class="nc" id="L486">    }</span>
+
+    private Observer&lt;List&lt;SubscriptionEntity&gt;&gt; getSubscriptionObserver() {
+<span class="nc" id="L489">        return new Observer&lt;List&lt;SubscriptionEntity&gt;&gt;() {</span>
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="nc" id="L492">                showLoading();</span>
+<span class="nc" id="L493">                disposables.add(d);</span>
+<span class="nc" id="L494">            }</span>
+
+            @Override
+            public void onNext(List&lt;SubscriptionEntity&gt; subscriptions) {
+<span class="nc" id="L498">                handleResult(subscriptions);</span>
+<span class="nc" id="L499">            }</span>
+
+            @Override
+            public void onError(Throwable exception) {
+<span class="nc" id="L503">                SubscriptionFragment.this.onError(exception);</span>
+<span class="nc" id="L504">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L508">            }</span>
+        };
+    }
+
+    @Override
+    public void handleResult(@NonNull List&lt;SubscriptionEntity&gt; result) {
+<span class="nc" id="L514">        super.handleResult(result);</span>
+
+<span class="nc" id="L516">        infoListAdapter.clearStreamItemList();</span>
+
+<span class="nc bnc" id="L518" title="All 2 branches missed.">        if (result.isEmpty()) {</span>
+<span class="nc" id="L519">            whatsNewItemListHeader.setVisibility(View.GONE);</span>
+<span class="nc" id="L520">            showEmptyState();</span>
+        } else {
+<span class="nc" id="L522">            infoListAdapter.addInfoItemList(getSubscriptionItems(result));</span>
+<span class="nc bnc" id="L523" title="All 2 branches missed.">            if (itemsListState != null) {</span>
+<span class="nc" id="L524">                itemsList.getLayoutManager().onRestoreInstanceState(itemsListState);</span>
+<span class="nc" id="L525">                itemsListState = null;</span>
+            }
+<span class="nc" id="L527">            whatsNewItemListHeader.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L528">            hideLoading();</span>
+        }
+<span class="nc" id="L530">    }</span>
+
+
+    private List&lt;InfoItem&gt; getSubscriptionItems(List&lt;SubscriptionEntity&gt; subscriptions) {
+<span class="nc" id="L534">        List&lt;InfoItem&gt; items = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L535" title="All 2 branches missed.">        for (final SubscriptionEntity subscription : subscriptions) {</span>
+<span class="nc" id="L536">            items.add(subscription.toChannelInfoItem());</span>
+<span class="nc" id="L537">        }</span>
+
+<span class="nc" id="L539">        Collections.sort(items,</span>
+                (InfoItem o1, InfoItem o2) -&gt;
+<span class="nc" id="L541">                        o1.getName().compareToIgnoreCase(o2.getName()));</span>
+<span class="nc" id="L542">        return items;</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Contract
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void showLoading() {
+<span class="nc" id="L551">        super.showLoading();</span>
+<span class="nc" id="L552">        animateView(itemsList, false, 100);</span>
+<span class="nc" id="L553">    }</span>
+
+    @Override
+    public void hideLoading() {
+<span class="nc" id="L557">        super.hideLoading();</span>
+<span class="nc" id="L558">        animateView(itemsList, true, 200);</span>
+<span class="nc" id="L559">    }</span>
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Fragment Error Handling
+    ///////////////////////////////////////////////////////////////////////////
+
+    @Override
+    protected boolean onError(Throwable exception) {
+<span class="nc" id="L567">        resetFragment();</span>
+<span class="nc bnc" id="L568" title="All 2 branches missed.">        if (super.onError(exception)) return true;</span>
+
+<span class="nc" id="L570">        onUnrecoverableError(exception,</span>
+                UserAction.SOMETHING_ELSE,
+                &quot;none&quot;,
+                &quot;Subscriptions&quot;,
+                R.string.general_error);
+<span class="nc" id="L575">        return true;</span>
+    }
+
+    @Override
+    public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+<span class="nc bnc" id="L580" title="All 2 branches missed.">        if (key.equals(getString(R.string.list_view_mode_key))) {</span>
+<span class="nc" id="L581">            updateFlags |= LIST_MODE_UPDATE_FLAG;</span>
+        }
+<span class="nc" id="L583">    }</span>
+
+    protected boolean isGridLayout() {
+<span class="nc" id="L586">        final String list_mode = PreferenceManager.getDefaultSharedPreferences(activity).getString(getString(R.string.list_view_mode_key), getString(R.string.list_view_mode_value));</span>
+<span class="nc bnc" id="L587" title="All 2 branches missed.">        if (&quot;auto&quot;.equals(list_mode)) {</span>
+<span class="nc" id="L588">            final Configuration configuration = getResources().getConfiguration();</span>
+<span class="nc bnc" id="L589" title="All 2 branches missed.">            return configuration.orientation == Configuration.ORIENTATION_LANDSCAPE</span>
+<span class="nc bnc" id="L590" title="All 2 branches missed.">                    &amp;&amp; configuration.isLayoutSizeAtLeast(Configuration.SCREENLAYOUT_SIZE_LARGE);</span>
+        } else {
+<span class="nc" id="L592">            return &quot;grid&quot;.equals(list_mode);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

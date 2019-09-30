@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KioskFragment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.fragments.list.kiosk</a> &gt; <span class="el_source">KioskFragment.java</span></div><h1>KioskFragment.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.fragments.list.kiosk;
+
+import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v7.app.ActionBar;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.View;
+import android.view.ViewGroup;
+
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.extractor.ListExtractor;
+import org.schabi.newpipe.extractor.NewPipe;
+import org.schabi.newpipe.extractor.StreamingService;
+import org.schabi.newpipe.extractor.exceptions.ExtractionException;
+import org.schabi.newpipe.extractor.kiosk.KioskInfo;
+import org.schabi.newpipe.extractor.linkhandler.ListLinkHandlerFactory;
+import org.schabi.newpipe.fragments.list.BaseListInfoFragment;
+import org.schabi.newpipe.report.UserAction;
+import org.schabi.newpipe.util.ExtractorHelper;
+import org.schabi.newpipe.util.KioskTranslator;
+
+import icepick.State;
+import io.reactivex.Single;
+
+import static org.schabi.newpipe.util.AnimationUtils.animateView;
+
+/**
+ * Created by Christian Schabesberger on 23.09.17.
+ *
+ * Copyright (C) Christian Schabesberger 2017 &lt;chris.schabesberger@mailbox.org&gt;
+ * KioskFragment.java is part of NewPipe.
+ *
+ * NewPipe is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * NewPipe is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NewPipe.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+<span class="nc" id="L50">public class KioskFragment extends BaseListInfoFragment&lt;KioskInfo&gt; {</span>
+
+<span class="nc" id="L52">    @State</span>
+    protected String kioskId = &quot;&quot;;
+    protected String kioskTranslatedName;
+
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Views
+    //////////////////////////////////////////////////////////////////////////*/
+
+    public static KioskFragment getInstance(int serviceId)
+            throws ExtractionException {
+<span class="nc" id="L63">        return getInstance(serviceId, NewPipe.getService(serviceId)</span>
+<span class="nc" id="L64">                .getKioskList()</span>
+<span class="nc" id="L65">                .getDefaultKioskId());</span>
+    }
+
+    public static KioskFragment getInstance(int serviceId, String kioskId)
+            throws ExtractionException {
+<span class="nc" id="L70">        KioskFragment instance = new KioskFragment();</span>
+<span class="nc" id="L71">        StreamingService service = NewPipe.getService(serviceId);</span>
+<span class="nc" id="L72">        ListLinkHandlerFactory kioskLinkHandlerFactory = service.getKioskList()</span>
+<span class="nc" id="L73">                .getListLinkHandlerFactoryByType(kioskId);</span>
+<span class="nc" id="L74">        instance.setInitialData(serviceId,</span>
+<span class="nc" id="L75">                kioskLinkHandlerFactory.fromId(kioskId).getUrl(), kioskId);</span>
+<span class="nc" id="L76">        instance.kioskId = kioskId;</span>
+<span class="nc" id="L77">        return instance;</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // LifeCycle
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+<span class="nc" id="L86">        super.onCreate(savedInstanceState);</span>
+
+<span class="nc" id="L88">        kioskTranslatedName = KioskTranslator.getTranslatedKioskName(kioskId, activity);</span>
+<span class="nc" id="L89">        name = kioskTranslatedName;</span>
+<span class="nc" id="L90">    }</span>
+
+    @Override
+    public void setUserVisibleHint(boolean isVisibleToUser) {
+<span class="nc" id="L94">        super.setUserVisibleHint(isVisibleToUser);</span>
+<span class="nc bnc" id="L95" title="All 6 branches missed.">        if(useAsFrontPage &amp;&amp; isVisibleToUser &amp;&amp; activity != null) {</span>
+            try {
+<span class="nc" id="L97">                setTitle(kioskTranslatedName);</span>
+<span class="nc" id="L98">            } catch (Exception e) {</span>
+<span class="nc" id="L99">                onUnrecoverableError(e, UserAction.UI_ERROR,</span>
+                        &quot;none&quot;,
+                        &quot;none&quot;, R.string.app_ui_crash);
+<span class="nc" id="L102">            }</span>
+        }
+<span class="nc" id="L104">    }</span>
+
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+<span class="nc" id="L108">        return inflater.inflate(R.layout.fragment_kiosk, container, false);</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Menu
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+<span class="nc" id="L117">        super.onCreateOptionsMenu(menu, inflater);</span>
+<span class="nc" id="L118">        ActionBar supportActionBar = activity.getSupportActionBar();</span>
+<span class="nc bnc" id="L119" title="All 4 branches missed.">        if (supportActionBar != null &amp;&amp; useAsFrontPage) {</span>
+<span class="nc" id="L120">            supportActionBar.setDisplayHomeAsUpEnabled(false);</span>
+        }
+<span class="nc" id="L122">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Load and handle
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public Single&lt;KioskInfo&gt; loadResult(boolean forceReload) {
+<span class="nc" id="L130">        return ExtractorHelper.getKioskInfo(serviceId,</span>
+                url,
+                forceReload);
+    }
+
+    @Override
+    public Single&lt;ListExtractor.InfoItemsPage&gt; loadMoreItemsLogic() {
+<span class="nc" id="L137">        return ExtractorHelper.getMoreKioskItems(serviceId,</span>
+                url,
+                currentNextPageUrl);
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Contract
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void showLoading() {
+<span class="nc" id="L148">        super.showLoading();</span>
+<span class="nc" id="L149">        animateView(itemsList, false, 100);</span>
+<span class="nc" id="L150">    }</span>
+
+    @Override
+    public void handleResult(@NonNull final KioskInfo result) {
+<span class="nc" id="L154">        super.handleResult(result);</span>
+
+<span class="nc" id="L156">        name = kioskTranslatedName;</span>
+<span class="nc" id="L157">        setTitle(kioskTranslatedName);</span>
+
+<span class="nc bnc" id="L159" title="All 2 branches missed.">        if (!result.getErrors().isEmpty()) {</span>
+<span class="nc" id="L160">            showSnackBarError(result.getErrors(),</span>
+                    UserAction.REQUESTED_KIOSK,
+<span class="nc" id="L162">                    NewPipe.getNameOfService(result.getServiceId()), result.getUrl(), 0);</span>
+        }
+<span class="nc" id="L164">    }</span>
+
+    @Override
+    public void handleNextItems(ListExtractor.InfoItemsPage result) {
+<span class="nc" id="L168">        super.handleNextItems(result);</span>
+
+<span class="nc bnc" id="L170" title="All 2 branches missed.">        if (!result.getErrors().isEmpty()) {</span>
+<span class="nc" id="L171">            showSnackBarError(result.getErrors(),</span>
+<span class="nc" id="L172">                    UserAction.REQUESTED_PLAYLIST, NewPipe.getNameOfService(serviceId)</span>
+                    , &quot;Get next page of: &quot; + url, 0);
+        }
+<span class="nc" id="L175">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

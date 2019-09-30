@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LoadController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.player.helper</a> &gt; <span class="el_source">LoadController.java</span></div><h1>LoadController.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.player.helper;
+
+import android.content.Context;
+
+import com.google.android.exoplayer2.DefaultLoadControl;
+import com.google.android.exoplayer2.LoadControl;
+import com.google.android.exoplayer2.Renderer;
+import com.google.android.exoplayer2.source.TrackGroupArray;
+import com.google.android.exoplayer2.trackselection.TrackSelectionArray;
+import com.google.android.exoplayer2.upstream.Allocator;
+
+public class LoadController implements LoadControl {
+
+    public static final String TAG = &quot;LoadController&quot;;
+
+    private final long initialPlaybackBufferUs;
+    private final LoadControl internalLoadControl;
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Default Load Control
+    //////////////////////////////////////////////////////////////////////////*/
+
+    public LoadController(final Context context) {
+<span class="nc" id="L24">        this(PlayerHelper.getPlaybackStartBufferMs(context),</span>
+<span class="nc" id="L25">                PlayerHelper.getPlaybackMinimumBufferMs(context),</span>
+<span class="nc" id="L26">                PlayerHelper.getPlaybackOptimalBufferMs(context));</span>
+<span class="nc" id="L27">    }</span>
+
+    private LoadController(final int initialPlaybackBufferMs,
+                           final int minimumPlaybackbufferMs,
+<span class="nc" id="L31">                           final int optimalPlaybackBufferMs) {</span>
+<span class="nc" id="L32">        this.initialPlaybackBufferUs = initialPlaybackBufferMs * 1000;</span>
+
+<span class="nc" id="L34">        DefaultLoadControl.Builder builder = new DefaultLoadControl.Builder();</span>
+<span class="nc" id="L35">        builder.setBufferDurationsMs(minimumPlaybackbufferMs, optimalPlaybackBufferMs,</span>
+                initialPlaybackBufferMs, initialPlaybackBufferMs);
+<span class="nc" id="L37">        internalLoadControl = builder.createDefaultLoadControl();</span>
+<span class="nc" id="L38">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Custom behaviours
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onPrepared() {
+<span class="nc" id="L46">        internalLoadControl.onPrepared();</span>
+<span class="nc" id="L47">    }</span>
+
+    @Override
+    public void onTracksSelected(Renderer[] renderers, TrackGroupArray trackGroupArray,
+                                 TrackSelectionArray trackSelectionArray) {
+<span class="nc" id="L52">        internalLoadControl.onTracksSelected(renderers, trackGroupArray, trackSelectionArray);</span>
+<span class="nc" id="L53">    }</span>
+
+    @Override
+    public void onStopped() {
+<span class="nc" id="L57">        internalLoadControl.onStopped();</span>
+<span class="nc" id="L58">    }</span>
+
+    @Override
+    public void onReleased() {
+<span class="nc" id="L62">        internalLoadControl.onReleased();</span>
+<span class="nc" id="L63">    }</span>
+
+    @Override
+    public Allocator getAllocator() {
+<span class="nc" id="L67">        return internalLoadControl.getAllocator();</span>
+    }
+
+    @Override
+    public long getBackBufferDurationUs() {
+<span class="nc" id="L72">        return internalLoadControl.getBackBufferDurationUs();</span>
+    }
+
+    @Override
+    public boolean retainBackBufferFromKeyframe() {
+<span class="nc" id="L77">        return internalLoadControl.retainBackBufferFromKeyframe();</span>
+    }
+
+    @Override
+    public boolean shouldContinueLoading(long bufferedDurationUs, float playbackSpeed) {
+<span class="nc" id="L82">        return internalLoadControl.shouldContinueLoading(bufferedDurationUs, playbackSpeed);</span>
+    }
+
+    @Override
+    public boolean shouldStartPlayback(long bufferedDurationUs, float playbackSpeed,
+                                       boolean rebuffering) {
+<span class="nc bnc" id="L88" title="All 2 branches missed.">        final boolean isInitialPlaybackBufferFilled = bufferedDurationUs &gt;=</span>
+                this.initialPlaybackBufferUs * playbackSpeed;
+<span class="nc" id="L90">        final boolean isInternalStartingPlayback = internalLoadControl.shouldStartPlayback(</span>
+                bufferedDurationUs, playbackSpeed, rebuffering);
+<span class="nc bnc" id="L92" title="All 4 branches missed.">        return isInitialPlaybackBufferFilled || isInternalStartingPlayback;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

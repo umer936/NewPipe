@@ -1,0 +1,955 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MissionAdapter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">us.shandian.giga.ui.adapter</a> &gt; <span class="el_source">MissionAdapter.java</span></div><h1>MissionAdapter.java</h1><pre class="source lang-java linenums">package us.shandian.giga.ui.adapter;
+
+import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.app.ProgressDialog;
+import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.AsyncTask;
+import android.os.Build;
+import android.os.Handler;
+import android.os.Message;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.annotation.StringRes;
+import android.support.v4.content.FileProvider;
+import android.support.v4.view.ViewCompat;
+import android.support.v7.app.AlertDialog;
+import android.support.v7.util.DiffUtil;
+import android.support.v7.widget.RecyclerView;
+import android.support.v7.widget.RecyclerView.Adapter;
+import android.support.v7.widget.RecyclerView.ViewHolder;
+import android.util.Log;
+import android.util.SparseArray;
+import android.view.HapticFeedbackConstants;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.view.View;
+import android.view.ViewGroup;
+import android.webkit.MimeTypeMap;
+import android.widget.ImageView;
+import android.widget.PopupMenu;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import org.schabi.newpipe.BuildConfig;
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.report.ErrorActivity;
+import org.schabi.newpipe.report.UserAction;
+import org.schabi.newpipe.util.NavigationHelper;
+
+import java.io.File;
+import java.lang.ref.WeakReference;
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.Collections;
+
+import us.shandian.giga.get.DownloadMission;
+import us.shandian.giga.get.FinishedMission;
+import us.shandian.giga.get.Mission;
+import us.shandian.giga.io.StoredFileHelper;
+import us.shandian.giga.service.DownloadManager;
+import us.shandian.giga.service.DownloadManagerService;
+import us.shandian.giga.ui.common.Deleter;
+import us.shandian.giga.ui.common.ProgressDrawable;
+import us.shandian.giga.util.Utility;
+
+import static android.content.Intent.FLAG_ACTIVITY_NEW_TASK;
+import static android.content.Intent.FLAG_GRANT_PREFIX_URI_PERMISSION;
+import static android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION;
+import static us.shandian.giga.get.DownloadMission.ERROR_CONNECT_HOST;
+import static us.shandian.giga.get.DownloadMission.ERROR_FILE_CREATION;
+import static us.shandian.giga.get.DownloadMission.ERROR_HTTP_NO_CONTENT;
+import static us.shandian.giga.get.DownloadMission.ERROR_HTTP_UNSUPPORTED_RANGE;
+import static us.shandian.giga.get.DownloadMission.ERROR_INSUFFICIENT_STORAGE;
+import static us.shandian.giga.get.DownloadMission.ERROR_NOTHING;
+import static us.shandian.giga.get.DownloadMission.ERROR_PATH_CREATION;
+import static us.shandian.giga.get.DownloadMission.ERROR_PERMISSION_DENIED;
+import static us.shandian.giga.get.DownloadMission.ERROR_POSTPROCESSING;
+import static us.shandian.giga.get.DownloadMission.ERROR_POSTPROCESSING_HOLD;
+import static us.shandian.giga.get.DownloadMission.ERROR_POSTPROCESSING_STOPPED;
+import static us.shandian.giga.get.DownloadMission.ERROR_PROGRESS_LOST;
+import static us.shandian.giga.get.DownloadMission.ERROR_SSL_EXCEPTION;
+import static us.shandian.giga.get.DownloadMission.ERROR_TIMEOUT;
+import static us.shandian.giga.get.DownloadMission.ERROR_UNKNOWN_EXCEPTION;
+import static us.shandian.giga.get.DownloadMission.ERROR_UNKNOWN_HOST;
+
+public class MissionAdapter extends Adapter&lt;ViewHolder&gt; implements Handler.Callback {
+<span class="nc" id="L80">    private static final SparseArray&lt;String&gt; ALGORITHMS = new SparseArray&lt;&gt;();</span>
+    private static final String TAG = &quot;MissionAdapter&quot;;
+    private static final String UNDEFINED_PROGRESS = &quot;--.-%&quot;;
+    private static final String DEFAULT_MIME_TYPE = &quot;*/*&quot;;
+
+
+    static {
+<span class="nc" id="L87">        ALGORITHMS.put(R.id.md5, &quot;MD5&quot;);</span>
+<span class="nc" id="L88">        ALGORITHMS.put(R.id.sha1, &quot;SHA1&quot;);</span>
+<span class="nc" id="L89">    }</span>
+
+    private Context mContext;
+    private LayoutInflater mInflater;
+    private DownloadManager mDownloadManager;
+    private Deleter mDeleter;
+    private int mLayout;
+    private DownloadManager.MissionIterator mIterator;
+<span class="nc" id="L97">    private ArrayList&lt;ViewHolderItem&gt; mPendingDownloadsItems = new ArrayList&lt;&gt;();</span>
+    private Handler mHandler;
+    private MenuItem mClear;
+    private MenuItem mStartButton;
+    private MenuItem mPauseButton;
+    private View mEmptyMessage;
+    private RecoverHelper mRecover;
+
+<span class="nc" id="L105">    public MissionAdapter(Context context, @NonNull DownloadManager downloadManager, View emptyMessage) {</span>
+<span class="nc" id="L106">        mContext = context;</span>
+<span class="nc" id="L107">        mDownloadManager = downloadManager;</span>
+<span class="nc" id="L108">        mDeleter = null;</span>
+
+<span class="nc" id="L110">        mInflater = (LayoutInflater) mContext.getSystemService(Context.LAYOUT_INFLATER_SERVICE);</span>
+<span class="nc" id="L111">        mLayout = R.layout.mission_item;</span>
+
+<span class="nc" id="L113">        mHandler = new Handler(context.getMainLooper());</span>
+
+<span class="nc" id="L115">        mEmptyMessage = emptyMessage;</span>
+
+<span class="nc" id="L117">        mIterator = downloadManager.getIterator();</span>
+
+<span class="nc" id="L119">        checkEmptyMessageVisibility();</span>
+<span class="nc" id="L120">    }</span>
+
+    @Override
+    @NonNull
+    public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+<span class="nc bnc" id="L125" title="All 2 branches missed.">        switch (viewType) {</span>
+            case DownloadManager.SPECIAL_PENDING:
+            case DownloadManager.SPECIAL_FINISHED:
+<span class="nc" id="L128">                return new ViewHolderHeader(mInflater.inflate(R.layout.missions_header, parent, false));</span>
+        }
+
+<span class="nc" id="L131">        return new ViewHolderItem(mInflater.inflate(mLayout, parent, false));</span>
+    }
+
+    @Override
+    public void onViewRecycled(@NonNull ViewHolder view) {
+<span class="nc" id="L136">        super.onViewRecycled(view);</span>
+
+<span class="nc bnc" id="L138" title="All 2 branches missed.">        if (view instanceof ViewHolderHeader) return;</span>
+<span class="nc" id="L139">        ViewHolderItem h = (ViewHolderItem) view;</span>
+
+<span class="nc bnc" id="L141" title="All 2 branches missed.">        if (h.item.mission instanceof DownloadMission) {</span>
+<span class="nc" id="L142">            mPendingDownloadsItems.remove(h);</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">            if (mPendingDownloadsItems.size() &lt; 1) {</span>
+<span class="nc" id="L144">                setAutoRefresh(false);</span>
+<span class="nc" id="L145">                checkMasterButtonsVisibility();</span>
+            }
+        }
+
+<span class="nc" id="L149">        h.popupMenu.dismiss();</span>
+<span class="nc" id="L150">        h.item = null;</span>
+<span class="nc" id="L151">        h.lastTimeStamp = -1;</span>
+<span class="nc" id="L152">        h.lastDone = -1;</span>
+<span class="nc" id="L153">        h.lastCurrent = -1;</span>
+<span class="nc" id="L154">        h.state = 0;</span>
+<span class="nc" id="L155">    }</span>
+
+    @Override
+    @SuppressLint(&quot;SetTextI18n&quot;)
+    public void onBindViewHolder(@NonNull ViewHolder view, @SuppressLint(&quot;RecyclerView&quot;) int pos) {
+<span class="nc" id="L160">        DownloadManager.MissionItem item = mIterator.getItem(pos);</span>
+
+<span class="nc bnc" id="L162" title="All 2 branches missed.">        if (view instanceof ViewHolderHeader) {</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">            if (item.special == DownloadManager.SPECIAL_NOTHING) return;</span>
+            int str;
+<span class="nc bnc" id="L165" title="All 2 branches missed.">            if (item.special == DownloadManager.SPECIAL_PENDING) {</span>
+<span class="nc" id="L166">                str = R.string.missions_header_pending;</span>
+            } else {
+<span class="nc" id="L168">                str = R.string.missions_header_finished;</span>
+<span class="nc bnc" id="L169" title="All 2 branches missed.">                if (mClear != null) mClear.setVisible(true);</span>
+            }
+
+<span class="nc" id="L172">            ((ViewHolderHeader) view).header.setText(str);</span>
+<span class="nc" id="L173">            return;</span>
+        }
+
+<span class="nc" id="L176">        ViewHolderItem h = (ViewHolderItem) view;</span>
+<span class="nc" id="L177">        h.item = item;</span>
+
+<span class="nc" id="L179">        Utility.FileType type = Utility.getFileType(item.mission.kind, item.mission.storage.getName());</span>
+
+<span class="nc" id="L181">        h.icon.setImageResource(Utility.getIconForFileType(type));</span>
+<span class="nc" id="L182">        h.name.setText(item.mission.storage.getName());</span>
+
+<span class="nc" id="L184">        h.progress.setColors(Utility.getBackgroundForFileType(mContext, type), Utility.getForegroundForFileType(mContext, type));</span>
+
+<span class="nc bnc" id="L186" title="All 2 branches missed.">        if (h.item.mission instanceof DownloadMission) {</span>
+<span class="nc" id="L187">            DownloadMission mission = (DownloadMission) item.mission;</span>
+<span class="nc" id="L188">            String length = Utility.formatBytes(mission.getLength());</span>
+<span class="nc bnc" id="L189" title="All 4 branches missed.">            if (mission.running &amp;&amp; !mission.isPsRunning()) length += &quot; --.- kB/s&quot;;</span>
+
+<span class="nc" id="L191">            h.size.setText(length);</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">            h.pause.setTitle(mission.unknownLength ? R.string.stop : R.string.pause);</span>
+<span class="nc" id="L193">            h.lastCurrent = mission.current;</span>
+<span class="nc" id="L194">            updateProgress(h);</span>
+<span class="nc" id="L195">            mPendingDownloadsItems.add(h);</span>
+<span class="nc" id="L196">        } else {</span>
+<span class="nc" id="L197">            h.progress.setMarquee(false);</span>
+<span class="nc" id="L198">            h.status.setText(&quot;100%&quot;);</span>
+<span class="nc" id="L199">            h.progress.setProgress(1f);</span>
+<span class="nc" id="L200">            h.size.setText(Utility.formatBytes(item.mission.length));</span>
+        }
+<span class="nc" id="L202">    }</span>
+
+    @Override
+    public int getItemCount() {
+<span class="nc" id="L206">        return mIterator.getOldListSize();</span>
+    }
+
+    @Override
+    public int getItemViewType(int position) {
+<span class="nc" id="L211">        return mIterator.getSpecialAtItem(position);</span>
+    }
+
+    @SuppressLint(&quot;DefaultLocale&quot;)
+    private void updateProgress(ViewHolderItem h) {
+<span class="nc bnc" id="L216" title="All 6 branches missed.">        if (h == null || h.item == null || h.item.mission instanceof FinishedMission) return;</span>
+
+<span class="nc" id="L218">        long now = System.currentTimeMillis();</span>
+<span class="nc" id="L219">        DownloadMission mission = (DownloadMission) h.item.mission;</span>
+
+<span class="nc bnc" id="L221" title="All 2 branches missed.">        if (h.lastCurrent != mission.current) {</span>
+<span class="nc" id="L222">            h.lastCurrent = mission.current;</span>
+<span class="nc" id="L223">            h.lastTimeStamp = now;</span>
+<span class="nc" id="L224">            h.lastDone = 0;</span>
+        } else {
+<span class="nc bnc" id="L226" title="All 2 branches missed.">            if (h.lastTimeStamp == -1) h.lastTimeStamp = now;</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">            if (h.lastDone == -1) h.lastDone = mission.done;</span>
+        }
+
+<span class="nc" id="L230">        long deltaTime = now - h.lastTimeStamp;</span>
+<span class="nc" id="L231">        long deltaDone = mission.done - h.lastDone;</span>
+<span class="nc bnc" id="L232" title="All 2 branches missed.">        boolean hasError = mission.errCode != ERROR_NOTHING;</span>
+
+        // hide on error
+        // show if current resource length is not fetched
+        // show if length is unknown
+<span class="nc bnc" id="L237" title="All 6 branches missed.">        h.progress.setMarquee(!hasError &amp;&amp; (!mission.isInitialized() || mission.unknownLength));</span>
+
+        float progress;
+<span class="nc bnc" id="L240" title="All 2 branches missed.">        if (mission.unknownLength) {</span>
+<span class="nc" id="L241">            progress = Float.NaN;</span>
+<span class="nc" id="L242">            h.progress.setProgress(0f);</span>
+        } else {
+<span class="nc" id="L244">            progress = (float) ((double) mission.done / mission.length);</span>
+<span class="nc bnc" id="L245" title="All 4 branches missed.">            if (mission.urls.length &gt; 1 &amp;&amp; mission.current &lt; mission.urls.length) {</span>
+<span class="nc" id="L246">                progress = (progress / mission.urls.length) + ((float) mission.current / mission.urls.length);</span>
+            }
+        }
+
+<span class="nc bnc" id="L250" title="All 2 branches missed.">        if (hasError) {</span>
+<span class="nc bnc" id="L251" title="All 2 branches missed.">            h.progress.setProgress(isNotFinite(progress) ? 1f : progress);</span>
+<span class="nc" id="L252">            h.status.setText(R.string.msg_error);</span>
+<span class="nc bnc" id="L253" title="All 2 branches missed.">        } else if (isNotFinite(progress)) {</span>
+<span class="nc" id="L254">            h.status.setText(UNDEFINED_PROGRESS);</span>
+        } else {
+<span class="nc" id="L256">            h.status.setText(String.format(&quot;%.2f%%&quot;, progress * 100));</span>
+<span class="nc" id="L257">            h.progress.setProgress(progress);</span>
+        }
+
+<span class="nc" id="L260">        long length = mission.getLength();</span>
+
+        int state;
+<span class="nc bnc" id="L263" title="All 4 branches missed.">        if (mission.isPsFailed() || mission.errCode == ERROR_POSTPROCESSING_HOLD) {</span>
+<span class="nc" id="L264">            state = 0;</span>
+<span class="nc bnc" id="L265" title="All 2 branches missed.">        } else if (!mission.running) {</span>
+<span class="nc bnc" id="L266" title="All 2 branches missed.">            state = mission.enqueued ? 1 : 2;</span>
+<span class="nc bnc" id="L267" title="All 2 branches missed.">        } else if (mission.isPsRunning()) {</span>
+<span class="nc" id="L268">            state = 3;</span>
+        } else {
+<span class="nc" id="L270">            state = 0;</span>
+        }
+
+<span class="nc bnc" id="L273" title="All 2 branches missed.">        if (state != 0) {</span>
+            // update state without download speed
+<span class="nc bnc" id="L275" title="All 2 branches missed.">            if (h.state != state) {</span>
+                String statusStr;
+<span class="nc" id="L277">                h.state = state;</span>
+
+<span class="nc bnc" id="L279" title="All 4 branches missed.">                switch (state) {</span>
+                    case 1:
+<span class="nc" id="L281">                        statusStr = mContext.getString(R.string.queued);</span>
+<span class="nc" id="L282">                        break;</span>
+                    case 2:
+<span class="nc" id="L284">                        statusStr = mContext.getString(R.string.paused);</span>
+<span class="nc" id="L285">                        break;</span>
+                    case 3:
+<span class="nc" id="L287">                        statusStr = mContext.getString(R.string.post_processing);</span>
+<span class="nc" id="L288">                        break;</span>
+                    default:
+<span class="nc" id="L290">                        statusStr = &quot;?&quot;;</span>
+                        break;
+                }
+
+<span class="nc" id="L294">                h.size.setText(Utility.formatBytes(length).concat(&quot;  (&quot;).concat(statusStr).concat(&quot;)&quot;));</span>
+<span class="nc bnc" id="L295" title="All 2 branches missed.">            } else if (deltaDone &gt; 0) {</span>
+<span class="nc" id="L296">                h.lastTimeStamp = now;</span>
+<span class="nc" id="L297">                h.lastDone = mission.done;</span>
+            }
+
+<span class="nc" id="L300">            return;</span>
+        }
+
+<span class="nc bnc" id="L303" title="All 4 branches missed.">        if (deltaDone &gt; 0 &amp;&amp; deltaTime &gt; 0) {</span>
+<span class="nc" id="L304">            float speed = (deltaDone * 1000f) / deltaTime;</span>
+
+<span class="nc" id="L306">            String speedStr = Utility.formatSpeed(speed);</span>
+<span class="nc" id="L307">            String sizeStr = Utility.formatBytes(length);</span>
+
+<span class="nc" id="L309">            h.size.setText(sizeStr.concat(&quot; &quot;).concat(speedStr));</span>
+
+<span class="nc" id="L311">            h.lastTimeStamp = now;</span>
+<span class="nc" id="L312">            h.lastDone = mission.done;</span>
+        }
+<span class="nc" id="L314">    }</span>
+
+    private void viewWithFileProvider(Mission mission) {
+<span class="nc bnc" id="L317" title="All 2 branches missed.">        if (checkInvalidFile(mission)) return;</span>
+
+<span class="nc" id="L319">        String mimeType = resolveMimeType(mission);</span>
+
+<span class="nc bnc" id="L321" title="All 2 branches missed.">        if (BuildConfig.DEBUG)</span>
+<span class="nc" id="L322">            Log.v(TAG, &quot;Mime: &quot; + mimeType + &quot; package: &quot; + BuildConfig.APPLICATION_ID + &quot;.provider&quot;);</span>
+
+        Uri uri;
+
+<span class="nc bnc" id="L326" title="All 2 branches missed.">        if (mission.storage.isDirect()) {</span>
+<span class="nc" id="L327">            uri = FileProvider.getUriForFile(</span>
+                    mContext,
+                    BuildConfig.APPLICATION_ID + &quot;.provider&quot;,
+<span class="nc" id="L330">                    new File(URI.create(mission.storage.getUri().toString()))</span>
+            );
+        } else {
+<span class="nc" id="L333">            uri = mission.storage.getUri();</span>
+        }
+
+<span class="nc" id="L336">        Intent intent = new Intent();</span>
+<span class="nc" id="L337">        intent.setAction(Intent.ACTION_VIEW);</span>
+<span class="nc" id="L338">        intent.setDataAndType(uri, mimeType);</span>
+<span class="nc" id="L339">        intent.addFlags(FLAG_GRANT_READ_URI_PERMISSION);</span>
+
+<span class="nc bnc" id="L341" title="All 2 branches missed.">        if (Build.VERSION.SDK_INT &gt;= Build.VERSION_CODES.LOLLIPOP) {</span>
+<span class="nc" id="L342">            intent.addFlags(FLAG_GRANT_PREFIX_URI_PERMISSION);</span>
+        }
+<span class="nc bnc" id="L344" title="All 2 branches missed.">        if (Build.VERSION.SDK_INT &lt;= Build.VERSION_CODES.M) {</span>
+<span class="nc" id="L345">            intent.addFlags(FLAG_ACTIVITY_NEW_TASK);</span>
+        }
+
+        //mContext.grantUriPermission(packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+<span class="nc bnc" id="L350" title="All 2 branches missed.">        if (intent.resolveActivity(mContext.getPackageManager()) != null) {</span>
+<span class="nc" id="L351">            mContext.startActivity(intent);</span>
+        } else {
+<span class="nc" id="L353">            Toast.makeText(mContext, R.string.toast_no_player, Toast.LENGTH_LONG).show();</span>
+        }
+<span class="nc" id="L355">    }</span>
+
+    private void shareFile(Mission mission) {
+<span class="nc bnc" id="L358" title="All 2 branches missed.">        if (checkInvalidFile(mission)) return;</span>
+
+<span class="nc" id="L360">        Intent intent = new Intent(Intent.ACTION_SEND);</span>
+<span class="nc" id="L361">        intent.setType(resolveMimeType(mission));</span>
+<span class="nc" id="L362">        intent.putExtra(Intent.EXTRA_STREAM, mission.storage.getUri());</span>
+
+<span class="nc" id="L364">        mContext.startActivity(Intent.createChooser(intent, null));</span>
+<span class="nc" id="L365">    }</span>
+
+    private static String resolveMimeType(@NonNull Mission mission) {
+        String mimeType;
+
+<span class="nc bnc" id="L370" title="All 2 branches missed.">        if (!mission.storage.isInvalid()) {</span>
+<span class="nc" id="L371">            mimeType = mission.storage.getType();</span>
+<span class="nc bnc" id="L372" title="All 6 branches missed.">            if (mimeType != null &amp;&amp; mimeType.length() &gt; 0 &amp;&amp; !mimeType.equals(StoredFileHelper.DEFAULT_MIME))</span>
+<span class="nc" id="L373">                return mimeType;</span>
+        }
+
+<span class="nc" id="L376">        String ext = Utility.getFileExt(mission.storage.getName());</span>
+<span class="nc bnc" id="L377" title="All 2 branches missed.">        if (ext == null) return DEFAULT_MIME_TYPE;</span>
+
+<span class="nc" id="L379">        mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext.substring(1));</span>
+
+<span class="nc bnc" id="L381" title="All 2 branches missed.">        return mimeType == null ? DEFAULT_MIME_TYPE : mimeType;</span>
+    }
+
+    private boolean checkInvalidFile(@NonNull Mission mission) {
+<span class="nc bnc" id="L385" title="All 2 branches missed.">        if (mission.storage.existsAsFile()) return false;</span>
+
+<span class="nc" id="L387">        Toast.makeText(mContext, R.string.missing_file, Toast.LENGTH_SHORT).show();</span>
+<span class="nc" id="L388">        return true;</span>
+    }
+
+    @Override
+    public boolean handleMessage(@NonNull Message msg) {
+<span class="nc bnc" id="L393" title="All 4 branches missed.">        if (mStartButton != null &amp;&amp; mPauseButton != null) {</span>
+<span class="nc" id="L394">            checkMasterButtonsVisibility();</span>
+        }
+
+<span class="nc bnc" id="L397" title="All 2 branches missed.">        switch (msg.what) {</span>
+            case DownloadManagerService.MESSAGE_PROGRESS:
+            case DownloadManagerService.MESSAGE_ERROR:
+            case DownloadManagerService.MESSAGE_FINISHED:
+<span class="nc" id="L401">                break;</span>
+            default:
+<span class="nc" id="L403">                return false;</span>
+        }
+
+<span class="nc bnc" id="L406" title="All 2 branches missed.">        if (msg.what == DownloadManagerService.MESSAGE_PROGRESS) {</span>
+<span class="nc" id="L407">            setAutoRefresh(true);</span>
+<span class="nc" id="L408">            return true;</span>
+        }
+
+<span class="nc bnc" id="L411" title="All 2 branches missed.">        for (ViewHolderItem h : mPendingDownloadsItems) {</span>
+<span class="nc bnc" id="L412" title="All 2 branches missed.">            if (h.item.mission != msg.obj) continue;</span>
+
+<span class="nc bnc" id="L414" title="All 2 branches missed.">            if (msg.what == DownloadManagerService.MESSAGE_FINISHED) {</span>
+                // DownloadManager should mark the download as finished
+<span class="nc" id="L416">                applyChanges();</span>
+<span class="nc" id="L417">                return true;</span>
+            }
+
+<span class="nc" id="L420">            updateProgress(h);</span>
+<span class="nc" id="L421">            return true;</span>
+        }
+
+<span class="nc" id="L424">        return false;</span>
+    }
+
+    private void showError(@NonNull DownloadMission mission) {
+<span class="nc" id="L428">        @StringRes int msg = R.string.general_error;</span>
+<span class="nc" id="L429">        String msgEx = null;</span>
+
+<span class="nc bnc" id="L431" title="All 18 branches missed.">        switch (mission.errCode) {</span>
+            case 416:
+<span class="nc" id="L433">                msg = R.string.error_http_requested_range_not_satisfiable;</span>
+<span class="nc" id="L434">                break;</span>
+            case 404:
+<span class="nc" id="L436">                msg = R.string.error_http_not_found;</span>
+<span class="nc" id="L437">                break;</span>
+            case ERROR_NOTHING:
+<span class="nc" id="L439">                return;// this never should happen</span>
+            case ERROR_FILE_CREATION:
+<span class="nc" id="L441">                msg = R.string.error_file_creation;</span>
+<span class="nc" id="L442">                break;</span>
+            case ERROR_HTTP_NO_CONTENT:
+<span class="nc" id="L444">                msg = R.string.error_http_no_content;</span>
+<span class="nc" id="L445">                break;</span>
+            case ERROR_HTTP_UNSUPPORTED_RANGE:
+<span class="nc" id="L447">                msg = R.string.error_http_unsupported_range;</span>
+<span class="nc" id="L448">                break;</span>
+            case ERROR_PATH_CREATION:
+<span class="nc" id="L450">                msg = R.string.error_path_creation;</span>
+<span class="nc" id="L451">                break;</span>
+            case ERROR_PERMISSION_DENIED:
+<span class="nc" id="L453">                msg = R.string.permission_denied;</span>
+<span class="nc" id="L454">                break;</span>
+            case ERROR_SSL_EXCEPTION:
+<span class="nc" id="L456">                msg = R.string.error_ssl_exception;</span>
+<span class="nc" id="L457">                break;</span>
+            case ERROR_UNKNOWN_HOST:
+<span class="nc" id="L459">                msg = R.string.error_unknown_host;</span>
+<span class="nc" id="L460">                break;</span>
+            case ERROR_CONNECT_HOST:
+<span class="nc" id="L462">                msg = R.string.error_connect_host;</span>
+<span class="nc" id="L463">                break;</span>
+            case ERROR_POSTPROCESSING_STOPPED:
+<span class="nc" id="L465">                msg = R.string.error_postprocessing_stopped;</span>
+<span class="nc" id="L466">                break;</span>
+            case ERROR_POSTPROCESSING:
+            case ERROR_POSTPROCESSING_HOLD:
+<span class="nc" id="L469">                showError(mission.errObject, UserAction.DOWNLOAD_POSTPROCESSING, R.string.error_postprocessing_failed);</span>
+<span class="nc" id="L470">                return;</span>
+            case ERROR_INSUFFICIENT_STORAGE:
+<span class="nc" id="L472">                msg = R.string.error_insufficient_storage;</span>
+<span class="nc" id="L473">                break;</span>
+            case ERROR_UNKNOWN_EXCEPTION:
+<span class="nc" id="L475">                showError(mission.errObject, UserAction.DOWNLOAD_FAILED, R.string.general_error);</span>
+<span class="nc" id="L476">                return;</span>
+            case ERROR_PROGRESS_LOST:
+<span class="nc" id="L478">                msg = R.string.error_progress_lost;</span>
+<span class="nc" id="L479">                break;</span>
+            case ERROR_TIMEOUT:
+<span class="nc" id="L481">                msg = R.string.error_timeout;</span>
+<span class="nc" id="L482">                break;</span>
+            default:
+<span class="nc bnc" id="L484" title="All 4 branches missed.">                if (mission.errCode &gt;= 100 &amp;&amp; mission.errCode &lt; 600) {</span>
+<span class="nc" id="L485">                    msgEx = &quot;HTTP &quot; + mission.errCode;</span>
+<span class="nc bnc" id="L486" title="All 2 branches missed.">                } else if (mission.errObject == null) {</span>
+<span class="nc" id="L487">                    msgEx = &quot;(not_decelerated_error_code)&quot;;</span>
+                } else {
+<span class="nc" id="L489">                    showError(mission.errObject, UserAction.DOWNLOAD_FAILED, msg);</span>
+<span class="nc" id="L490">                    return;</span>
+                }
+                break;
+        }
+
+<span class="nc" id="L495">        AlertDialog.Builder builder = new AlertDialog.Builder(mContext);</span>
+
+<span class="nc bnc" id="L497" title="All 2 branches missed.">        if (msgEx != null)</span>
+<span class="nc" id="L498">            builder.setMessage(msgEx);</span>
+        else
+<span class="nc" id="L500">            builder.setMessage(msg);</span>
+
+        // add report button for non-HTTP errors (range 100-599)
+<span class="nc bnc" id="L503" title="All 6 branches missed.">        if (mission.errObject != null &amp;&amp; (mission.errCode &lt; 100 || mission.errCode &gt;= 600)) {</span>
+<span class="nc" id="L504">            @StringRes final int mMsg = msg;</span>
+<span class="nc" id="L505">            builder.setPositiveButton(R.string.error_report_title, (dialog, which) -&gt;</span>
+<span class="nc" id="L506">                    showError(mission.errObject, UserAction.DOWNLOAD_FAILED, mMsg)</span>
+            );
+        }
+
+<span class="nc" id="L510">        builder.setNegativeButton(android.R.string.ok, (dialog, which) -&gt; dialog.cancel())</span>
+<span class="nc" id="L511">                .setTitle(mission.storage.getName())</span>
+<span class="nc" id="L512">                .create()</span>
+<span class="nc" id="L513">                .show();</span>
+<span class="nc" id="L514">    }</span>
+
+    private void showError(Exception exception, UserAction action, @StringRes int reason) {
+<span class="nc" id="L517">        ErrorActivity.reportError(</span>
+                mContext,
+<span class="nc" id="L519">                Collections.singletonList(exception),</span>
+                null,
+                null,
+<span class="nc" id="L522">                ErrorActivity.ErrorInfo.make(action, &quot;-&quot;, &quot;-&quot;, reason)</span>
+        );
+<span class="nc" id="L524">    }</span>
+
+    public void clearFinishedDownloads() {
+<span class="nc" id="L527">        mDownloadManager.forgetFinishedDownloads();</span>
+<span class="nc" id="L528">        applyChanges();</span>
+<span class="nc" id="L529">    }</span>
+
+    private boolean handlePopupItem(@NonNull ViewHolderItem h, @NonNull MenuItem option) {
+<span class="nc bnc" id="L532" title="All 2 branches missed.">        if (h.item == null) return true;</span>
+
+<span class="nc" id="L534">        int id = option.getItemId();</span>
+<span class="nc bnc" id="L535" title="All 2 branches missed.">        DownloadMission mission = h.item.mission instanceof DownloadMission ? (DownloadMission) h.item.mission : null;</span>
+
+<span class="nc bnc" id="L537" title="All 2 branches missed.">        if (mission != null) {</span>
+<span class="nc bnc" id="L538" title="All 7 branches missed.">            switch (id) {</span>
+                case R.id.start:
+<span class="nc" id="L540">                    h.status.setText(UNDEFINED_PROGRESS);</span>
+<span class="nc" id="L541">                    h.state = -1;</span>
+<span class="nc" id="L542">                    h.size.setText(Utility.formatBytes(mission.getLength()));</span>
+<span class="nc" id="L543">                    mDownloadManager.resumeMission(mission);</span>
+<span class="nc" id="L544">                    return true;</span>
+                case R.id.pause:
+<span class="nc" id="L546">                    h.state = -1;</span>
+<span class="nc" id="L547">                    mDownloadManager.pauseMission(mission);</span>
+<span class="nc" id="L548">                    updateProgress(h);</span>
+<span class="nc" id="L549">                    h.lastTimeStamp = -1;</span>
+<span class="nc" id="L550">                    h.lastDone = -1;</span>
+<span class="nc" id="L551">                    return true;</span>
+                case R.id.error_message_view:
+<span class="nc" id="L553">                    showError(mission);</span>
+<span class="nc" id="L554">                    return true;</span>
+                case R.id.queue:
+<span class="nc bnc" id="L556" title="All 2 branches missed.">                    boolean flag = !h.queue.isChecked();</span>
+<span class="nc" id="L557">                    h.queue.setChecked(flag);</span>
+<span class="nc" id="L558">                    mission.setEnqueued(flag);</span>
+<span class="nc" id="L559">                    updateProgress(h);</span>
+<span class="nc" id="L560">                    return true;</span>
+                case R.id.retry:
+<span class="nc bnc" id="L562" title="All 2 branches missed.">                    if (mission.isPsRunning()) {</span>
+<span class="nc" id="L563">                        mission.psContinue(true);</span>
+                    } else {
+<span class="nc" id="L565">                        mDownloadManager.tryRecover(mission);</span>
+<span class="nc bnc" id="L566" title="All 2 branches missed.">                        if (mission.storage.isInvalid())</span>
+<span class="nc" id="L567">                            mRecover.tryRecover(mission);</span>
+                        else
+<span class="nc" id="L569">                            recoverMission(mission);</span>
+                    }
+<span class="nc" id="L571">                    return true;</span>
+                case R.id.cancel:
+<span class="nc" id="L573">                    mission.psContinue(false);</span>
+<span class="nc" id="L574">                    return false;</span>
+            }
+        }
+
+<span class="nc bnc" id="L578" title="All 5 branches missed.">        switch (id) {</span>
+            case R.id.menu_item_share:
+<span class="nc" id="L580">                shareFile(h.item.mission);</span>
+<span class="nc" id="L581">                return true;</span>
+            case R.id.delete:
+<span class="nc bnc" id="L583" title="All 2 branches missed.">                if (mDeleter == null) {</span>
+<span class="nc" id="L584">                    mDownloadManager.deleteMission(h.item.mission);</span>
+                } else {
+<span class="nc" id="L586">                    mDeleter.append(h.item.mission);</span>
+                }
+<span class="nc" id="L588">                applyChanges();</span>
+<span class="nc" id="L589">                return true;</span>
+            case R.id.md5:
+            case R.id.sha1:
+<span class="nc" id="L592">                new ChecksumTask(mContext).execute(h.item.mission.storage, ALGORITHMS.get(id));</span>
+<span class="nc" id="L593">                return true;</span>
+            case R.id.source:
+                /*Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(h.item.mission.source));
+                mContext.startActivity(intent);*/
+                try {
+<span class="nc" id="L598">                    Intent intent = NavigationHelper.getIntentByLink(mContext, h.item.mission.source);</span>
+<span class="nc" id="L599">                    intent.addFlags(Intent.FLAG_ACTIVITY_PREVIOUS_IS_TOP);</span>
+<span class="nc" id="L600">                    mContext.startActivity(intent);</span>
+<span class="nc" id="L601">                } catch (Exception e) {</span>
+<span class="nc" id="L602">                    Log.w(TAG, &quot;Selected item has a invalid source&quot;, e);</span>
+<span class="nc" id="L603">                }</span>
+<span class="nc" id="L604">                return true;</span>
+            default:
+<span class="nc" id="L606">                return false;</span>
+        }
+    }
+
+    public void applyChanges() {
+<span class="nc" id="L611">        mIterator.start();</span>
+<span class="nc" id="L612">        DiffUtil.calculateDiff(mIterator, true).dispatchUpdatesTo(this);</span>
+<span class="nc" id="L613">        mIterator.end();</span>
+
+<span class="nc" id="L615">        checkEmptyMessageVisibility();</span>
+<span class="nc bnc" id="L616" title="All 2 branches missed.">        if (mClear != null) mClear.setVisible(mIterator.hasFinishedMissions());</span>
+<span class="nc" id="L617">    }</span>
+
+    public void forceUpdate() {
+<span class="nc" id="L620">        mIterator.start();</span>
+<span class="nc" id="L621">        mIterator.end();</span>
+
+<span class="nc bnc" id="L623" title="All 2 branches missed.">        for (ViewHolderItem item : mPendingDownloadsItems) {</span>
+<span class="nc" id="L624">            item.lastTimeStamp = -1;</span>
+<span class="nc" id="L625">        }</span>
+
+<span class="nc" id="L627">        notifyDataSetChanged();</span>
+<span class="nc" id="L628">    }</span>
+
+    public void setLinear(boolean isLinear) {
+<span class="nc bnc" id="L631" title="All 2 branches missed.">        mLayout = isLinear ? R.layout.mission_item_linear : R.layout.mission_item;</span>
+<span class="nc" id="L632">    }</span>
+
+    public void setClearButton(MenuItem clearButton) {
+<span class="nc bnc" id="L635" title="All 2 branches missed.">        if (mClear == null)</span>
+<span class="nc" id="L636">            clearButton.setVisible(mIterator.hasFinishedMissions());</span>
+
+<span class="nc" id="L638">        mClear = clearButton;</span>
+<span class="nc" id="L639">    }</span>
+
+    public void setMasterButtons(MenuItem startButton, MenuItem pauseButton) {
+<span class="nc bnc" id="L642" title="All 4 branches missed.">        boolean init = mStartButton == null || mPauseButton == null;</span>
+
+<span class="nc" id="L644">        mStartButton = startButton;</span>
+<span class="nc" id="L645">        mPauseButton = pauseButton;</span>
+
+<span class="nc bnc" id="L647" title="All 2 branches missed.">        if (init) checkMasterButtonsVisibility();</span>
+<span class="nc" id="L648">    }</span>
+
+    private void checkEmptyMessageVisibility() {
+<span class="nc bnc" id="L651" title="All 2 branches missed.">        int flag = mIterator.getOldListSize() &gt; 0 ? View.GONE : View.VISIBLE;</span>
+<span class="nc bnc" id="L652" title="All 2 branches missed.">        if (mEmptyMessage.getVisibility() != flag) mEmptyMessage.setVisibility(flag);</span>
+<span class="nc" id="L653">    }</span>
+
+    public void checkMasterButtonsVisibility() {
+<span class="nc" id="L656">        boolean[] state = mIterator.hasValidPendingMissions();</span>
+<span class="nc" id="L657">        setButtonVisible(mPauseButton, state[0]);</span>
+<span class="nc" id="L658">        setButtonVisible(mStartButton, state[1]);</span>
+<span class="nc" id="L659">    }</span>
+
+    private static void setButtonVisible(MenuItem button, boolean visible) {
+<span class="nc bnc" id="L662" title="All 2 branches missed.">        if (button.isVisible() != visible)</span>
+<span class="nc" id="L663">            button.setVisible(visible);</span>
+<span class="nc" id="L664">    }</span>
+
+    public void ensurePausedMissions() {
+<span class="nc bnc" id="L667" title="All 2 branches missed.">        for (ViewHolderItem h : mPendingDownloadsItems) {</span>
+<span class="nc bnc" id="L668" title="All 2 branches missed.">            if (((DownloadMission) h.item.mission).running) continue;</span>
+<span class="nc" id="L669">            updateProgress(h);</span>
+<span class="nc" id="L670">            h.lastTimeStamp = -1;</span>
+<span class="nc" id="L671">            h.lastDone = -1;</span>
+<span class="nc" id="L672">        }</span>
+<span class="nc" id="L673">    }</span>
+
+
+    public void deleterDispose(boolean commitChanges) {
+<span class="nc bnc" id="L677" title="All 2 branches missed.">        if (mDeleter != null) mDeleter.dispose(commitChanges);</span>
+<span class="nc" id="L678">    }</span>
+
+    public void deleterLoad(View view) {
+<span class="nc bnc" id="L681" title="All 2 branches missed.">        if (mDeleter == null)</span>
+<span class="nc" id="L682">            mDeleter = new Deleter(view, mContext, this, mDownloadManager, mIterator, mHandler);</span>
+<span class="nc" id="L683">    }</span>
+
+    public void deleterResume() {
+<span class="nc bnc" id="L686" title="All 2 branches missed.">        if (mDeleter != null) mDeleter.resume();</span>
+<span class="nc" id="L687">    }</span>
+
+    public void recoverMission(DownloadMission mission) {
+<span class="nc bnc" id="L690" title="All 2 branches missed.">        for (ViewHolderItem h : mPendingDownloadsItems) {</span>
+<span class="nc bnc" id="L691" title="All 2 branches missed.">            if (mission != h.item.mission) continue;</span>
+
+<span class="nc" id="L693">            mission.errObject = null;</span>
+<span class="nc" id="L694">            mission.resetState(true, false, DownloadMission.ERROR_NOTHING);</span>
+
+<span class="nc" id="L696">            h.status.setText(UNDEFINED_PROGRESS);</span>
+<span class="nc" id="L697">            h.state = -1;</span>
+<span class="nc" id="L698">            h.size.setText(Utility.formatBytes(mission.getLength()));</span>
+<span class="nc" id="L699">            h.progress.setMarquee(true);</span>
+
+<span class="nc" id="L701">            mDownloadManager.resumeMission(mission);</span>
+<span class="nc" id="L702">            return;</span>
+        }
+
+<span class="nc" id="L705">    }</span>
+
+
+<span class="nc" id="L708">    private boolean mUpdaterRunning = false;</span>
+<span class="nc" id="L709">    private final Runnable rUpdater = this::updater;</span>
+
+    public void onPaused() {
+<span class="nc" id="L712">        setAutoRefresh(false);</span>
+<span class="nc" id="L713">    }</span>
+
+    private void setAutoRefresh(boolean enabled) {
+<span class="nc bnc" id="L716" title="All 4 branches missed.">        if (enabled &amp;&amp; !mUpdaterRunning) {</span>
+<span class="nc" id="L717">            mUpdaterRunning = true;</span>
+<span class="nc" id="L718">            updater();</span>
+<span class="nc bnc" id="L719" title="All 4 branches missed.">        } else if (!enabled &amp;&amp; mUpdaterRunning) {</span>
+<span class="nc" id="L720">            mUpdaterRunning = false;</span>
+<span class="nc" id="L721">            mHandler.removeCallbacks(rUpdater);</span>
+        }
+<span class="nc" id="L723">    }</span>
+
+    private void updater() {
+<span class="nc bnc" id="L726" title="All 2 branches missed.">        if (!mUpdaterRunning) return;</span>
+
+<span class="nc" id="L728">        boolean running = false;</span>
+<span class="nc bnc" id="L729" title="All 2 branches missed.">        for (ViewHolderItem h : mPendingDownloadsItems) {</span>
+            // check if the mission is running first
+<span class="nc bnc" id="L731" title="All 2 branches missed.">            if (!((DownloadMission) h.item.mission).running) continue;</span>
+
+<span class="nc" id="L733">            updateProgress(h);</span>
+<span class="nc" id="L734">            running = true;</span>
+<span class="nc" id="L735">        }</span>
+
+<span class="nc bnc" id="L737" title="All 2 branches missed.">        if (running) {</span>
+<span class="nc" id="L738">            mHandler.postDelayed(rUpdater, 1000);</span>
+        } else {
+<span class="nc" id="L740">            mUpdaterRunning = false;</span>
+        }
+<span class="nc" id="L742">    }</span>
+
+    private boolean isNotFinite(Float value) {
+<span class="nc bnc" id="L745" title="All 4 branches missed.">        return Float.isNaN(value) || Float.isInfinite(value);</span>
+    }
+
+    public void setRecover(@NonNull RecoverHelper callback) {
+<span class="nc" id="L749">        mRecover = callback;</span>
+<span class="nc" id="L750">    }</span>
+
+
+    class ViewHolderItem extends RecyclerView.ViewHolder {
+        DownloadManager.MissionItem item;
+
+        TextView status;
+        ImageView icon;
+        TextView name;
+        TextView size;
+        ProgressDrawable progress;
+
+        PopupMenu popupMenu;
+        MenuItem retry;
+        MenuItem cancel;
+        MenuItem start;
+        MenuItem pause;
+        MenuItem open;
+        MenuItem queue;
+        MenuItem showError;
+        MenuItem delete;
+        MenuItem source;
+        MenuItem checksum;
+
+<span class="nc" id="L774">        long lastTimeStamp = -1;</span>
+<span class="nc" id="L775">        long lastDone = -1;</span>
+<span class="nc" id="L776">        int lastCurrent = -1;</span>
+<span class="nc" id="L777">        int state = 0;</span>
+
+<span class="nc" id="L779">        ViewHolderItem(View view) {</span>
+<span class="nc" id="L780">            super(view);</span>
+
+<span class="nc" id="L782">            progress = new ProgressDrawable();</span>
+<span class="nc" id="L783">            ViewCompat.setBackground(itemView.findViewById(R.id.item_bkg), progress);</span>
+
+<span class="nc" id="L785">            status = itemView.findViewById(R.id.item_status);</span>
+<span class="nc" id="L786">            name = itemView.findViewById(R.id.item_name);</span>
+<span class="nc" id="L787">            icon = itemView.findViewById(R.id.item_icon);</span>
+<span class="nc" id="L788">            size = itemView.findViewById(R.id.item_size);</span>
+
+<span class="nc" id="L790">            name.setSelected(true);</span>
+
+<span class="nc" id="L792">            ImageView button = itemView.findViewById(R.id.item_more);</span>
+<span class="nc" id="L793">            popupMenu = buildPopup(button);</span>
+<span class="nc" id="L794">            button.setOnClickListener(v -&gt; showPopupMenu());</span>
+
+<span class="nc" id="L796">            Menu menu = popupMenu.getMenu();</span>
+<span class="nc" id="L797">            retry = menu.findItem(R.id.retry);</span>
+<span class="nc" id="L798">            cancel = menu.findItem(R.id.cancel);</span>
+<span class="nc" id="L799">            start = menu.findItem(R.id.start);</span>
+<span class="nc" id="L800">            pause = menu.findItem(R.id.pause);</span>
+<span class="nc" id="L801">            open = menu.findItem(R.id.menu_item_share);</span>
+<span class="nc" id="L802">            queue = menu.findItem(R.id.queue);</span>
+<span class="nc" id="L803">            showError = menu.findItem(R.id.error_message_view);</span>
+<span class="nc" id="L804">            delete = menu.findItem(R.id.delete);</span>
+<span class="nc" id="L805">            source = menu.findItem(R.id.source);</span>
+<span class="nc" id="L806">            checksum = menu.findItem(R.id.checksum);</span>
+
+<span class="nc" id="L808">            itemView.setHapticFeedbackEnabled(true);</span>
+
+<span class="nc" id="L810">            itemView.setOnClickListener(v -&gt; {</span>
+<span class="nc bnc" id="L811" title="All 2 branches missed.">                if (item.mission instanceof FinishedMission)</span>
+<span class="nc" id="L812">                    viewWithFileProvider(item.mission);</span>
+<span class="nc" id="L813">            });</span>
+
+<span class="nc" id="L815">            itemView.setOnLongClickListener(v -&gt; {</span>
+<span class="nc" id="L816">                v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);</span>
+<span class="nc" id="L817">                showPopupMenu();</span>
+<span class="nc" id="L818">                return true;</span>
+            });
+<span class="nc" id="L820">        }</span>
+
+        private void showPopupMenu() {
+<span class="nc" id="L823">            retry.setVisible(false);</span>
+<span class="nc" id="L824">            cancel.setVisible(false);</span>
+<span class="nc" id="L825">            start.setVisible(false);</span>
+<span class="nc" id="L826">            pause.setVisible(false);</span>
+<span class="nc" id="L827">            open.setVisible(false);</span>
+<span class="nc" id="L828">            queue.setVisible(false);</span>
+<span class="nc" id="L829">            showError.setVisible(false);</span>
+<span class="nc" id="L830">            delete.setVisible(false);</span>
+<span class="nc" id="L831">            source.setVisible(false);</span>
+<span class="nc" id="L832">            checksum.setVisible(false);</span>
+
+<span class="nc bnc" id="L834" title="All 2 branches missed.">            DownloadMission mission = item.mission instanceof DownloadMission ? (DownloadMission) item.mission : null;</span>
+
+<span class="nc bnc" id="L836" title="All 2 branches missed.">            if (mission != null) {</span>
+<span class="nc bnc" id="L837" title="All 2 branches missed.">                if (mission.hasInvalidStorage()) {</span>
+<span class="nc" id="L838">                    retry.setVisible(true);</span>
+<span class="nc" id="L839">                    delete.setVisible(true);</span>
+<span class="nc" id="L840">                    showError.setVisible(true);</span>
+<span class="nc bnc" id="L841" title="All 2 branches missed.">                } else if (mission.isPsRunning()) {</span>
+<span class="nc bnc" id="L842" title="All 2 branches missed.">                    switch (mission.errCode) {</span>
+                        case ERROR_INSUFFICIENT_STORAGE:
+                        case ERROR_POSTPROCESSING_HOLD:
+<span class="nc" id="L845">                            retry.setVisible(true);</span>
+<span class="nc" id="L846">                            cancel.setVisible(true);</span>
+<span class="nc" id="L847">                            showError.setVisible(true);</span>
+<span class="nc" id="L848">                            break;</span>
+                    }
+                } else {
+<span class="nc bnc" id="L851" title="All 2 branches missed.">                    if (mission.running) {</span>
+<span class="nc" id="L852">                        pause.setVisible(true);</span>
+                    } else {
+<span class="nc bnc" id="L854" title="All 2 branches missed.">                        if (mission.errCode != ERROR_NOTHING) {</span>
+<span class="nc" id="L855">                            showError.setVisible(true);</span>
+                        }
+
+<span class="nc" id="L858">                        queue.setChecked(mission.enqueued);</span>
+
+<span class="nc" id="L860">                        delete.setVisible(true);</span>
+
+<span class="nc bnc" id="L862" title="All 2 branches missed.">                        boolean flag = !mission.isPsFailed();</span>
+<span class="nc" id="L863">                        start.setVisible(flag);</span>
+<span class="nc" id="L864">                        queue.setVisible(flag);</span>
+<span class="nc" id="L865">                    }</span>
+                }
+            } else {
+<span class="nc" id="L868">                open.setVisible(true);</span>
+<span class="nc" id="L869">                delete.setVisible(true);</span>
+<span class="nc" id="L870">                checksum.setVisible(true);</span>
+            }
+
+<span class="nc bnc" id="L873" title="All 4 branches missed.">            if (item.mission.source != null &amp;&amp; !item.mission.source.isEmpty()) {</span>
+<span class="nc" id="L874">                source.setVisible(true);</span>
+            }
+
+<span class="nc" id="L877">            popupMenu.show();</span>
+<span class="nc" id="L878">        }</span>
+
+        private PopupMenu buildPopup(final View button) {
+<span class="nc" id="L881">            PopupMenu popup = new PopupMenu(mContext, button);</span>
+<span class="nc" id="L882">            popup.inflate(R.menu.mission);</span>
+<span class="nc" id="L883">            popup.setOnMenuItemClickListener(option -&gt; handlePopupItem(this, option));</span>
+
+<span class="nc" id="L885">            return popup;</span>
+        }
+    }
+
+    class ViewHolderHeader extends RecyclerView.ViewHolder {
+        TextView header;
+
+<span class="nc" id="L892">        ViewHolderHeader(View view) {</span>
+<span class="nc" id="L893">            super(view);</span>
+<span class="nc" id="L894">            header = itemView.findViewById(R.id.item_name);</span>
+<span class="nc" id="L895">        }</span>
+    }
+
+
+    static class ChecksumTask extends AsyncTask&lt;Object, Void, String&gt; {
+        ProgressDialog progressDialog;
+        WeakReference&lt;Activity&gt; weakReference;
+
+<span class="nc" id="L903">        ChecksumTask(@NonNull Context context) {</span>
+<span class="nc" id="L904">            weakReference = new WeakReference&lt;&gt;((Activity) context);</span>
+<span class="nc" id="L905">        }</span>
+
+        @Override
+        protected void onPreExecute() {
+<span class="nc" id="L909">            super.onPreExecute();</span>
+
+<span class="nc" id="L911">            Activity activity = getActivity();</span>
+<span class="nc bnc" id="L912" title="All 2 branches missed.">            if (activity != null) {</span>
+                // Create dialog
+<span class="nc" id="L914">                progressDialog = new ProgressDialog(activity);</span>
+<span class="nc" id="L915">                progressDialog.setCancelable(false);</span>
+<span class="nc" id="L916">                progressDialog.setMessage(activity.getString(R.string.msg_wait));</span>
+<span class="nc" id="L917">                progressDialog.show();</span>
+            }
+<span class="nc" id="L919">        }</span>
+
+        @Override
+        protected String doInBackground(Object... params) {
+<span class="nc" id="L923">            return Utility.checksum((StoredFileHelper) params[0], (String) params[1]);</span>
+        }
+
+        @Override
+        protected void onPostExecute(String result) {
+<span class="nc" id="L928">            super.onPostExecute(result);</span>
+
+<span class="nc bnc" id="L930" title="All 2 branches missed.">            if (progressDialog != null) {</span>
+<span class="nc" id="L931">                Utility.copyToClipboard(progressDialog.getContext(), result);</span>
+<span class="nc bnc" id="L932" title="All 2 branches missed.">                if (getActivity() != null) {</span>
+<span class="nc" id="L933">                    progressDialog.dismiss();</span>
+                }
+            }
+<span class="nc" id="L936">        }</span>
+
+        @Nullable
+        private Activity getActivity() {
+<span class="nc" id="L940">            Activity activity = weakReference.get();</span>
+
+<span class="nc bnc" id="L942" title="All 4 branches missed.">            if (activity != null &amp;&amp; activity.isFinishing()) {</span>
+<span class="nc" id="L943">                return null;</span>
+            } else {
+<span class="nc" id="L945">                return activity;</span>
+            }
+        }
+    }
+
+    public interface RecoverHelper {
+        void tryRecover(DownloadMission mission);
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

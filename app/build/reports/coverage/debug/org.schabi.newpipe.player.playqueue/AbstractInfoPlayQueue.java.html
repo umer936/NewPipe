@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractInfoPlayQueue.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.player.playqueue</a> &gt; <span class="el_source">AbstractInfoPlayQueue.java</span></div><h1>AbstractInfoPlayQueue.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.player.playqueue;
+
+import android.util.Log;
+
+import org.schabi.newpipe.extractor.InfoItem;
+import org.schabi.newpipe.extractor.ListExtractor;
+import org.schabi.newpipe.extractor.ListInfo;
+import org.schabi.newpipe.extractor.stream.StreamInfoItem;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+import io.reactivex.SingleObserver;
+import io.reactivex.annotations.NonNull;
+import io.reactivex.disposables.Disposable;
+
+abstract class AbstractInfoPlayQueue&lt;T extends ListInfo, U extends InfoItem&gt; extends PlayQueue {
+    boolean isInitial;
+    boolean isComplete;
+
+    final int serviceId;
+    final String baseUrl;
+    String nextUrl;
+
+    transient Disposable fetchReactor;
+
+    AbstractInfoPlayQueue(final U item) {
+<span class="nc" id="L29">        this(item.getServiceId(), item.getUrl(), null, Collections.emptyList(), 0);</span>
+<span class="nc" id="L30">    }</span>
+
+    AbstractInfoPlayQueue(final int serviceId,
+                          final String url,
+                          final String nextPageUrl,
+                          final List&lt;StreamInfoItem&gt; streams,
+                          final int index) {
+<span class="nc" id="L37">        super(index, extractListItems(streams));</span>
+
+<span class="nc" id="L39">        this.baseUrl = url;</span>
+<span class="nc" id="L40">        this.nextUrl = nextPageUrl;</span>
+<span class="nc" id="L41">        this.serviceId = serviceId;</span>
+
+<span class="nc" id="L43">        this.isInitial = streams.isEmpty();</span>
+<span class="nc bnc" id="L44" title="All 6 branches missed.">        this.isComplete = !isInitial &amp;&amp; (nextPageUrl == null || nextPageUrl.isEmpty());</span>
+<span class="nc" id="L45">    }</span>
+
+    abstract protected String getTag();
+
+    @Override
+    public boolean isComplete() {
+<span class="nc" id="L51">        return isComplete;</span>
+    }
+
+    SingleObserver&lt;T&gt; getHeadListObserver() {
+<span class="nc" id="L55">        return new SingleObserver&lt;T&gt;() {</span>
+            @Override
+            public void onSubscribe(@NonNull Disposable d) {
+<span class="nc bnc" id="L58" title="All 8 branches missed.">                if (isComplete || !isInitial || (fetchReactor != null &amp;&amp; !fetchReactor.isDisposed())) {</span>
+<span class="nc" id="L59">                    d.dispose();</span>
+                } else {
+<span class="nc" id="L61">                    fetchReactor = d;</span>
+                }
+<span class="nc" id="L63">            }</span>
+
+            @Override
+            public void onSuccess(@NonNull T result) {
+<span class="nc" id="L67">                isInitial = false;</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">                if (!result.hasNextPage()) isComplete = true;</span>
+<span class="nc" id="L69">                nextUrl = result.getNextPageUrl();</span>
+
+<span class="nc" id="L71">                append(extractListItems(result.getRelatedItems()));</span>
+
+<span class="nc" id="L73">                fetchReactor.dispose();</span>
+<span class="nc" id="L74">                fetchReactor = null;</span>
+<span class="nc" id="L75">            }</span>
+
+            @Override
+            public void onError(@NonNull Throwable e) {
+<span class="nc" id="L79">                Log.e(getTag(), &quot;Error fetching more playlist, marking playlist as complete.&quot;, e);</span>
+<span class="nc" id="L80">                isComplete = true;</span>
+<span class="nc" id="L81">                append(); // Notify change</span>
+<span class="nc" id="L82">            }</span>
+        };
+    }
+
+    SingleObserver&lt;ListExtractor.InfoItemsPage&gt; getNextPageObserver() {
+<span class="nc" id="L87">        return new SingleObserver&lt;ListExtractor.InfoItemsPage&gt;() {</span>
+            @Override
+            public void onSubscribe(@NonNull Disposable d) {
+<span class="nc bnc" id="L90" title="All 8 branches missed.">                if (isComplete || isInitial || (fetchReactor != null &amp;&amp; !fetchReactor.isDisposed())) {</span>
+<span class="nc" id="L91">                    d.dispose();</span>
+                } else {
+<span class="nc" id="L93">                    fetchReactor = d;</span>
+                }
+<span class="nc" id="L95">            }</span>
+
+            @Override
+            public void onSuccess(@NonNull ListExtractor.InfoItemsPage result) {
+<span class="nc bnc" id="L99" title="All 2 branches missed.">                if (!result.hasNextPage()) isComplete = true;</span>
+<span class="nc" id="L100">                nextUrl = result.getNextPageUrl();</span>
+
+<span class="nc" id="L102">                append(extractListItems(result.getItems()));</span>
+
+<span class="nc" id="L104">                fetchReactor.dispose();</span>
+<span class="nc" id="L105">                fetchReactor = null;</span>
+<span class="nc" id="L106">            }</span>
+
+            @Override
+            public void onError(@NonNull Throwable e) {
+<span class="nc" id="L110">                Log.e(getTag(), &quot;Error fetching more playlist, marking playlist as complete.&quot;, e);</span>
+<span class="nc" id="L111">                isComplete = true;</span>
+<span class="nc" id="L112">                append(); // Notify change</span>
+<span class="nc" id="L113">            }</span>
+        };
+    }
+
+    @Override
+    public void dispose() {
+<span class="nc" id="L119">        super.dispose();</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">        if (fetchReactor != null) fetchReactor.dispose();</span>
+<span class="nc" id="L121">        fetchReactor = null;</span>
+<span class="nc" id="L122">    }</span>
+
+    private static List&lt;PlayQueueItem&gt; extractListItems(final List&lt;StreamInfoItem&gt; infos) {
+<span class="nc" id="L125">        List&lt;PlayQueueItem&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L126" title="All 2 branches missed.">        for (final InfoItem stream : infos) {</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">            if (stream instanceof StreamInfoItem) {</span>
+<span class="nc" id="L128">                result.add(new PlayQueueItem((StreamInfoItem) stream));</span>
+            }
+<span class="nc" id="L130">        }</span>
+<span class="nc" id="L131">        return result;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

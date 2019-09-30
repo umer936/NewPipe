@@ -1,0 +1,1127 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PopupVideoPlayer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.player</a> &gt; <span class="el_source">PopupVideoPlayer.java</span></div><h1>PopupVideoPlayer.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2017 Mauricio Colli &lt;mauriciocolli@outlook.com&gt;
+ * PopupVideoPlayer.java is part of NewPipe
+ *
+ * License: GPL-3.0+
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package org.schabi.newpipe.player;
+
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.annotation.SuppressLint;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
+import android.content.res.Configuration;
+import android.graphics.Bitmap;
+import android.graphics.PixelFormat;
+import android.os.Build;
+import android.os.IBinder;
+import android.preference.PreferenceManager;
+import android.support.annotation.NonNull;
+import android.support.design.widget.FloatingActionButton;
+import android.support.v4.app.NotificationCompat;
+import android.util.DisplayMetrics;
+import android.util.Log;
+import android.view.GestureDetector;
+import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.WindowManager;
+import android.view.animation.AnticipateInterpolator;
+import android.widget.ImageButton;
+import android.widget.ImageView;
+import android.widget.PopupMenu;
+import android.widget.RemoteViews;
+import android.widget.SeekBar;
+import android.widget.TextView;
+
+import com.google.android.exoplayer2.C;
+import com.google.android.exoplayer2.PlaybackParameters;
+import com.google.android.exoplayer2.Player;
+import com.google.android.exoplayer2.text.CaptionStyleCompat;
+import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
+import com.google.android.exoplayer2.ui.SubtitleView;
+import com.nostra13.universalimageloader.core.assist.FailReason;
+
+import org.schabi.newpipe.BuildConfig;
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.extractor.stream.VideoStream;
+import org.schabi.newpipe.player.event.PlayerEventListener;
+import org.schabi.newpipe.player.helper.LockManager;
+import org.schabi.newpipe.player.helper.PlayerHelper;
+import org.schabi.newpipe.player.resolver.MediaSourceTag;
+import org.schabi.newpipe.player.resolver.VideoPlaybackResolver;
+import org.schabi.newpipe.util.ListHelper;
+import org.schabi.newpipe.util.NavigationHelper;
+import org.schabi.newpipe.util.ThemeHelper;
+
+import java.util.List;
+
+import static org.schabi.newpipe.player.BasePlayer.STATE_PLAYING;
+import static org.schabi.newpipe.player.VideoPlayer.DEFAULT_CONTROLS_DURATION;
+import static org.schabi.newpipe.player.VideoPlayer.DEFAULT_CONTROLS_HIDE_TIME;
+import static org.schabi.newpipe.util.AnimationUtils.animateView;
+
+/**
+ * Service Popup Player implementing VideoPlayer
+ *
+ * @author mauriciocolli
+ */
+<span class="nc" id="L89">public final class PopupVideoPlayer extends Service {</span>
+    private static final String TAG = &quot;.PopupVideoPlayer&quot;;
+<span class="nc" id="L91">    private static final boolean DEBUG = BasePlayer.DEBUG;</span>
+
+    private static final int NOTIFICATION_ID = 40028922;
+    public static final String ACTION_CLOSE = &quot;org.schabi.newpipe.player.PopupVideoPlayer.CLOSE&quot;;
+    public static final String ACTION_PLAY_PAUSE = &quot;org.schabi.newpipe.player.PopupVideoPlayer.PLAY_PAUSE&quot;;
+    public static final String ACTION_REPEAT = &quot;org.schabi.newpipe.player.PopupVideoPlayer.REPEAT&quot;;
+
+    private static final String POPUP_SAVED_WIDTH = &quot;popup_saved_width&quot;;
+    private static final String POPUP_SAVED_X = &quot;popup_saved_x&quot;;
+    private static final String POPUP_SAVED_Y = &quot;popup_saved_y&quot;;
+
+    private static final int MINIMUM_SHOW_EXTRA_WIDTH_DP = 300;
+
+    private static final int IDLE_WINDOW_FLAGS = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+            WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM;
+    private static final int ONGOING_PLAYBACK_WINDOW_FLAGS = IDLE_WINDOW_FLAGS |
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
+
+    private WindowManager windowManager;
+    private WindowManager.LayoutParams popupLayoutParams;
+    private GestureDetector popupGestureDetector;
+
+    private View closeOverlayView;
+    private FloatingActionButton closeOverlayButton;
+
+    private int tossFlingVelocity;
+
+    private float screenWidth, screenHeight;
+    private float popupWidth, popupHeight;
+
+    private float minimumWidth, minimumHeight;
+    private float maximumWidth, maximumHeight;
+
+    private NotificationManager notificationManager;
+    private NotificationCompat.Builder notBuilder;
+    private RemoteViews notRemoteView;
+
+    private VideoPlayerImpl playerImpl;
+    private LockManager lockManager;
+<span class="nc" id="L130">    private boolean isPopupClosing = false;</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Service-Activity Binder
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private PlayerEventListener activityListener;
+    private IBinder mBinder;
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Service LifeCycle
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onCreate() {
+<span class="nc" id="L145">        windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);</span>
+<span class="nc" id="L146">        notificationManager = ((NotificationManager) getSystemService(NOTIFICATION_SERVICE));</span>
+
+<span class="nc" id="L148">        lockManager = new LockManager(this);</span>
+<span class="nc" id="L149">        playerImpl = new VideoPlayerImpl(this);</span>
+<span class="nc" id="L150">        ThemeHelper.setTheme(this);</span>
+
+<span class="nc" id="L152">        mBinder = new PlayerServiceBinder(playerImpl);</span>
+<span class="nc" id="L153">    }</span>
+
+    @Override
+    public int onStartCommand(final Intent intent, int flags, int startId) {
+<span class="nc bnc" id="L157" title="All 2 branches missed.">        if (DEBUG)</span>
+<span class="nc" id="L158">            Log.d(TAG, &quot;onStartCommand() called with: intent = [&quot; + intent + &quot;], flags = [&quot; + flags + &quot;], startId = [&quot; + startId + &quot;]&quot;);</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">        if (playerImpl.getPlayer() == null) {</span>
+<span class="nc" id="L160">            initPopup();</span>
+<span class="nc" id="L161">            initPopupCloseOverlay();</span>
+        }
+<span class="nc bnc" id="L163" title="All 2 branches missed.">        if (!playerImpl.isPlaying()) playerImpl.getPlayer().setPlayWhenReady(true);</span>
+
+<span class="nc" id="L165">        playerImpl.handleIntent(intent);</span>
+
+<span class="nc" id="L167">        return START_NOT_STICKY;</span>
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+<span class="nc bnc" id="L172" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onConfigurationChanged() called with: newConfig = [&quot; + newConfig + &quot;]&quot;);</span>
+<span class="nc" id="L173">        updateScreenSize();</span>
+<span class="nc" id="L174">        updatePopupSize(popupLayoutParams.width, -1);</span>
+<span class="nc" id="L175">        checkPopupPositionBounds();</span>
+<span class="nc" id="L176">    }</span>
+
+    @Override
+    public void onDestroy() {
+<span class="nc bnc" id="L180" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onDestroy() called&quot;);</span>
+<span class="nc" id="L181">        closePopup();</span>
+<span class="nc" id="L182">    }</span>
+
+    @Override
+    protected void attachBaseContext(Context base) {
+<span class="nc" id="L186">        super.attachBaseContext(AudioServiceLeakFix.preventLeakOf(base));</span>
+<span class="nc" id="L187">    }</span>
+
+    @Override
+    public IBinder onBind(Intent intent) {
+<span class="nc" id="L191">        return mBinder;</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Init
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @SuppressLint(&quot;RtlHardcoded&quot;)
+    private void initPopup() {
+<span class="nc bnc" id="L200" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;initPopup() called&quot;);</span>
+<span class="nc" id="L201">        View rootView = View.inflate(this, R.layout.player_popup, null);</span>
+<span class="nc" id="L202">        playerImpl.setup(rootView);</span>
+
+<span class="nc" id="L204">        tossFlingVelocity = PlayerHelper.getTossFlingVelocity(this);</span>
+
+<span class="nc" id="L206">        updateScreenSize();</span>
+
+<span class="nc" id="L208">        final boolean popupRememberSizeAndPos = PlayerHelper.isRememberingPopupDimensions(this);</span>
+<span class="nc" id="L209">        final float defaultSize = getResources().getDimension(R.dimen.popup_default_width);</span>
+<span class="nc" id="L210">        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);</span>
+<span class="nc bnc" id="L211" title="All 2 branches missed.">        popupWidth = popupRememberSizeAndPos ? sharedPreferences.getFloat(POPUP_SAVED_WIDTH, defaultSize) : defaultSize;</span>
+
+<span class="nc bnc" id="L213" title="All 2 branches missed.">        final int layoutParamType = Build.VERSION.SDK_INT &lt; android.os.Build.VERSION_CODES.O ?</span>
+                WindowManager.LayoutParams.TYPE_PHONE :
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
+
+<span class="nc" id="L217">        popupLayoutParams = new WindowManager.LayoutParams(</span>
+<span class="nc" id="L218">                (int) popupWidth, (int) getMinimumVideoHeight(popupWidth),</span>
+                layoutParamType,
+                IDLE_WINDOW_FLAGS,
+                PixelFormat.TRANSLUCENT);
+<span class="nc" id="L222">        popupLayoutParams.gravity = Gravity.LEFT | Gravity.TOP;</span>
+<span class="nc" id="L223">        popupLayoutParams.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;</span>
+
+<span class="nc" id="L225">        int centerX = (int) (screenWidth / 2f - popupWidth / 2f);</span>
+<span class="nc" id="L226">        int centerY = (int) (screenHeight / 2f - popupHeight / 2f);</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">        popupLayoutParams.x = popupRememberSizeAndPos ? sharedPreferences.getInt(POPUP_SAVED_X, centerX) : centerX;</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">        popupLayoutParams.y = popupRememberSizeAndPos ? sharedPreferences.getInt(POPUP_SAVED_Y, centerY) : centerY;</span>
+
+<span class="nc" id="L230">        checkPopupPositionBounds();</span>
+
+<span class="nc" id="L232">        PopupWindowGestureListener listener = new PopupWindowGestureListener();</span>
+<span class="nc" id="L233">        popupGestureDetector = new GestureDetector(this, listener);</span>
+<span class="nc" id="L234">        rootView.setOnTouchListener(listener);</span>
+
+<span class="nc" id="L236">        playerImpl.getLoadingPanel().setMinimumWidth(popupLayoutParams.width);</span>
+<span class="nc" id="L237">        playerImpl.getLoadingPanel().setMinimumHeight(popupLayoutParams.height);</span>
+<span class="nc" id="L238">        windowManager.addView(rootView, popupLayoutParams);</span>
+<span class="nc" id="L239">    }</span>
+
+    @SuppressLint(&quot;RtlHardcoded&quot;)
+    private void initPopupCloseOverlay() {
+<span class="nc bnc" id="L243" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;initPopupCloseOverlay() called&quot;);</span>
+<span class="nc" id="L244">        closeOverlayView = View.inflate(this, R.layout.player_popup_close_overlay, null);</span>
+<span class="nc" id="L245">        closeOverlayButton = closeOverlayView.findViewById(R.id.closeButton);</span>
+
+<span class="nc bnc" id="L247" title="All 2 branches missed.">        final int layoutParamType = Build.VERSION.SDK_INT &lt; android.os.Build.VERSION_CODES.O ?</span>
+                WindowManager.LayoutParams.TYPE_PHONE :
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
+<span class="nc" id="L250">        final int flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE</span>
+                | WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM;
+
+<span class="nc" id="L253">        WindowManager.LayoutParams closeOverlayLayoutParams = new WindowManager.LayoutParams(</span>
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
+                layoutParamType,
+                flags,
+                PixelFormat.TRANSLUCENT);
+<span class="nc" id="L258">        closeOverlayLayoutParams.gravity = Gravity.LEFT | Gravity.TOP;</span>
+<span class="nc" id="L259">        closeOverlayLayoutParams.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;</span>
+
+<span class="nc" id="L261">        closeOverlayButton.setVisibility(View.GONE);</span>
+<span class="nc" id="L262">        windowManager.addView(closeOverlayView, closeOverlayLayoutParams);</span>
+<span class="nc" id="L263">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Notification
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private void resetNotification() {
+<span class="nc" id="L270">        notBuilder = createNotification();</span>
+<span class="nc" id="L271">    }</span>
+
+    private NotificationCompat.Builder createNotification() {
+<span class="nc" id="L274">        notRemoteView = new RemoteViews(BuildConfig.APPLICATION_ID, R.layout.player_popup_notification);</span>
+
+<span class="nc" id="L276">        notRemoteView.setTextViewText(R.id.notificationSongName, playerImpl.getVideoTitle());</span>
+<span class="nc" id="L277">        notRemoteView.setTextViewText(R.id.notificationArtist, playerImpl.getUploaderName());</span>
+<span class="nc" id="L278">        notRemoteView.setImageViewBitmap(R.id.notificationCover, playerImpl.getThumbnail());</span>
+
+<span class="nc" id="L280">        notRemoteView.setOnClickPendingIntent(R.id.notificationPlayPause,</span>
+<span class="nc" id="L281">                PendingIntent.getBroadcast(this, NOTIFICATION_ID, new Intent(ACTION_PLAY_PAUSE), PendingIntent.FLAG_UPDATE_CURRENT));</span>
+<span class="nc" id="L282">        notRemoteView.setOnClickPendingIntent(R.id.notificationStop,</span>
+<span class="nc" id="L283">                PendingIntent.getBroadcast(this, NOTIFICATION_ID, new Intent(ACTION_CLOSE), PendingIntent.FLAG_UPDATE_CURRENT));</span>
+<span class="nc" id="L284">        notRemoteView.setOnClickPendingIntent(R.id.notificationRepeat,</span>
+<span class="nc" id="L285">                PendingIntent.getBroadcast(this, NOTIFICATION_ID, new Intent(ACTION_REPEAT), PendingIntent.FLAG_UPDATE_CURRENT));</span>
+
+        // Starts popup player activity -- attempts to unlock lockscreen
+<span class="nc" id="L288">        final Intent intent = NavigationHelper.getPopupPlayerActivityIntent(this);</span>
+<span class="nc" id="L289">        notRemoteView.setOnClickPendingIntent(R.id.notificationContent,</span>
+<span class="nc" id="L290">                PendingIntent.getActivity(this, NOTIFICATION_ID, intent, PendingIntent.FLAG_UPDATE_CURRENT));</span>
+
+<span class="nc" id="L292">        setRepeatModeRemote(notRemoteView, playerImpl.getRepeatMode());</span>
+
+<span class="nc" id="L294">        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, getString(R.string.notification_channel_id))</span>
+<span class="nc" id="L295">                .setOngoing(true)</span>
+<span class="nc" id="L296">                .setSmallIcon(R.drawable.ic_newpipe_triangle_white)</span>
+<span class="nc" id="L297">                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)</span>
+<span class="nc" id="L298">                .setContent(notRemoteView);</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">        if (android.os.Build.VERSION.SDK_INT &gt;= android.os.Build.VERSION_CODES.JELLY_BEAN) {</span>
+<span class="nc" id="L300">            builder.setPriority(NotificationCompat.PRIORITY_MAX);</span>
+        }
+<span class="nc" id="L302">        return builder;</span>
+    }
+
+    /**
+     * Updates the notification, and the play/pause button in it.
+     * Used for changes on the remoteView
+     *
+     * @param drawableId if != -1, sets the drawable with that id on the play/pause button
+     */
+    private void updateNotification(int drawableId) {
+<span class="nc bnc" id="L312" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;updateNotification() called with: drawableId = [&quot; + drawableId + &quot;]&quot;);</span>
+<span class="nc bnc" id="L313" title="All 4 branches missed.">        if (notBuilder == null || notRemoteView == null) return;</span>
+<span class="nc bnc" id="L314" title="All 2 branches missed.">        if (drawableId != -1) notRemoteView.setImageViewResource(R.id.notificationPlayPause, drawableId);</span>
+<span class="nc" id="L315">        notificationManager.notify(NOTIFICATION_ID, notBuilder.build());</span>
+<span class="nc" id="L316">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Misc
+    //////////////////////////////////////////////////////////////////////////*/
+
+    public void closePopup() {
+<span class="nc bnc" id="L323" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;closePopup() called, isPopupClosing = &quot; + isPopupClosing);</span>
+<span class="nc bnc" id="L324" title="All 2 branches missed.">        if (isPopupClosing) return;</span>
+<span class="nc" id="L325">        isPopupClosing = true;</span>
+
+<span class="nc bnc" id="L327" title="All 2 branches missed.">        if (playerImpl != null) {</span>
+<span class="nc" id="L328">            playerImpl.savePlaybackState();</span>
+<span class="nc bnc" id="L329" title="All 2 branches missed.">            if (playerImpl.getRootView() != null) {</span>
+<span class="nc" id="L330">                windowManager.removeView(playerImpl.getRootView());</span>
+            }
+<span class="nc" id="L332">            playerImpl.setRootView(null);</span>
+<span class="nc" id="L333">            playerImpl.stopActivityBinding();</span>
+<span class="nc" id="L334">            playerImpl.destroy();</span>
+<span class="nc" id="L335">            playerImpl = null;</span>
+        }
+
+<span class="nc" id="L338">        mBinder = null;</span>
+<span class="nc bnc" id="L339" title="All 2 branches missed.">        if (lockManager != null) lockManager.releaseWifiAndCpu();</span>
+<span class="nc bnc" id="L340" title="All 2 branches missed.">        if (notificationManager != null) notificationManager.cancel(NOTIFICATION_ID);</span>
+
+<span class="nc" id="L342">        animateOverlayAndFinishService();</span>
+<span class="nc" id="L343">    }</span>
+
+    private void animateOverlayAndFinishService() {
+<span class="nc" id="L346">        final int targetTranslationY = (int) (closeOverlayButton.getRootView().getHeight() - closeOverlayButton.getY());</span>
+
+<span class="nc" id="L348">        closeOverlayButton.animate().setListener(null).cancel();</span>
+<span class="nc" id="L349">        closeOverlayButton.animate()</span>
+<span class="nc" id="L350">                .setInterpolator(new AnticipateInterpolator())</span>
+<span class="nc" id="L351">                .translationY(targetTranslationY)</span>
+<span class="nc" id="L352">                .setDuration(400)</span>
+<span class="nc" id="L353">                .setListener(new AnimatorListenerAdapter() {</span>
+                    @Override
+                    public void onAnimationCancel(Animator animation) {
+<span class="nc" id="L356">                        end();</span>
+<span class="nc" id="L357">                    }</span>
+
+                    @Override
+                    public void onAnimationEnd(Animator animation) {
+<span class="nc" id="L361">                        end();</span>
+<span class="nc" id="L362">                    }</span>
+
+                    private void end() {
+<span class="nc" id="L365">                        windowManager.removeView(closeOverlayView);</span>
+
+<span class="nc" id="L367">                        stopForeground(true);</span>
+<span class="nc" id="L368">                        stopSelf();</span>
+<span class="nc" id="L369">                    }</span>
+<span class="nc" id="L370">                }).start();</span>
+<span class="nc" id="L371">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Utils
+    //////////////////////////////////////////////////////////////////////////*/
+
+    /**
+     * @see #checkPopupPositionBounds(float, float)
+     */
+    @SuppressWarnings(&quot;UnusedReturnValue&quot;)
+    private boolean checkPopupPositionBounds() {
+<span class="nc" id="L382">        return checkPopupPositionBounds(screenWidth, screenHeight);</span>
+    }
+
+    /**
+     * Check if {@link #popupLayoutParams}' position is within a arbitrary boundary that goes from (0,0) to (boundaryWidth,boundaryHeight).
+     * &lt;p&gt;
+     * If it's out of these boundaries, {@link #popupLayoutParams}' position is changed and {@code true} is returned
+     * to represent this change.
+     *
+     * @return if the popup was out of bounds and have been moved back to it
+     */
+    private boolean checkPopupPositionBounds(final float boundaryWidth, final float boundaryHeight) {
+<span class="nc bnc" id="L394" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L395">            Log.d(TAG, &quot;checkPopupPositionBounds() called with: boundaryWidth = [&quot; + boundaryWidth + &quot;], boundaryHeight = [&quot; + boundaryHeight + &quot;]&quot;);</span>
+        }
+
+<span class="nc bnc" id="L398" title="All 2 branches missed.">        if (popupLayoutParams.x &lt; 0) {</span>
+<span class="nc" id="L399">            popupLayoutParams.x = 0;</span>
+<span class="nc" id="L400">            return true;</span>
+<span class="nc bnc" id="L401" title="All 2 branches missed.">        } else if (popupLayoutParams.x &gt; boundaryWidth - popupLayoutParams.width) {</span>
+<span class="nc" id="L402">            popupLayoutParams.x = (int) (boundaryWidth - popupLayoutParams.width);</span>
+<span class="nc" id="L403">            return true;</span>
+        }
+
+<span class="nc bnc" id="L406" title="All 2 branches missed.">        if (popupLayoutParams.y &lt; 0) {</span>
+<span class="nc" id="L407">            popupLayoutParams.y = 0;</span>
+<span class="nc" id="L408">            return true;</span>
+<span class="nc bnc" id="L409" title="All 2 branches missed.">        } else if (popupLayoutParams.y &gt; boundaryHeight - popupLayoutParams.height) {</span>
+<span class="nc" id="L410">            popupLayoutParams.y = (int) (boundaryHeight - popupLayoutParams.height);</span>
+<span class="nc" id="L411">            return true;</span>
+        }
+
+<span class="nc" id="L414">        return false;</span>
+    }
+
+    private void savePositionAndSize() {
+<span class="nc" id="L418">        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(PopupVideoPlayer.this);</span>
+<span class="nc" id="L419">        sharedPreferences.edit().putInt(POPUP_SAVED_X, popupLayoutParams.x).apply();</span>
+<span class="nc" id="L420">        sharedPreferences.edit().putInt(POPUP_SAVED_Y, popupLayoutParams.y).apply();</span>
+<span class="nc" id="L421">        sharedPreferences.edit().putFloat(POPUP_SAVED_WIDTH, popupLayoutParams.width).apply();</span>
+<span class="nc" id="L422">    }</span>
+
+    private float getMinimumVideoHeight(float width) {
+        //if (DEBUG) Log.d(TAG, &quot;getMinimumVideoHeight() called with: width = [&quot; + width + &quot;], returned: &quot; + height);
+<span class="nc" id="L426">        return width / (16.0f / 9.0f); // Respect the 16:9 ratio that most videos have</span>
+    }
+
+    private void updateScreenSize() {
+<span class="nc" id="L430">        DisplayMetrics metrics = new DisplayMetrics();</span>
+<span class="nc" id="L431">        windowManager.getDefaultDisplay().getMetrics(metrics);</span>
+
+<span class="nc" id="L433">        screenWidth = metrics.widthPixels;</span>
+<span class="nc" id="L434">        screenHeight = metrics.heightPixels;</span>
+<span class="nc bnc" id="L435" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;updateScreenSize() called &gt; screenWidth = &quot; + screenWidth + &quot;, screenHeight = &quot; + screenHeight);</span>
+
+<span class="nc" id="L437">        popupWidth = getResources().getDimension(R.dimen.popup_default_width);</span>
+<span class="nc" id="L438">        popupHeight = getMinimumVideoHeight(popupWidth);</span>
+
+<span class="nc" id="L440">        minimumWidth = getResources().getDimension(R.dimen.popup_minimum_width);</span>
+<span class="nc" id="L441">        minimumHeight = getMinimumVideoHeight(minimumWidth);</span>
+
+<span class="nc" id="L443">        maximumWidth = screenWidth;</span>
+<span class="nc" id="L444">        maximumHeight = screenHeight;</span>
+<span class="nc" id="L445">    }</span>
+
+    private void updatePopupSize(int width, int height) {
+<span class="nc bnc" id="L448" title="All 2 branches missed.">        if (playerImpl == null) return;</span>
+<span class="nc bnc" id="L449" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;updatePopupSize() called with: width = [&quot; + width + &quot;], height = [&quot; + height + &quot;]&quot;);</span>
+
+<span class="nc bnc" id="L451" title="All 4 branches missed.">        width = (int) (width &gt; maximumWidth ? maximumWidth : width &lt; minimumWidth ? minimumWidth : width);</span>
+
+<span class="nc bnc" id="L453" title="All 2 branches missed.">        if (height == -1) height = (int) getMinimumVideoHeight(width);</span>
+<span class="nc bnc" id="L454" title="All 4 branches missed.">        else height = (int) (height &gt; maximumHeight ? maximumHeight : height &lt; minimumHeight ? minimumHeight : height);</span>
+
+<span class="nc" id="L456">        popupLayoutParams.width = width;</span>
+<span class="nc" id="L457">        popupLayoutParams.height = height;</span>
+<span class="nc" id="L458">        popupWidth = width;</span>
+<span class="nc" id="L459">        popupHeight = height;</span>
+
+<span class="nc bnc" id="L461" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;updatePopupSize() updated values:  width = [&quot; + width + &quot;], height = [&quot; + height + &quot;]&quot;);</span>
+<span class="nc" id="L462">        windowManager.updateViewLayout(playerImpl.getRootView(), popupLayoutParams);</span>
+<span class="nc" id="L463">    }</span>
+
+    protected void setRepeatModeRemote(final RemoteViews remoteViews, final int repeatMode) {
+<span class="nc" id="L466">        final String methodName = &quot;setImageResource&quot;;</span>
+
+<span class="nc bnc" id="L468" title="All 2 branches missed.">        if (remoteViews == null) return;</span>
+
+<span class="nc bnc" id="L470" title="All 4 branches missed.">        switch (repeatMode) {</span>
+            case Player.REPEAT_MODE_OFF:
+<span class="nc" id="L472">                remoteViews.setInt(R.id.notificationRepeat, methodName, R.drawable.exo_controls_repeat_off);</span>
+<span class="nc" id="L473">                break;</span>
+            case Player.REPEAT_MODE_ONE:
+<span class="nc" id="L475">                remoteViews.setInt(R.id.notificationRepeat, methodName, R.drawable.exo_controls_repeat_one);</span>
+<span class="nc" id="L476">                break;</span>
+            case Player.REPEAT_MODE_ALL:
+<span class="nc" id="L478">                remoteViews.setInt(R.id.notificationRepeat, methodName, R.drawable.exo_controls_repeat_all);</span>
+                break;
+        }
+<span class="nc" id="L481">    }</span>
+
+    private void updateWindowFlags(final int flags) {
+<span class="nc bnc" id="L484" title="All 6 branches missed.">        if (popupLayoutParams == null || windowManager == null || playerImpl == null) return;</span>
+
+<span class="nc" id="L486">        popupLayoutParams.flags = flags;</span>
+<span class="nc" id="L487">        windowManager.updateViewLayout(playerImpl.getRootView(), popupLayoutParams);</span>
+<span class="nc" id="L488">    }</span>
+    ///////////////////////////////////////////////////////////////////////////
+
+    protected class VideoPlayerImpl extends VideoPlayer implements View.OnLayoutChangeListener {
+        private TextView resizingIndicator;
+        private ImageButton fullScreenButton;
+        private ImageView videoPlayPause;
+
+        private View extraOptionsView;
+        private View closingOverlayView;
+
+        @Override
+        public void handleIntent(Intent intent) {
+<span class="nc" id="L501">            super.handleIntent(intent);</span>
+
+<span class="nc" id="L503">            resetNotification();</span>
+<span class="nc" id="L504">            startForeground(NOTIFICATION_ID, notBuilder.build());</span>
+<span class="nc" id="L505">        }</span>
+
+<span class="nc" id="L507">        VideoPlayerImpl(final Context context) {</span>
+<span class="nc" id="L508">            super(&quot;VideoPlayerImpl&quot; + PopupVideoPlayer.TAG, context);</span>
+<span class="nc" id="L509">        }</span>
+
+        @Override
+        public void initViews(View rootView) {
+<span class="nc" id="L513">            super.initViews(rootView);</span>
+<span class="nc" id="L514">            resizingIndicator = rootView.findViewById(R.id.resizing_indicator);</span>
+<span class="nc" id="L515">            fullScreenButton = rootView.findViewById(R.id.fullScreenButton);</span>
+<span class="nc" id="L516">            fullScreenButton.setOnClickListener(v -&gt; onFullScreenButtonClicked());</span>
+<span class="nc" id="L517">            videoPlayPause = rootView.findViewById(R.id.videoPlayPause);</span>
+
+<span class="nc" id="L519">            extraOptionsView = rootView.findViewById(R.id.extraOptionsView);</span>
+<span class="nc" id="L520">            closingOverlayView = rootView.findViewById(R.id.closingOverlay);</span>
+<span class="nc" id="L521">            rootView.addOnLayoutChangeListener(this);</span>
+<span class="nc" id="L522">        }</span>
+
+        @Override
+        public void initListeners() {
+<span class="nc" id="L526">            super.initListeners();</span>
+<span class="nc" id="L527">            videoPlayPause.setOnClickListener(v -&gt; onPlayPause());</span>
+<span class="nc" id="L528">        }</span>
+
+        @Override
+        protected void setupSubtitleView(@NonNull SubtitleView view,
+                                         final float captionScale,
+                                         @NonNull final CaptionStyleCompat captionStyle) {
+<span class="nc" id="L534">            float captionRatio = (captionScale - 1f) / 5f + 1f;</span>
+<span class="nc" id="L535">            view.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * captionRatio);</span>
+<span class="nc" id="L536">            view.setApplyEmbeddedStyles(captionStyle.equals(CaptionStyleCompat.DEFAULT));</span>
+<span class="nc" id="L537">            view.setStyle(captionStyle);</span>
+<span class="nc" id="L538">        }</span>
+
+        @Override
+        public void onLayoutChange(final View view, int left, int top, int right, int bottom,
+                                   int oldLeft, int oldTop, int oldRight, int oldBottom) {
+<span class="nc" id="L543">            float widthDp = Math.abs(right - left) / getResources().getDisplayMetrics().density;</span>
+<span class="nc bnc" id="L544" title="All 2 branches missed.">            final int visibility = widthDp &gt; MINIMUM_SHOW_EXTRA_WIDTH_DP ? View.VISIBLE : View.GONE;</span>
+<span class="nc" id="L545">            extraOptionsView.setVisibility(visibility);</span>
+<span class="nc" id="L546">        }</span>
+
+        @Override
+        public void destroy() {
+<span class="nc bnc" id="L550" title="All 2 branches missed.">            if (notRemoteView != null) notRemoteView.setImageViewBitmap(R.id.notificationCover, null);</span>
+<span class="nc" id="L551">            super.destroy();</span>
+<span class="nc" id="L552">        }</span>
+
+        @Override
+        public void onFullScreenButtonClicked() {
+<span class="nc" id="L556">            super.onFullScreenButtonClicked();</span>
+
+<span class="nc bnc" id="L558" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;onFullScreenButtonClicked() called&quot;);</span>
+
+<span class="nc" id="L560">            setRecovery();</span>
+<span class="nc" id="L561">            final Intent intent = NavigationHelper.getPlayerIntent(</span>
+                    context,
+                    MainVideoPlayer.class,
+<span class="nc" id="L564">                    this.getPlayQueue(),</span>
+<span class="nc" id="L565">                    this.getRepeatMode(),</span>
+<span class="nc" id="L566">                    this.getPlaybackSpeed(),</span>
+<span class="nc" id="L567">                    this.getPlaybackPitch(),</span>
+<span class="nc" id="L568">                    this.getPlaybackSkipSilence(),</span>
+<span class="nc" id="L569">                    this.getPlaybackQuality(),</span>
+                    false
+            );
+<span class="nc" id="L572">            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);</span>
+<span class="nc" id="L573">            context.startActivity(intent);</span>
+<span class="nc" id="L574">            closePopup();</span>
+<span class="nc" id="L575">        }</span>
+
+        @Override
+        public void onDismiss(PopupMenu menu) {
+<span class="nc" id="L579">            super.onDismiss(menu);</span>
+<span class="nc bnc" id="L580" title="All 2 branches missed.">            if (isPlaying()) hideControls(500, 0);</span>
+<span class="nc" id="L581">        }</span>
+
+        @Override
+        protected int nextResizeMode(int resizeMode) {
+<span class="nc bnc" id="L585" title="All 2 branches missed.">            if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_FILL) {</span>
+<span class="nc" id="L586">                return AspectRatioFrameLayout.RESIZE_MODE_FIT;</span>
+            } else {
+<span class="nc" id="L588">                return AspectRatioFrameLayout.RESIZE_MODE_FILL;</span>
+            }
+        }
+
+        @Override
+        public void onStopTrackingTouch(SeekBar seekBar) {
+<span class="nc" id="L594">            super.onStopTrackingTouch(seekBar);</span>
+<span class="nc bnc" id="L595" title="All 2 branches missed.">            if (wasPlaying()) {</span>
+<span class="nc" id="L596">                hideControls(100, 0);</span>
+            }
+<span class="nc" id="L598">        }</span>
+
+        @Override
+        public void onShuffleClicked() {
+<span class="nc" id="L602">            super.onShuffleClicked();</span>
+<span class="nc" id="L603">            updatePlayback();</span>
+<span class="nc" id="L604">        }</span>
+
+        @Override
+        public void onUpdateProgress(int currentProgress, int duration, int bufferPercent) {
+<span class="nc" id="L608">            updateProgress(currentProgress, duration, bufferPercent);</span>
+<span class="nc" id="L609">            super.onUpdateProgress(currentProgress, duration, bufferPercent);</span>
+<span class="nc" id="L610">        }</span>
+
+        @Override
+        protected VideoPlaybackResolver.QualityResolver getQualityResolver() {
+<span class="nc" id="L614">            return new VideoPlaybackResolver.QualityResolver() {</span>
+                @Override
+                public int getDefaultResolutionIndex(List&lt;VideoStream&gt; sortedVideos) {
+<span class="nc" id="L617">                    return ListHelper.getPopupDefaultResolutionIndex(context, sortedVideos);</span>
+                }
+
+                @Override
+                public int getOverrideResolutionIndex(List&lt;VideoStream&gt; sortedVideos,
+                                                      String playbackQuality) {
+<span class="nc" id="L623">                    return ListHelper.getPopupResolutionIndex(context, sortedVideos,</span>
+                            playbackQuality);
+                }
+            };
+        }
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // Thumbnail Loading
+        //////////////////////////////////////////////////////////////////////////*/
+
+        @Override
+        public void onLoadingComplete(String imageUri, View view, Bitmap loadedImage) {
+<span class="nc" id="L635">            super.onLoadingComplete(imageUri, view, loadedImage);</span>
+<span class="nc bnc" id="L636" title="All 2 branches missed.">            if (playerImpl == null) return;</span>
+            // rebuild notification here since remote view does not release bitmaps,
+            // causing memory leaks
+<span class="nc" id="L639">            resetNotification();</span>
+<span class="nc" id="L640">            updateNotification(-1);</span>
+<span class="nc" id="L641">        }</span>
+
+        @Override
+        public void onLoadingFailed(String imageUri, View view, FailReason failReason) {
+<span class="nc" id="L645">            super.onLoadingFailed(imageUri, view, failReason);</span>
+<span class="nc" id="L646">            resetNotification();</span>
+<span class="nc" id="L647">            updateNotification(-1);</span>
+<span class="nc" id="L648">        }</span>
+
+        @Override
+        public void onLoadingCancelled(String imageUri, View view) {
+<span class="nc" id="L652">            super.onLoadingCancelled(imageUri, view);</span>
+<span class="nc" id="L653">            resetNotification();</span>
+<span class="nc" id="L654">            updateNotification(-1);</span>
+<span class="nc" id="L655">        }</span>
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // Activity Event Listener
+        //////////////////////////////////////////////////////////////////////////*/
+
+        /*package-private*/ void setActivityListener(PlayerEventListener listener) {
+<span class="nc" id="L662">            activityListener = listener;</span>
+<span class="nc" id="L663">            updateMetadata();</span>
+<span class="nc" id="L664">            updatePlayback();</span>
+<span class="nc" id="L665">            triggerProgressUpdate();</span>
+<span class="nc" id="L666">        }</span>
+
+        /*package-private*/ void removeActivityListener(PlayerEventListener listener) {
+<span class="nc bnc" id="L669" title="All 2 branches missed.">            if (activityListener == listener) {</span>
+<span class="nc" id="L670">                activityListener = null;</span>
+            }
+<span class="nc" id="L672">        }</span>
+
+        private void updateMetadata() {
+<span class="nc bnc" id="L675" title="All 4 branches missed.">            if (activityListener != null &amp;&amp; getCurrentMetadata() != null) {</span>
+<span class="nc" id="L676">                activityListener.onMetadataUpdate(getCurrentMetadata().getMetadata());</span>
+            }
+<span class="nc" id="L678">        }</span>
+
+        private void updatePlayback() {
+<span class="nc bnc" id="L681" title="All 6 branches missed.">            if (activityListener != null &amp;&amp; simpleExoPlayer != null &amp;&amp; playQueue != null) {</span>
+<span class="nc" id="L682">                activityListener.onPlaybackUpdate(currentState, getRepeatMode(),</span>
+<span class="nc" id="L683">                        playQueue.isShuffled(), simpleExoPlayer.getPlaybackParameters());</span>
+            }
+<span class="nc" id="L685">        }</span>
+
+        private void updateProgress(int currentProgress, int duration, int bufferPercent) {
+<span class="nc bnc" id="L688" title="All 2 branches missed.">            if (activityListener != null) {</span>
+<span class="nc" id="L689">                activityListener.onProgressUpdate(currentProgress, duration, bufferPercent);</span>
+            }
+<span class="nc" id="L691">        }</span>
+
+        private void stopActivityBinding() {
+<span class="nc bnc" id="L694" title="All 2 branches missed.">            if (activityListener != null) {</span>
+<span class="nc" id="L695">                activityListener.onServiceStopped();</span>
+<span class="nc" id="L696">                activityListener = null;</span>
+            }
+<span class="nc" id="L698">        }</span>
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // ExoPlayer Video Listener
+        //////////////////////////////////////////////////////////////////////////*/
+
+        @Override
+        public void onRepeatModeChanged(int i) {
+<span class="nc" id="L706">            super.onRepeatModeChanged(i);</span>
+<span class="nc" id="L707">            setRepeatModeRemote(notRemoteView, i);</span>
+<span class="nc" id="L708">            updatePlayback();</span>
+<span class="nc" id="L709">            resetNotification();</span>
+<span class="nc" id="L710">            updateNotification(-1);</span>
+<span class="nc" id="L711">        }</span>
+
+        @Override
+        public void onPlaybackParametersChanged(PlaybackParameters playbackParameters) {
+<span class="nc" id="L715">            super.onPlaybackParametersChanged(playbackParameters);</span>
+<span class="nc" id="L716">            updatePlayback();</span>
+<span class="nc" id="L717">        }</span>
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // Playback Listener
+        //////////////////////////////////////////////////////////////////////////*/
+
+        protected void onMetadataChanged(@NonNull final MediaSourceTag tag) {
+<span class="nc" id="L724">            super.onMetadataChanged(tag);</span>
+<span class="nc" id="L725">            resetNotification();</span>
+<span class="nc" id="L726">            updateNotification(-1);</span>
+<span class="nc" id="L727">            updateMetadata();</span>
+<span class="nc" id="L728">        }</span>
+
+        @Override
+        public void onPlaybackShutdown() {
+<span class="nc" id="L732">            super.onPlaybackShutdown();</span>
+<span class="nc" id="L733">            closePopup();</span>
+<span class="nc" id="L734">        }</span>
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // Broadcast Receiver
+        //////////////////////////////////////////////////////////////////////////*/
+
+        @Override
+        protected void setupBroadcastReceiver(IntentFilter intentFilter) {
+<span class="nc" id="L742">            super.setupBroadcastReceiver(intentFilter);</span>
+<span class="nc bnc" id="L743" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;setupBroadcastReceiver() called with: intentFilter = [&quot; + intentFilter + &quot;]&quot;);</span>
+<span class="nc" id="L744">            intentFilter.addAction(ACTION_CLOSE);</span>
+<span class="nc" id="L745">            intentFilter.addAction(ACTION_PLAY_PAUSE);</span>
+<span class="nc" id="L746">            intentFilter.addAction(ACTION_REPEAT);</span>
+
+<span class="nc" id="L748">            intentFilter.addAction(Intent.ACTION_SCREEN_ON);</span>
+<span class="nc" id="L749">            intentFilter.addAction(Intent.ACTION_SCREEN_OFF);</span>
+<span class="nc" id="L750">        }</span>
+
+        @Override
+        public void onBroadcastReceived(Intent intent) {
+<span class="nc" id="L754">            super.onBroadcastReceived(intent);</span>
+<span class="nc bnc" id="L755" title="All 4 branches missed.">            if (intent == null || intent.getAction() == null) return;</span>
+<span class="nc bnc" id="L756" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;onBroadcastReceived() called with: intent = [&quot; + intent + &quot;]&quot;);</span>
+<span class="nc bnc" id="L757" title="All 22 branches missed.">            switch (intent.getAction()) {</span>
+                case ACTION_CLOSE:
+<span class="nc" id="L759">                    closePopup();</span>
+<span class="nc" id="L760">                    break;</span>
+                case ACTION_PLAY_PAUSE:
+<span class="nc" id="L762">                    onPlayPause();</span>
+<span class="nc" id="L763">                    break;</span>
+                case ACTION_REPEAT:
+<span class="nc" id="L765">                    onRepeatClicked();</span>
+<span class="nc" id="L766">                    break;</span>
+                case Intent.ACTION_SCREEN_ON:
+<span class="nc" id="L768">                    enableVideoRenderer(true);</span>
+<span class="nc" id="L769">                    break;</span>
+                case Intent.ACTION_SCREEN_OFF:
+<span class="nc" id="L771">                    enableVideoRenderer(false);</span>
+                    break;
+            }
+<span class="nc" id="L774">        }</span>
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // States
+        //////////////////////////////////////////////////////////////////////////*/
+
+        @Override
+        public void changeState(int state) {
+<span class="nc" id="L782">            super.changeState(state);</span>
+<span class="nc" id="L783">            updatePlayback();</span>
+<span class="nc" id="L784">        }</span>
+
+        @Override
+        public void onBlocked() {
+<span class="nc" id="L788">            super.onBlocked();</span>
+<span class="nc" id="L789">            resetNotification();</span>
+<span class="nc" id="L790">            updateNotification(R.drawable.ic_play_arrow_white);</span>
+<span class="nc" id="L791">        }</span>
+
+        @Override
+        public void onPlaying() {
+<span class="nc" id="L795">            super.onPlaying();</span>
+
+<span class="nc" id="L797">            updateWindowFlags(ONGOING_PLAYBACK_WINDOW_FLAGS);</span>
+
+<span class="nc" id="L799">            resetNotification();</span>
+<span class="nc" id="L800">            updateNotification(R.drawable.ic_pause_white);</span>
+
+<span class="nc" id="L802">            videoPlayPause.setBackgroundResource(R.drawable.ic_pause_white);</span>
+<span class="nc" id="L803">            hideControls(DEFAULT_CONTROLS_DURATION, DEFAULT_CONTROLS_HIDE_TIME);</span>
+
+<span class="nc" id="L805">            startForeground(NOTIFICATION_ID, notBuilder.build());</span>
+<span class="nc" id="L806">            lockManager.acquireWifiAndCpu();</span>
+<span class="nc" id="L807">        }</span>
+
+        @Override
+        public void onBuffering() {
+<span class="nc" id="L811">            super.onBuffering();</span>
+<span class="nc" id="L812">            resetNotification();</span>
+<span class="nc" id="L813">            updateNotification(R.drawable.ic_play_arrow_white);</span>
+<span class="nc" id="L814">        }</span>
+
+        @Override
+        public void onPaused() {
+<span class="nc" id="L818">            super.onPaused();</span>
+
+<span class="nc" id="L820">            updateWindowFlags(IDLE_WINDOW_FLAGS);</span>
+
+<span class="nc" id="L822">            resetNotification();</span>
+<span class="nc" id="L823">            updateNotification(R.drawable.ic_play_arrow_white);</span>
+
+<span class="nc" id="L825">            videoPlayPause.setBackgroundResource(R.drawable.ic_play_arrow_white);</span>
+<span class="nc" id="L826">            lockManager.releaseWifiAndCpu();</span>
+
+<span class="nc" id="L828">            stopForeground(false);</span>
+<span class="nc" id="L829">        }</span>
+
+        @Override
+        public void onPausedSeek() {
+<span class="nc" id="L833">            super.onPausedSeek();</span>
+<span class="nc" id="L834">            resetNotification();</span>
+<span class="nc" id="L835">            updateNotification(R.drawable.ic_play_arrow_white);</span>
+
+<span class="nc" id="L837">            videoPlayPause.setBackgroundResource(R.drawable.ic_pause_white);</span>
+<span class="nc" id="L838">        }</span>
+
+        @Override
+        public void onCompleted() {
+<span class="nc" id="L842">            super.onCompleted();</span>
+
+<span class="nc" id="L844">            updateWindowFlags(IDLE_WINDOW_FLAGS);</span>
+
+<span class="nc" id="L846">            resetNotification();</span>
+<span class="nc" id="L847">            updateNotification(R.drawable.ic_replay_white);</span>
+
+<span class="nc" id="L849">            videoPlayPause.setBackgroundResource(R.drawable.ic_replay_white);</span>
+<span class="nc" id="L850">            lockManager.releaseWifiAndCpu();</span>
+
+<span class="nc" id="L852">            stopForeground(false);</span>
+<span class="nc" id="L853">        }</span>
+
+        @Override
+        public void showControlsThenHide() {
+<span class="nc" id="L857">            videoPlayPause.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L858">            super.showControlsThenHide();</span>
+<span class="nc" id="L859">        }</span>
+
+        public void showControls(long duration) {
+<span class="nc" id="L862">            videoPlayPause.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L863">            super.showControls(duration);</span>
+<span class="nc" id="L864">        }</span>
+
+        public void hideControls(final long duration, long delay) {
+<span class="nc" id="L867">            super.hideControlsAndButton(duration, delay, videoPlayPause);</span>
+<span class="nc" id="L868">        }</span>
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // Utils
+        //////////////////////////////////////////////////////////////////////////*/
+
+        /*package-private*/ void enableVideoRenderer(final boolean enable) {
+<span class="nc" id="L875">            final int videoRendererIndex = getRendererIndex(C.TRACK_TYPE_VIDEO);</span>
+<span class="nc bnc" id="L876" title="All 2 branches missed.">            if (videoRendererIndex != RENDERER_UNAVAILABLE) {</span>
+<span class="nc bnc" id="L877" title="All 2 branches missed.">                trackSelector.setParameters(trackSelector.buildUponParameters()</span>
+<span class="nc" id="L878">                        .setRendererDisabled(videoRendererIndex, !enable));</span>
+            }
+<span class="nc" id="L880">        }</span>
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // Getters
+        //////////////////////////////////////////////////////////////////////////*/
+
+        @SuppressWarnings(&quot;WeakerAccess&quot;)
+        public TextView getResizingIndicator() {
+<span class="nc" id="L888">            return resizingIndicator;</span>
+        }
+
+        public View getClosingOverlayView() {
+<span class="nc" id="L892">            return closingOverlayView;</span>
+        }
+    }
+
+<span class="nc" id="L896">    private class PopupWindowGestureListener extends GestureDetector.SimpleOnGestureListener implements View.OnTouchListener {</span>
+        private int initialPopupX, initialPopupY;
+        private boolean isMoving;
+        private boolean isResizing;
+
+        @Override
+        public boolean onDoubleTap(MotionEvent e) {
+<span class="nc bnc" id="L903" title="All 2 branches missed.">            if (DEBUG)</span>
+<span class="nc" id="L904">                Log.d(TAG, &quot;onDoubleTap() called with: e = [&quot; + e + &quot;]&quot; + &quot;rawXy = &quot; + e.getRawX() + &quot;, &quot; + e.getRawY() + &quot;, xy = &quot; + e.getX() + &quot;, &quot; + e.getY());</span>
+<span class="nc bnc" id="L905" title="All 4 branches missed.">            if (playerImpl == null || !playerImpl.isPlaying()) return false;</span>
+
+<span class="nc" id="L907">            playerImpl.hideControls(0, 0);</span>
+
+<span class="nc bnc" id="L909" title="All 2 branches missed.">            if (e.getX() &gt; popupWidth / 2) {</span>
+<span class="nc" id="L910">                playerImpl.onFastForward();</span>
+            } else {
+<span class="nc" id="L912">                playerImpl.onFastRewind();</span>
+            }
+
+<span class="nc" id="L915">            return true;</span>
+        }
+
+        @Override
+        public boolean onSingleTapConfirmed(MotionEvent e) {
+<span class="nc bnc" id="L920" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;onSingleTapConfirmed() called with: e = [&quot; + e + &quot;]&quot;);</span>
+<span class="nc bnc" id="L921" title="All 4 branches missed.">            if (playerImpl == null || playerImpl.getPlayer() == null) return false;</span>
+<span class="nc bnc" id="L922" title="All 2 branches missed.">            if (playerImpl.isControlsVisible()) {</span>
+<span class="nc" id="L923">                playerImpl.hideControls(100, 100);</span>
+            } else {
+<span class="nc" id="L925">                playerImpl.showControlsThenHide();</span>
+
+            }
+<span class="nc" id="L928">            return true;</span>
+        }
+
+        @Override
+        public boolean onDown(MotionEvent e) {
+<span class="nc bnc" id="L933" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;onDown() called with: e = [&quot; + e + &quot;]&quot;);</span>
+
+            // Fix popup position when the user touch it, it may have the wrong one
+            // because the soft input is visible (the draggable area is currently resized).
+<span class="nc" id="L937">            checkPopupPositionBounds(closeOverlayView.getWidth(), closeOverlayView.getHeight());</span>
+
+<span class="nc" id="L939">            initialPopupX = popupLayoutParams.x;</span>
+<span class="nc" id="L940">            initialPopupY = popupLayoutParams.y;</span>
+<span class="nc" id="L941">            popupWidth = popupLayoutParams.width;</span>
+<span class="nc" id="L942">            popupHeight = popupLayoutParams.height;</span>
+<span class="nc" id="L943">            return super.onDown(e);</span>
+        }
+
+        @Override
+        public void onLongPress(MotionEvent e) {
+<span class="nc bnc" id="L948" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;onLongPress() called with: e = [&quot; + e + &quot;]&quot;);</span>
+<span class="nc" id="L949">            updateScreenSize();</span>
+<span class="nc" id="L950">            checkPopupPositionBounds();</span>
+<span class="nc" id="L951">            updatePopupSize((int) screenWidth, -1);</span>
+<span class="nc" id="L952">        }</span>
+
+        @Override
+        public boolean onScroll(MotionEvent initialEvent, MotionEvent movingEvent, float distanceX, float distanceY) {
+<span class="nc bnc" id="L956" title="All 4 branches missed.">            if (isResizing || playerImpl == null) return super.onScroll(initialEvent, movingEvent, distanceX, distanceY);</span>
+
+<span class="nc bnc" id="L958" title="All 2 branches missed.">            if (!isMoving) {</span>
+<span class="nc" id="L959">                animateView(closeOverlayButton, true, 200);</span>
+            }
+
+<span class="nc" id="L962">            isMoving = true;</span>
+
+<span class="nc" id="L964">            float diffX = (int) (movingEvent.getRawX() - initialEvent.getRawX()), posX = (int) (initialPopupX + diffX);</span>
+<span class="nc" id="L965">            float diffY = (int) (movingEvent.getRawY() - initialEvent.getRawY()), posY = (int) (initialPopupY + diffY);</span>
+
+<span class="nc bnc" id="L967" title="All 2 branches missed.">            if (posX &gt; (screenWidth - popupWidth)) posX = (int) (screenWidth - popupWidth);</span>
+<span class="nc bnc" id="L968" title="All 2 branches missed.">            else if (posX &lt; 0) posX = 0;</span>
+
+<span class="nc bnc" id="L970" title="All 2 branches missed.">            if (posY &gt; (screenHeight - popupHeight)) posY = (int) (screenHeight - popupHeight);</span>
+<span class="nc bnc" id="L971" title="All 2 branches missed.">            else if (posY &lt; 0) posY = 0;</span>
+
+<span class="nc" id="L973">            popupLayoutParams.x = (int) posX;</span>
+<span class="nc" id="L974">            popupLayoutParams.y = (int) posY;</span>
+
+<span class="nc" id="L976">            final View closingOverlayView = playerImpl.getClosingOverlayView();</span>
+<span class="nc bnc" id="L977" title="All 2 branches missed.">            if (isInsideClosingRadius(movingEvent)) {</span>
+<span class="nc bnc" id="L978" title="All 2 branches missed.">                if (closingOverlayView.getVisibility() == View.GONE) {</span>
+<span class="nc" id="L979">                    animateView(closingOverlayView, true, 250);</span>
+                }
+            } else {
+<span class="nc bnc" id="L982" title="All 2 branches missed.">                if (closingOverlayView.getVisibility() == View.VISIBLE) {</span>
+<span class="nc" id="L983">                    animateView(closingOverlayView, false, 0);</span>
+                }
+            }
+
+            //noinspection PointlessBooleanExpression
+<span class="nc bnc" id="L988" title="All 2 branches missed.">            if (DEBUG &amp;&amp; false) {</span>
+                Log.d(TAG, &quot;PopupVideoPlayer.onScroll = &quot; +
+                        &quot;, e1.getRaw = [&quot; + initialEvent.getRawX() + &quot;, &quot; + initialEvent.getRawY() + &quot;]&quot; + &quot;, e1.getX,Y = [&quot; + initialEvent.getX() + &quot;, &quot; + initialEvent.getY() + &quot;]&quot; +
+                        &quot;, e2.getRaw = [&quot; + movingEvent.getRawX() + &quot;, &quot; + movingEvent.getRawY() + &quot;]&quot; + &quot;, e2.getX,Y = [&quot; + movingEvent.getX() + &quot;, &quot; + movingEvent.getY() + &quot;]&quot; +
+                        &quot;, distanceX,Y = [&quot; + distanceX + &quot;, &quot; + distanceY + &quot;]&quot; +
+                        &quot;, posX,Y = [&quot; + posX + &quot;, &quot; + posY + &quot;]&quot; +
+                        &quot;, popupW,H = [&quot; + popupWidth + &quot; x &quot; + popupHeight + &quot;]&quot;);
+            }
+<span class="nc" id="L996">            windowManager.updateViewLayout(playerImpl.getRootView(), popupLayoutParams);</span>
+<span class="nc" id="L997">            return true;</span>
+        }
+
+        private void onScrollEnd(MotionEvent event) {
+<span class="nc bnc" id="L1001" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;onScrollEnd() called&quot;);</span>
+<span class="nc bnc" id="L1002" title="All 2 branches missed.">            if (playerImpl == null) return;</span>
+<span class="nc bnc" id="L1003" title="All 4 branches missed.">            if (playerImpl.isControlsVisible() &amp;&amp; playerImpl.getCurrentState() == STATE_PLAYING) {</span>
+<span class="nc" id="L1004">                playerImpl.hideControls(DEFAULT_CONTROLS_DURATION, DEFAULT_CONTROLS_HIDE_TIME);</span>
+            }
+
+<span class="nc bnc" id="L1007" title="All 2 branches missed.">            if (isInsideClosingRadius(event)) {</span>
+<span class="nc" id="L1008">                closePopup();</span>
+            } else {
+<span class="nc" id="L1010">                animateView(playerImpl.getClosingOverlayView(), false, 0);</span>
+
+<span class="nc bnc" id="L1012" title="All 2 branches missed.">                if (!isPopupClosing) {</span>
+<span class="nc" id="L1013">                    animateView(closeOverlayButton, false, 200);</span>
+                }
+            }
+<span class="nc" id="L1016">        }</span>
+
+        @Override
+        public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
+<span class="nc bnc" id="L1020" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;Fling velocity: dX=[&quot; + velocityX + &quot;], dY=[&quot; + velocityY + &quot;]&quot;);</span>
+<span class="nc bnc" id="L1021" title="All 2 branches missed.">            if (playerImpl == null) return false;</span>
+
+<span class="nc" id="L1023">            final float absVelocityX = Math.abs(velocityX);</span>
+<span class="nc" id="L1024">            final float absVelocityY = Math.abs(velocityY);</span>
+<span class="nc bnc" id="L1025" title="All 2 branches missed.">            if (Math.max(absVelocityX, absVelocityY) &gt; tossFlingVelocity) {</span>
+<span class="nc bnc" id="L1026" title="All 2 branches missed.">                if (absVelocityX &gt; tossFlingVelocity) popupLayoutParams.x = (int) velocityX;</span>
+<span class="nc bnc" id="L1027" title="All 2 branches missed.">                if (absVelocityY &gt; tossFlingVelocity) popupLayoutParams.y = (int) velocityY;</span>
+<span class="nc" id="L1028">                checkPopupPositionBounds();</span>
+<span class="nc" id="L1029">                windowManager.updateViewLayout(playerImpl.getRootView(), popupLayoutParams);</span>
+<span class="nc" id="L1030">                return true;</span>
+            }
+<span class="nc" id="L1032">            return false;</span>
+        }
+
+        @Override
+        public boolean onTouch(View v, MotionEvent event) {
+<span class="nc" id="L1037">            popupGestureDetector.onTouchEvent(event);</span>
+<span class="nc bnc" id="L1038" title="All 2 branches missed.">            if (playerImpl == null) return false;</span>
+<span class="nc bnc" id="L1039" title="All 4 branches missed.">            if (event.getPointerCount() == 2 &amp;&amp; !isResizing) {</span>
+<span class="nc bnc" id="L1040" title="All 2 branches missed.">                if (DEBUG) Log.d(TAG, &quot;onTouch() 2 finger pointer detected, enabling resizing.&quot;);</span>
+<span class="nc" id="L1041">                playerImpl.showAndAnimateControl(-1, true);</span>
+<span class="nc" id="L1042">                playerImpl.getLoadingPanel().setVisibility(View.GONE);</span>
+
+<span class="nc" id="L1044">                playerImpl.hideControls(0, 0);</span>
+<span class="nc" id="L1045">                animateView(playerImpl.getCurrentDisplaySeek(), false, 0, 0);</span>
+<span class="nc" id="L1046">                animateView(playerImpl.getResizingIndicator(), true, 200, 0);</span>
+<span class="nc" id="L1047">                isResizing = true;</span>
+            }
+
+<span class="nc bnc" id="L1050" title="All 6 branches missed.">            if (event.getAction() == MotionEvent.ACTION_MOVE &amp;&amp; !isMoving &amp;&amp; isResizing) {</span>
+<span class="nc bnc" id="L1051" title="All 2 branches missed.">                if (DEBUG) Log.d(TAG, &quot;onTouch() ACTION_MOVE &gt; v = [&quot; + v + &quot;],  e1.getRaw = [&quot; + event.getRawX() + &quot;, &quot; + event.getRawY() + &quot;]&quot;);</span>
+<span class="nc" id="L1052">                return handleMultiDrag(event);</span>
+            }
+
+<span class="nc bnc" id="L1055" title="All 2 branches missed.">            if (event.getAction() == MotionEvent.ACTION_UP) {</span>
+<span class="nc bnc" id="L1056" title="All 2 branches missed.">                if (DEBUG)</span>
+<span class="nc" id="L1057">                    Log.d(TAG, &quot;onTouch() ACTION_UP &gt; v = [&quot; + v + &quot;],  e1.getRaw = [&quot; + event.getRawX() + &quot;, &quot; + event.getRawY() + &quot;]&quot;);</span>
+<span class="nc bnc" id="L1058" title="All 2 branches missed.">                if (isMoving) {</span>
+<span class="nc" id="L1059">                    isMoving = false;</span>
+<span class="nc" id="L1060">                    onScrollEnd(event);</span>
+                }
+
+<span class="nc bnc" id="L1063" title="All 2 branches missed.">                if (isResizing) {</span>
+<span class="nc" id="L1064">                    isResizing = false;</span>
+<span class="nc" id="L1065">                    animateView(playerImpl.getResizingIndicator(), false, 100, 0);</span>
+<span class="nc" id="L1066">                    playerImpl.changeState(playerImpl.getCurrentState());</span>
+                }
+
+<span class="nc bnc" id="L1069" title="All 2 branches missed.">                if (!isPopupClosing) {</span>
+<span class="nc" id="L1070">                    savePositionAndSize();</span>
+                }
+            }
+
+<span class="nc" id="L1074">            v.performClick();</span>
+<span class="nc" id="L1075">            return true;</span>
+        }
+
+        private boolean handleMultiDrag(final MotionEvent event) {
+<span class="nc bnc" id="L1079" title="All 2 branches missed.">            if (event.getPointerCount() != 2) return false;</span>
+
+<span class="nc" id="L1081">            final float firstPointerX = event.getX(0);</span>
+<span class="nc" id="L1082">            final float secondPointerX = event.getX(1);</span>
+
+<span class="nc" id="L1084">            final float diff = Math.abs(firstPointerX - secondPointerX);</span>
+<span class="nc bnc" id="L1085" title="All 2 branches missed.">            if (firstPointerX &gt; secondPointerX) {</span>
+                // second pointer is the anchor (the leftmost pointer)
+<span class="nc" id="L1087">                popupLayoutParams.x = (int) (event.getRawX() - diff);</span>
+            } else {
+                // first pointer is the anchor
+<span class="nc" id="L1090">                popupLayoutParams.x = (int) event.getRawX();</span>
+            }
+
+<span class="nc" id="L1093">            checkPopupPositionBounds();</span>
+<span class="nc" id="L1094">            updateScreenSize();</span>
+
+<span class="nc" id="L1096">            final int width = (int) Math.min(screenWidth, diff);</span>
+<span class="nc" id="L1097">            updatePopupSize(width, -1);</span>
+
+<span class="nc" id="L1099">            return true;</span>
+        }
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // Utils
+        //////////////////////////////////////////////////////////////////////////*/
+
+        private int distanceFromCloseButton(MotionEvent popupMotionEvent) {
+<span class="nc" id="L1107">            final int closeOverlayButtonX = closeOverlayButton.getLeft() + closeOverlayButton.getWidth() / 2;</span>
+<span class="nc" id="L1108">            final int closeOverlayButtonY = closeOverlayButton.getTop() + closeOverlayButton.getHeight() / 2;</span>
+
+<span class="nc" id="L1110">            float fingerX = popupLayoutParams.x + popupMotionEvent.getX();</span>
+<span class="nc" id="L1111">            float fingerY = popupLayoutParams.y + popupMotionEvent.getY();</span>
+
+<span class="nc" id="L1113">            return (int) Math.sqrt(Math.pow(closeOverlayButtonX - fingerX, 2) + Math.pow(closeOverlayButtonY - fingerY, 2));</span>
+        }
+
+        private float getClosingRadius() {
+<span class="nc" id="L1117">            final int buttonRadius = closeOverlayButton.getWidth() / 2;</span>
+            // 20% wider than the button itself
+<span class="nc" id="L1119">            return buttonRadius * 1.2f;</span>
+        }
+
+        private boolean isInsideClosingRadius(MotionEvent popupMotionEvent) {
+<span class="nc bnc" id="L1123" title="All 2 branches missed.">            return distanceFromCloseButton(popupMotionEvent) &lt;= getClosingRadius();</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

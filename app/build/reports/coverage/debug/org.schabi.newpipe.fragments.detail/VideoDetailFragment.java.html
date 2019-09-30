@@ -1,0 +1,1253 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VideoDetailFragment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.fragments.detail</a> &gt; <span class="el_source">VideoDetailFragment.java</span></div><h1>VideoDetailFragment.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.fragments.detail;
+
+import android.app.Activity;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.preference.PreferenceManager;
+import android.support.annotation.DrawableRes;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.design.widget.AppBarLayout;
+import android.support.design.widget.TabLayout;
+import android.support.v4.app.Fragment;
+import android.support.v4.content.ContextCompat;
+import android.support.v4.view.ViewPager;
+import android.support.v7.app.ActionBar;
+import android.support.v7.app.AlertDialog;
+import android.support.v7.app.AppCompatActivity;
+import android.text.Html;
+import android.text.Spanned;
+import android.text.TextUtils;
+import android.text.method.LinkMovementMethod;
+import android.text.util.Linkify;
+import android.util.DisplayMetrics;
+import android.util.Log;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.AdapterView;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
+import android.widget.Spinner;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import com.nostra13.universalimageloader.core.assist.FailReason;
+import com.nostra13.universalimageloader.core.listener.ImageLoadingListener;
+import com.nostra13.universalimageloader.core.listener.SimpleImageLoadingListener;
+
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.ReCaptchaActivity;
+import org.schabi.newpipe.download.DownloadDialog;
+import org.schabi.newpipe.extractor.InfoItem;
+import org.schabi.newpipe.extractor.NewPipe;
+import org.schabi.newpipe.extractor.ServiceList;
+import org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException;
+import org.schabi.newpipe.extractor.exceptions.ExtractionException;
+import org.schabi.newpipe.extractor.exceptions.ParsingException;
+import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeStreamExtractor;
+import org.schabi.newpipe.extractor.stream.AudioStream;
+import org.schabi.newpipe.extractor.stream.Stream;
+import org.schabi.newpipe.extractor.stream.StreamInfo;
+import org.schabi.newpipe.extractor.stream.StreamType;
+import org.schabi.newpipe.extractor.stream.VideoStream;
+import org.schabi.newpipe.fragments.BackPressable;
+import org.schabi.newpipe.fragments.BaseStateFragment;
+import org.schabi.newpipe.fragments.EmptyFragment;
+import org.schabi.newpipe.fragments.list.comments.CommentsFragment;
+import org.schabi.newpipe.fragments.list.videos.RelatedVideosFragment;
+import org.schabi.newpipe.local.dialog.PlaylistAppendDialog;
+import org.schabi.newpipe.local.history.HistoryRecordManager;
+import org.schabi.newpipe.player.MainVideoPlayer;
+import org.schabi.newpipe.player.PopupVideoPlayer;
+import org.schabi.newpipe.player.playqueue.PlayQueue;
+import org.schabi.newpipe.player.playqueue.SinglePlayQueue;
+import org.schabi.newpipe.report.ErrorActivity;
+import org.schabi.newpipe.report.UserAction;
+import org.schabi.newpipe.util.Constants;
+import org.schabi.newpipe.util.ExtractorHelper;
+import org.schabi.newpipe.util.ImageDisplayConstants;
+import org.schabi.newpipe.util.InfoCache;
+import org.schabi.newpipe.util.ListHelper;
+import org.schabi.newpipe.util.Localization;
+import org.schabi.newpipe.util.NavigationHelper;
+import org.schabi.newpipe.util.PermissionHelper;
+import org.schabi.newpipe.util.ShareUtils;
+import org.schabi.newpipe.util.StreamItemAdapter;
+import org.schabi.newpipe.util.StreamItemAdapter.StreamSizeWrapper;
+import org.schabi.newpipe.views.AnimatedProgressBar;
+
+import java.io.Serializable;
+import java.util.Collection;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+
+import icepick.State;
+import io.reactivex.Single;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.schedulers.Schedulers;
+
+import static org.schabi.newpipe.extractor.StreamingService.ServiceInfo.MediaCapability.COMMENTS;
+import static org.schabi.newpipe.util.AnimationUtils.animateView;
+
+<span class="nc" id="L107">public class VideoDetailFragment</span>
+        extends BaseStateFragment&lt;StreamInfo&gt;
+        implements BackPressable,
+        SharedPreferences.OnSharedPreferenceChangeListener,
+        View.OnClickListener,
+        View.OnLongClickListener {
+    public static final String AUTO_PLAY = &quot;auto_play&quot;;
+
+<span class="nc" id="L115">    private int updateFlags = 0;</span>
+    private static final int RELATED_STREAMS_UPDATE_FLAG = 0x1;
+    private static final int RESOLUTIONS_MENU_UPDATE_FLAG = 0x2;
+    private static final int TOOLBAR_ITEMS_UPDATE_FLAG = 0x4;
+    private static final int COMMENTS_UPDATE_FLAG = 0x8;
+
+    private boolean autoPlayEnabled;
+    private boolean showRelatedStreams;
+    private boolean showComments;
+    private String selectedTabTag;
+
+<span class="nc" id="L126">    @State</span>
+    protected int serviceId = Constants.NO_SERVICE_ID;
+    @State
+    protected String name;
+    @State
+    protected String url;
+
+    private StreamInfo currentInfo;
+    private Disposable currentWorker;
+<span class="nc" id="L135">    @NonNull</span>
+    private CompositeDisposable disposables = new CompositeDisposable();
+<span class="nc" id="L137">    @Nullable</span>
+    private Disposable positionSubscriber = null;
+
+    private List&lt;VideoStream&gt; sortedVideoStreams;
+<span class="nc" id="L141">    private int selectedVideoStreamIndex = -1;</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Views
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private Menu menu;
+
+    private Spinner spinnerToolbar;
+
+    private LinearLayout contentRootLayoutHiding;
+
+    private View thumbnailBackgroundButton;
+    private ImageView thumbnailImageView;
+    private ImageView thumbnailPlayButton;
+    private AnimatedProgressBar positionView;
+
+    private View videoTitleRoot;
+    private TextView videoTitleTextView;
+    private ImageView videoTitleToggleArrow;
+    private TextView videoCountView;
+
+    private TextView detailControlsBackground;
+    private TextView detailControlsPopup;
+    private TextView detailControlsAddToPlaylist;
+    private TextView detailControlsDownload;
+    private TextView appendControlsDetail;
+    private TextView detailDurationView;
+    private TextView detailPositionView;
+
+    private LinearLayout videoDescriptionRootLayout;
+    private TextView videoUploadDateView;
+    private TextView videoDescriptionView;
+
+    private View uploaderRootLayout;
+    private TextView uploaderTextView;
+    private ImageView uploaderThumb;
+
+    private TextView thumbsUpTextView;
+    private ImageView thumbsUpImageView;
+    private TextView thumbsDownTextView;
+    private ImageView thumbsDownImageView;
+    private TextView thumbsDisabledTextView;
+
+    private static final String COMMENTS_TAB_TAG = &quot;COMMENTS&quot;;
+    private static final String RELATED_TAB_TAG = &quot;NEXT VIDEO&quot;;
+    private static final String EMPTY_TAB_TAG = &quot;EMPTY TAB&quot;;
+
+    private AppBarLayout appBarLayout;
+    private  ViewPager viewPager;
+    private TabAdaptor pageAdapter;
+    private TabLayout tabLayout;
+    private FrameLayout relatedStreamsLayout;
+
+
+    /*////////////////////////////////////////////////////////////////////////*/
+
+    public static VideoDetailFragment getInstance(int serviceId, String videoUrl, String name) {
+<span class="nc" id="L199">        VideoDetailFragment instance = new VideoDetailFragment();</span>
+<span class="nc" id="L200">        instance.setInitialData(serviceId, videoUrl, name);</span>
+<span class="nc" id="L201">        return instance;</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Fragment's Lifecycle
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void
+    onCreate(Bundle savedInstanceState) {
+<span class="nc" id="L211">        super.onCreate(savedInstanceState);</span>
+<span class="nc" id="L212">        setHasOptionsMenu(true);</span>
+
+<span class="nc" id="L214">        showRelatedStreams = PreferenceManager.getDefaultSharedPreferences(activity)</span>
+<span class="nc" id="L215">                .getBoolean(getString(R.string.show_next_video_key), true);</span>
+
+<span class="nc" id="L217">        showComments = PreferenceManager.getDefaultSharedPreferences(activity)</span>
+<span class="nc" id="L218">                .getBoolean(getString(R.string.show_comments_key), true);</span>
+
+<span class="nc" id="L220">        selectedTabTag = PreferenceManager.getDefaultSharedPreferences(activity)</span>
+<span class="nc" id="L221">                .getString(getString(R.string.stream_info_selected_tab_key), COMMENTS_TAB_TAG);</span>
+
+<span class="nc" id="L223">        PreferenceManager.getDefaultSharedPreferences(activity)</span>
+<span class="nc" id="L224">                .registerOnSharedPreferenceChangeListener(this);</span>
+<span class="nc" id="L225">    }</span>
+
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+<span class="nc" id="L229">        return inflater.inflate(R.layout.fragment_video_detail, container, false);</span>
+    }
+
+    @Override
+    public void onPause() {
+<span class="nc" id="L234">        super.onPause();</span>
+<span class="nc bnc" id="L235" title="All 2 branches missed.">        if (currentWorker != null) currentWorker.dispose();</span>
+<span class="nc" id="L236">        PreferenceManager.getDefaultSharedPreferences(getContext())</span>
+<span class="nc" id="L237">                .edit()</span>
+<span class="nc" id="L238">                .putString(getString(R.string.stream_info_selected_tab_key), pageAdapter.getItemTitle(viewPager.getCurrentItem()))</span>
+<span class="nc" id="L239">                .apply();</span>
+<span class="nc" id="L240">    }</span>
+
+    @Override
+    public void onResume() {
+<span class="nc" id="L244">        super.onResume();</span>
+
+<span class="nc bnc" id="L246" title="All 2 branches missed.">        if (updateFlags != 0) {</span>
+<span class="nc bnc" id="L247" title="All 4 branches missed.">            if (!isLoading.get() &amp;&amp; currentInfo != null) {</span>
+<span class="nc bnc" id="L248" title="All 2 branches missed.">                if ((updateFlags &amp; RELATED_STREAMS_UPDATE_FLAG) != 0) startLoading(false);</span>
+<span class="nc bnc" id="L249" title="All 2 branches missed.">                if ((updateFlags &amp; RESOLUTIONS_MENU_UPDATE_FLAG) != 0) setupActionBar(currentInfo);</span>
+<span class="nc bnc" id="L250" title="All 2 branches missed.">                if ((updateFlags &amp; COMMENTS_UPDATE_FLAG) != 0) startLoading(false);</span>
+            }
+
+<span class="nc bnc" id="L253" title="All 4 branches missed.">            if ((updateFlags &amp; TOOLBAR_ITEMS_UPDATE_FLAG) != 0</span>
+                    &amp;&amp; menu != null) {
+<span class="nc" id="L255">                updateMenuItemVisibility();</span>
+            }
+
+<span class="nc" id="L258">            updateFlags = 0;</span>
+        }
+
+        // Check if it was loading when the fragment was stopped/paused,
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        if (wasLoading.getAndSet(false)) {</span>
+<span class="nc" id="L263">            selectAndLoadVideo(serviceId, url, name);</span>
+<span class="nc bnc" id="L264" title="All 2 branches missed.">        } else if (currentInfo != null) {</span>
+<span class="nc" id="L265">            updateProgressInfo(currentInfo);</span>
+        }
+<span class="nc" id="L267">    }</span>
+
+    @Override
+    public void onDestroy() {
+<span class="nc" id="L271">        super.onDestroy();</span>
+<span class="nc" id="L272">        PreferenceManager.getDefaultSharedPreferences(activity)</span>
+<span class="nc" id="L273">                .unregisterOnSharedPreferenceChangeListener(this);</span>
+
+<span class="nc bnc" id="L275" title="All 2 branches missed.">        if (positionSubscriber != null) positionSubscriber.dispose();</span>
+<span class="nc bnc" id="L276" title="All 2 branches missed.">        if (currentWorker != null) currentWorker.dispose();</span>
+<span class="nc bnc" id="L277" title="All 2 branches missed.">        if (disposables != null) disposables.clear();</span>
+<span class="nc" id="L278">        positionSubscriber = null;</span>
+<span class="nc" id="L279">        currentWorker = null;</span>
+<span class="nc" id="L280">        disposables = null;</span>
+<span class="nc" id="L281">    }</span>
+
+    @Override
+    public void onDestroyView() {
+<span class="nc bnc" id="L285" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onDestroyView() called&quot;);</span>
+<span class="nc" id="L286">        spinnerToolbar.setOnItemSelectedListener(null);</span>
+<span class="nc" id="L287">        spinnerToolbar.setAdapter(null);</span>
+<span class="nc" id="L288">        super.onDestroyView();</span>
+<span class="nc" id="L289">    }</span>
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+<span class="nc" id="L293">        super.onActivityResult(requestCode, resultCode, data);</span>
+<span class="nc bnc" id="L294" title="All 2 branches missed.">        switch (requestCode) {</span>
+            case ReCaptchaActivity.RECAPTCHA_REQUEST:
+<span class="nc bnc" id="L296" title="All 2 branches missed.">                if (resultCode == Activity.RESULT_OK) {</span>
+<span class="nc" id="L297">                    NavigationHelper.openVideoDetailFragment(getFragmentManager(), serviceId, url, name);</span>
+<span class="nc" id="L298">                } else Log.e(TAG, &quot;ReCaptcha failed&quot;);</span>
+<span class="nc" id="L299">                break;</span>
+            default:
+<span class="nc" id="L301">                Log.e(TAG, &quot;Request code from activity not supported [&quot; + requestCode + &quot;]&quot;);</span>
+                break;
+        }
+<span class="nc" id="L304">    }</span>
+
+    @Override
+    public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+<span class="nc bnc" id="L308" title="All 2 branches missed.">        if (key.equals(getString(R.string.show_next_video_key))) {</span>
+<span class="nc" id="L309">            showRelatedStreams = sharedPreferences.getBoolean(key, true);</span>
+<span class="nc" id="L310">            updateFlags |= RELATED_STREAMS_UPDATE_FLAG;</span>
+<span class="nc bnc" id="L311" title="All 2 branches missed.">        } else if (key.equals(getString(R.string.default_video_format_key))</span>
+<span class="nc bnc" id="L312" title="All 2 branches missed.">                || key.equals(getString(R.string.default_resolution_key))</span>
+<span class="nc bnc" id="L313" title="All 2 branches missed.">                || key.equals(getString(R.string.show_higher_resolutions_key))</span>
+<span class="nc bnc" id="L314" title="All 2 branches missed.">                || key.equals(getString(R.string.use_external_video_player_key))) {</span>
+<span class="nc" id="L315">            updateFlags |= RESOLUTIONS_MENU_UPDATE_FLAG;</span>
+<span class="nc bnc" id="L316" title="All 2 branches missed.">        } else if (key.equals(getString(R.string.show_play_with_kodi_key))) {</span>
+<span class="nc" id="L317">            updateFlags |= TOOLBAR_ITEMS_UPDATE_FLAG;</span>
+<span class="nc bnc" id="L318" title="All 2 branches missed.">        } else if (key.equals(getString(R.string.show_comments_key))) {</span>
+<span class="nc" id="L319">            showComments = sharedPreferences.getBoolean(key, true);</span>
+<span class="nc" id="L320">            updateFlags |= COMMENTS_UPDATE_FLAG;</span>
+        }
+<span class="nc" id="L322">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // State Saving
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private static final String INFO_KEY = &quot;info_key&quot;;
+    private static final String STACK_KEY = &quot;stack_key&quot;;
+
+    @Override
+    public void onSaveInstanceState(Bundle outState) {
+<span class="nc" id="L333">        super.onSaveInstanceState(outState);</span>
+
+        // Check if the next video label and video is visible,
+        // if it is, include the two elements in the next check
+<span class="nc bnc" id="L337" title="All 4 branches missed.">        int nextCount = currentInfo != null &amp;&amp; currentInfo.getNextVideo() != null ? 2 : 0;</span>
+
+<span class="nc bnc" id="L339" title="All 6 branches missed.">        if (!isLoading.get() &amp;&amp; currentInfo != null &amp;&amp; isVisible()) {</span>
+<span class="nc" id="L340">            outState.putSerializable(INFO_KEY, currentInfo);</span>
+        }
+
+<span class="nc" id="L343">        outState.putSerializable(STACK_KEY, stack);</span>
+<span class="nc" id="L344">    }</span>
+
+    @Override
+    protected void onRestoreInstanceState(@NonNull Bundle savedState) {
+<span class="nc" id="L348">        super.onRestoreInstanceState(savedState);</span>
+
+<span class="nc" id="L350">        Serializable serializable = savedState.getSerializable(INFO_KEY);</span>
+<span class="nc bnc" id="L351" title="All 2 branches missed.">        if (serializable instanceof StreamInfo) {</span>
+            //noinspection unchecked
+<span class="nc" id="L353">            currentInfo = (StreamInfo) serializable;</span>
+<span class="nc" id="L354">            InfoCache.getInstance().putInfo(serviceId, url, currentInfo, InfoItem.InfoType.STREAM);</span>
+        }
+
+<span class="nc" id="L357">        serializable = savedState.getSerializable(STACK_KEY);</span>
+<span class="nc bnc" id="L358" title="All 2 branches missed.">        if (serializable instanceof Collection) {</span>
+            //noinspection unchecked
+<span class="nc" id="L360">            stack.addAll((Collection&lt;? extends StackItem&gt;) serializable);</span>
+        }
+
+<span class="nc" id="L363">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // OnClick
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onClick(View v) {
+<span class="nc bnc" id="L371" title="All 4 branches missed.">        if (isLoading.get() || currentInfo == null) return;</span>
+
+<span class="nc bnc" id="L373" title="All 8 branches missed.">        switch (v.getId()) {</span>
+            case R.id.detail_controls_background:
+<span class="nc" id="L375">                openBackgroundPlayer(false);</span>
+<span class="nc" id="L376">                break;</span>
+            case R.id.detail_controls_popup:
+<span class="nc" id="L378">                openPopupPlayer(false);</span>
+<span class="nc" id="L379">                break;</span>
+            case R.id.detail_controls_playlist_append:
+<span class="nc bnc" id="L381" title="All 4 branches missed.">                if (getFragmentManager() != null &amp;&amp; currentInfo != null) {</span>
+<span class="nc" id="L382">                    PlaylistAppendDialog.fromStreamInfo(currentInfo)</span>
+<span class="nc" id="L383">                            .show(getFragmentManager(), TAG);</span>
+                }
+                break;
+            case R.id.detail_controls_download:
+<span class="nc bnc" id="L387" title="All 2 branches missed.">                if (PermissionHelper.checkStoragePermissions(activity,</span>
+                        PermissionHelper.DOWNLOAD_DIALOG_REQUEST_CODE)) {
+<span class="nc" id="L389">                    this.openDownloadDialog();</span>
+                }
+                break;
+            case R.id.detail_uploader_root_layout:
+<span class="nc bnc" id="L393" title="All 2 branches missed.">                if (TextUtils.isEmpty(currentInfo.getUploaderUrl())) {</span>
+<span class="nc" id="L394">                    Log.w(TAG, &quot;Can't open channel because we got no channel URL&quot;);</span>
+                } else {
+                    try {
+<span class="nc" id="L397">                    NavigationHelper.openChannelFragment(</span>
+<span class="nc" id="L398">                            getFragmentManager(),</span>
+<span class="nc" id="L399">                            currentInfo.getServiceId(),</span>
+<span class="nc" id="L400">                            currentInfo.getUploaderUrl(),</span>
+<span class="nc" id="L401">                            currentInfo.getUploaderName());</span>
+<span class="nc" id="L402">                    } catch (Exception e) {</span>
+<span class="nc" id="L403">                        ErrorActivity.reportUiError((AppCompatActivity) getActivity(), e);</span>
+<span class="nc" id="L404">                }</span>
+                }
+<span class="nc" id="L406">                break;</span>
+            case R.id.detail_thumbnail_root_layout:
+<span class="nc bnc" id="L408" title="All 2 branches missed.">                if (currentInfo.getVideoStreams().isEmpty()</span>
+<span class="nc bnc" id="L409" title="All 2 branches missed.">                        &amp;&amp; currentInfo.getVideoOnlyStreams().isEmpty()) {</span>
+<span class="nc" id="L410">                    openBackgroundPlayer(false);</span>
+                } else {
+<span class="nc" id="L412">                    openVideoPlayer();</span>
+                }
+<span class="nc" id="L414">                break;</span>
+            case R.id.detail_title_root_layout:
+<span class="nc" id="L416">                toggleTitleAndDescription();</span>
+                break;
+        }
+<span class="nc" id="L419">    }</span>
+
+    @Override
+    public boolean onLongClick(View v) {
+<span class="nc bnc" id="L423" title="All 4 branches missed.">        if (isLoading.get() || currentInfo == null) return false;</span>
+
+<span class="nc bnc" id="L425" title="All 4 branches missed.">        switch (v.getId()) {</span>
+            case R.id.detail_controls_background:
+<span class="nc" id="L427">                openBackgroundPlayer(true);</span>
+<span class="nc" id="L428">                break;</span>
+            case R.id.detail_controls_popup:
+<span class="nc" id="L430">                openPopupPlayer(true);</span>
+<span class="nc" id="L431">                break;</span>
+            case R.id.detail_controls_download:
+<span class="nc" id="L433">                NavigationHelper.openDownloads(getActivity());</span>
+                break;
+        }
+
+<span class="nc" id="L437">        return true;</span>
+    }
+
+    private void toggleTitleAndDescription() {
+<span class="nc bnc" id="L441" title="All 2 branches missed.">        if (videoDescriptionRootLayout.getVisibility() == View.VISIBLE) {</span>
+<span class="nc" id="L442">            videoTitleTextView.setMaxLines(1);</span>
+<span class="nc" id="L443">            videoDescriptionRootLayout.setVisibility(View.GONE);</span>
+<span class="nc" id="L444">            videoTitleToggleArrow.setImageResource(R.drawable.arrow_down);</span>
+        } else {
+<span class="nc" id="L446">            videoTitleTextView.setMaxLines(10);</span>
+<span class="nc" id="L447">            videoDescriptionRootLayout.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L448">            videoTitleToggleArrow.setImageResource(R.drawable.arrow_up);</span>
+        }
+<span class="nc" id="L450">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Init
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    protected void initViews(View rootView, Bundle savedInstanceState) {
+<span class="nc" id="L458">        super.initViews(rootView, savedInstanceState);</span>
+<span class="nc" id="L459">        spinnerToolbar = activity.findViewById(R.id.toolbar).findViewById(R.id.toolbar_spinner);</span>
+
+<span class="nc" id="L461">        thumbnailBackgroundButton = rootView.findViewById(R.id.detail_thumbnail_root_layout);</span>
+<span class="nc" id="L462">        thumbnailImageView = rootView.findViewById(R.id.detail_thumbnail_image_view);</span>
+<span class="nc" id="L463">        thumbnailPlayButton = rootView.findViewById(R.id.detail_thumbnail_play_button);</span>
+
+<span class="nc" id="L465">        contentRootLayoutHiding = rootView.findViewById(R.id.detail_content_root_hiding);</span>
+
+<span class="nc" id="L467">        videoTitleRoot = rootView.findViewById(R.id.detail_title_root_layout);</span>
+<span class="nc" id="L468">        videoTitleTextView = rootView.findViewById(R.id.detail_video_title_view);</span>
+<span class="nc" id="L469">        videoTitleToggleArrow = rootView.findViewById(R.id.detail_toggle_description_view);</span>
+<span class="nc" id="L470">        videoCountView = rootView.findViewById(R.id.detail_view_count_view);</span>
+<span class="nc" id="L471">        positionView = rootView.findViewById(R.id.position_view);</span>
+
+<span class="nc" id="L473">        detailControlsBackground = rootView.findViewById(R.id.detail_controls_background);</span>
+<span class="nc" id="L474">        detailControlsPopup = rootView.findViewById(R.id.detail_controls_popup);</span>
+<span class="nc" id="L475">        detailControlsAddToPlaylist = rootView.findViewById(R.id.detail_controls_playlist_append);</span>
+<span class="nc" id="L476">        detailControlsDownload = rootView.findViewById(R.id.detail_controls_download);</span>
+<span class="nc" id="L477">        appendControlsDetail = rootView.findViewById(R.id.touch_append_detail);</span>
+<span class="nc" id="L478">        detailDurationView = rootView.findViewById(R.id.detail_duration_view);</span>
+<span class="nc" id="L479">        detailPositionView = rootView.findViewById(R.id.detail_position_view);</span>
+
+<span class="nc" id="L481">        videoDescriptionRootLayout = rootView.findViewById(R.id.detail_description_root_layout);</span>
+<span class="nc" id="L482">        videoUploadDateView = rootView.findViewById(R.id.detail_upload_date_view);</span>
+<span class="nc" id="L483">        videoDescriptionView = rootView.findViewById(R.id.detail_description_view);</span>
+<span class="nc" id="L484">        videoDescriptionView.setMovementMethod(LinkMovementMethod.getInstance());</span>
+<span class="nc" id="L485">        videoDescriptionView.setAutoLinkMask(Linkify.WEB_URLS);</span>
+
+<span class="nc" id="L487">        thumbsUpTextView = rootView.findViewById(R.id.detail_thumbs_up_count_view);</span>
+<span class="nc" id="L488">        thumbsUpImageView = rootView.findViewById(R.id.detail_thumbs_up_img_view);</span>
+<span class="nc" id="L489">        thumbsDownTextView = rootView.findViewById(R.id.detail_thumbs_down_count_view);</span>
+<span class="nc" id="L490">        thumbsDownImageView = rootView.findViewById(R.id.detail_thumbs_down_img_view);</span>
+<span class="nc" id="L491">        thumbsDisabledTextView = rootView.findViewById(R.id.detail_thumbs_disabled_view);</span>
+
+<span class="nc" id="L493">        uploaderRootLayout = rootView.findViewById(R.id.detail_uploader_root_layout);</span>
+<span class="nc" id="L494">        uploaderTextView = rootView.findViewById(R.id.detail_uploader_text_view);</span>
+<span class="nc" id="L495">        uploaderThumb = rootView.findViewById(R.id.detail_uploader_thumbnail_view);</span>
+
+<span class="nc" id="L497">        appBarLayout = rootView.findViewById(R.id.appbarlayout);</span>
+<span class="nc" id="L498">        viewPager = rootView.findViewById(R.id.viewpager);</span>
+<span class="nc" id="L499">        pageAdapter = new TabAdaptor(getChildFragmentManager());</span>
+<span class="nc" id="L500">        viewPager.setAdapter(pageAdapter);</span>
+<span class="nc" id="L501">        tabLayout = rootView.findViewById(R.id.tablayout);</span>
+<span class="nc" id="L502">        tabLayout.setupWithViewPager(viewPager);</span>
+
+<span class="nc" id="L504">        relatedStreamsLayout = rootView.findViewById(R.id.relatedStreamsLayout);</span>
+
+<span class="nc" id="L506">        setHeightThumbnail();</span>
+
+
+<span class="nc" id="L509">    }</span>
+
+    @Override
+    protected void initListeners() {
+<span class="nc" id="L513">        super.initListeners();</span>
+
+<span class="nc" id="L515">        videoTitleRoot.setOnClickListener(this);</span>
+<span class="nc" id="L516">        uploaderRootLayout.setOnClickListener(this);</span>
+<span class="nc" id="L517">        thumbnailBackgroundButton.setOnClickListener(this);</span>
+<span class="nc" id="L518">        detailControlsBackground.setOnClickListener(this);</span>
+<span class="nc" id="L519">        detailControlsPopup.setOnClickListener(this);</span>
+<span class="nc" id="L520">        detailControlsAddToPlaylist.setOnClickListener(this);</span>
+<span class="nc" id="L521">        detailControlsDownload.setOnClickListener(this);</span>
+<span class="nc" id="L522">        detailControlsDownload.setOnLongClickListener(this);</span>
+
+<span class="nc" id="L524">        detailControlsBackground.setLongClickable(true);</span>
+<span class="nc" id="L525">        detailControlsPopup.setLongClickable(true);</span>
+<span class="nc" id="L526">        detailControlsBackground.setOnLongClickListener(this);</span>
+<span class="nc" id="L527">        detailControlsPopup.setOnLongClickListener(this);</span>
+<span class="nc" id="L528">        detailControlsBackground.setOnTouchListener(getOnControlsTouchListener());</span>
+<span class="nc" id="L529">        detailControlsPopup.setOnTouchListener(getOnControlsTouchListener());</span>
+<span class="nc" id="L530">    }</span>
+
+    private View.OnTouchListener getOnControlsTouchListener() {
+<span class="nc" id="L533">        return (View view, MotionEvent motionEvent) -&gt; {</span>
+<span class="nc" id="L534">            if (!PreferenceManager.getDefaultSharedPreferences(activity)</span>
+<span class="nc bnc" id="L535" title="All 2 branches missed.">                    .getBoolean(getString(R.string.show_hold_to_append_key), true)) {</span>
+<span class="nc" id="L536">                return false;</span>
+            }
+
+<span class="nc bnc" id="L539" title="All 2 branches missed.">            if (motionEvent.getAction() == MotionEvent.ACTION_DOWN) {</span>
+<span class="nc" id="L540">                animateView(appendControlsDetail, true, 250, 0, () -&gt;</span>
+<span class="nc" id="L541">                        animateView(appendControlsDetail, false, 1500, 1000));</span>
+            }
+<span class="nc" id="L543">            return false;</span>
+        };
+    }
+
+    private void initThumbnailViews(@NonNull StreamInfo info) {
+<span class="nc" id="L548">        thumbnailImageView.setImageResource(R.drawable.dummy_thumbnail_dark);</span>
+<span class="nc bnc" id="L549" title="All 2 branches missed.">        if (!TextUtils.isEmpty(info.getThumbnailUrl())) {</span>
+<span class="nc" id="L550">            final String infoServiceName = NewPipe.getNameOfService(info.getServiceId());</span>
+<span class="nc" id="L551">            final ImageLoadingListener onFailListener = new SimpleImageLoadingListener() {</span>
+                @Override
+                public void onLoadingFailed(String imageUri, View view, FailReason failReason) {
+<span class="nc" id="L554">                    showSnackBarError(failReason.getCause(), UserAction.LOAD_IMAGE,</span>
+                            infoServiceName, imageUri, R.string.could_not_load_thumbnails);
+<span class="nc" id="L556">                }</span>
+            };
+
+<span class="nc" id="L559">            imageLoader.displayImage(info.getThumbnailUrl(), thumbnailImageView,</span>
+                    ImageDisplayConstants.DISPLAY_THUMBNAIL_OPTIONS, onFailListener);
+        }
+
+<span class="nc bnc" id="L563" title="All 2 branches missed.">        if (!TextUtils.isEmpty(info.getUploaderAvatarUrl())) {</span>
+<span class="nc" id="L564">            imageLoader.displayImage(info.getUploaderAvatarUrl(), uploaderThumb,</span>
+                    ImageDisplayConstants.DISPLAY_AVATAR_OPTIONS);
+        }
+<span class="nc" id="L567">    }</span>
+
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Menu
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+<span class="nc" id="L576">        this.menu = menu;</span>
+
+        // CAUTION set item properties programmatically otherwise it would not be accepted by
+        // appcompat itemsinflater.inflate(R.menu.videoitem_detail, menu);
+
+<span class="nc" id="L581">        inflater.inflate(R.menu.video_detail_menu, menu);</span>
+
+<span class="nc" id="L583">        updateMenuItemVisibility();</span>
+
+<span class="nc" id="L585">        ActionBar supportActionBar = activity.getSupportActionBar();</span>
+<span class="nc bnc" id="L586" title="All 2 branches missed.">        if (supportActionBar != null) {</span>
+<span class="nc" id="L587">            supportActionBar.setDisplayHomeAsUpEnabled(true);</span>
+<span class="nc" id="L588">            supportActionBar.setDisplayShowTitleEnabled(false);</span>
+        }
+<span class="nc" id="L590">    }</span>
+
+    private void updateMenuItemVisibility() {
+
+        // show kodi if set in settings
+<span class="nc" id="L595">        menu.findItem(R.id.action_play_with_kodi).setVisible(</span>
+<span class="nc" id="L596">                PreferenceManager.getDefaultSharedPreferences(activity).getBoolean(</span>
+<span class="nc" id="L597">                        activity.getString(R.string.show_play_with_kodi_key), false));</span>
+<span class="nc" id="L598">    }</span>
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+<span class="nc bnc" id="L602" title="All 2 branches missed.">        if (isLoading.get()) {</span>
+            // if is still loading block menu
+<span class="nc" id="L604">            return true;</span>
+        }
+
+<span class="nc" id="L607">        int id = item.getItemId();</span>
+<span class="nc bnc" id="L608" title="All 4 branches missed.">        switch (id) {</span>
+            case R.id.menu_item_share: {
+<span class="nc bnc" id="L610" title="All 2 branches missed.">                if (currentInfo != null) {</span>
+<span class="nc" id="L611">                    ShareUtils.shareUrl(this.getContext(), currentInfo.getName(), currentInfo.getOriginalUrl());</span>
+                }
+<span class="nc" id="L613">                return true;</span>
+            }
+            case R.id.menu_item_openInBrowser: {
+<span class="nc bnc" id="L616" title="All 2 branches missed.">                if (currentInfo != null) {</span>
+<span class="nc" id="L617">                    ShareUtils.openUrlInBrowser(this.getContext(), currentInfo.getOriginalUrl());</span>
+                }
+<span class="nc" id="L619">                return true;</span>
+            }
+            case R.id.action_play_with_kodi:
+                try {
+<span class="nc" id="L623">                    NavigationHelper.playWithKore(activity, Uri.parse(</span>
+<span class="nc" id="L624">                            url.replace(&quot;https&quot;, &quot;http&quot;)));</span>
+<span class="nc" id="L625">                } catch (Exception e) {</span>
+<span class="nc bnc" id="L626" title="All 2 branches missed.">                    if (DEBUG) Log.i(TAG, &quot;Failed to start kore&quot;, e);</span>
+<span class="nc" id="L627">                    showInstallKoreDialog(activity);</span>
+<span class="nc" id="L628">                }</span>
+<span class="nc" id="L629">                return true;</span>
+            default:
+<span class="nc" id="L631">                return super.onOptionsItemSelected(item);</span>
+        }
+    }
+
+    private static void showInstallKoreDialog(final Context context) {
+<span class="nc" id="L636">        final AlertDialog.Builder builder = new AlertDialog.Builder(context);</span>
+<span class="nc" id="L637">        builder.setMessage(R.string.kore_not_found)</span>
+<span class="nc" id="L638">                .setPositiveButton(R.string.install, (DialogInterface dialog, int which) -&gt;</span>
+<span class="nc" id="L639">                        NavigationHelper.installKore(context))</span>
+<span class="nc" id="L640">                .setNegativeButton(R.string.cancel, (DialogInterface dialog, int which) -&gt; {</span>
+<span class="nc" id="L641">                });</span>
+<span class="nc" id="L642">        builder.create().show();</span>
+<span class="nc" id="L643">    }</span>
+
+    private void setupActionBarOnError(final String url) {
+<span class="nc bnc" id="L646" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;setupActionBarHandlerOnError() called with: url = [&quot; + url + &quot;]&quot;);</span>
+<span class="nc" id="L647">        Log.e(&quot;-----&quot;, &quot;missing code&quot;);</span>
+<span class="nc" id="L648">    }</span>
+
+    private void setupActionBar(final StreamInfo info) {
+<span class="nc bnc" id="L651" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;setupActionBarHandler() called with: info = [&quot; + info + &quot;]&quot;);</span>
+<span class="nc" id="L652">        boolean isExternalPlayerEnabled = PreferenceManager.getDefaultSharedPreferences(activity)</span>
+<span class="nc" id="L653">                .getBoolean(activity.getString(R.string.use_external_video_player_key), false);</span>
+
+<span class="nc" id="L655">        sortedVideoStreams = ListHelper.getSortedStreamVideosList(</span>
+                activity,
+<span class="nc" id="L657">                info.getVideoStreams(),</span>
+<span class="nc" id="L658">                info.getVideoOnlyStreams(),</span>
+                false);
+<span class="nc" id="L660">        selectedVideoStreamIndex = ListHelper.getDefaultResolutionIndex(activity, sortedVideoStreams);</span>
+
+<span class="nc" id="L662">        final StreamItemAdapter&lt;VideoStream, Stream&gt; streamsAdapter =</span>
+                new StreamItemAdapter&lt;&gt;(activity,
+                        new StreamSizeWrapper&lt;&gt;(sortedVideoStreams, activity), isExternalPlayerEnabled);
+<span class="nc" id="L665">        spinnerToolbar.setAdapter(streamsAdapter);</span>
+<span class="nc" id="L666">        spinnerToolbar.setSelection(selectedVideoStreamIndex);</span>
+<span class="nc" id="L667">        spinnerToolbar.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {</span>
+            @Override
+            public void onItemSelected(AdapterView&lt;?&gt; parent, View view, int position, long id) {
+<span class="nc" id="L670">                selectedVideoStreamIndex = position;</span>
+<span class="nc" id="L671">            }</span>
+
+            @Override
+            public void onNothingSelected(AdapterView&lt;?&gt; parent) {
+<span class="nc" id="L675">            }</span>
+        });
+<span class="nc" id="L677">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // OwnStack
+    //////////////////////////////////////////////////////////////////////////*/
+
+    /**
+     * Stack that contains the &quot;navigation history&quot;.&lt;br&gt;
+     * The peek is the current video.
+     */
+<span class="nc" id="L687">    protected final LinkedList&lt;StackItem&gt; stack = new LinkedList&lt;&gt;();</span>
+
+    public void pushToStack(int serviceId, String videoUrl, String name) {
+<span class="nc bnc" id="L690" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L691">            Log.d(TAG, &quot;pushToStack() called with: serviceId = [&quot;</span>
+                    + serviceId + &quot;], videoUrl = [&quot; + videoUrl + &quot;], name = [&quot; + name + &quot;]&quot;);
+        }
+
+<span class="nc bnc" id="L695" title="All 2 branches missed.">        if (stack.size() &gt; 0</span>
+<span class="nc bnc" id="L696" title="All 2 branches missed.">                &amp;&amp; stack.peek().getServiceId() == serviceId</span>
+<span class="nc bnc" id="L697" title="All 2 branches missed.">                &amp;&amp; stack.peek().getUrl().equals(videoUrl)) {</span>
+<span class="nc" id="L698">            Log.d(TAG, &quot;pushToStack() called with: serviceId == peek.serviceId = [&quot;</span>
+                    + serviceId + &quot;], videoUrl == peek.getUrl = [&quot; + videoUrl + &quot;]&quot;);
+<span class="nc" id="L700">            return;</span>
+        } else {
+<span class="nc" id="L702">            Log.d(TAG, &quot;pushToStack() wasn't equal&quot;);</span>
+        }
+
+<span class="nc" id="L705">        stack.push(new StackItem(serviceId, videoUrl, name));</span>
+<span class="nc" id="L706">    }</span>
+
+    public void setTitleToUrl(int serviceId, String videoUrl, String name) {
+<span class="nc bnc" id="L709" title="All 4 branches missed.">        if (name != null &amp;&amp; !name.isEmpty()) {</span>
+<span class="nc bnc" id="L710" title="All 2 branches missed.">            for (StackItem stackItem : stack) {</span>
+<span class="nc bnc" id="L711" title="All 2 branches missed.">                if (stack.peek().getServiceId() == serviceId</span>
+<span class="nc bnc" id="L712" title="All 2 branches missed.">                        &amp;&amp; stackItem.getUrl().equals(videoUrl)) {</span>
+<span class="nc" id="L713">                    stackItem.setTitle(name);</span>
+                }
+<span class="nc" id="L715">            }</span>
+        }
+<span class="nc" id="L717">    }</span>
+
+    @Override
+    public boolean onBackPressed() {
+<span class="nc bnc" id="L721" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onBackPressed() called&quot;);</span>
+        // That means that we are on the start of the stack,
+        // return false to let the MainActivity handle the onBack
+<span class="nc bnc" id="L724" title="All 2 branches missed.">        if (stack.size() &lt;= 1) return false;</span>
+        // Remove top
+<span class="nc" id="L726">        stack.pop();</span>
+        // Get stack item from the new top
+<span class="nc" id="L728">        StackItem peek = stack.peek();</span>
+
+<span class="nc" id="L730">        selectAndLoadVideo(peek.getServiceId(),</span>
+<span class="nc" id="L731">                peek.getUrl(),</span>
+<span class="nc bnc" id="L732" title="All 2 branches missed.">                !TextUtils.isEmpty(peek.getTitle())</span>
+<span class="nc" id="L733">                        ? peek.getTitle()</span>
+                        : &quot;&quot;);
+<span class="nc" id="L735">        return true;</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Info loading and handling
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    protected void doInitialLoadLogic() {
+<span class="nc bnc" id="L744" title="All 2 branches missed.">        if (currentInfo == null) prepareAndLoadInfo();</span>
+<span class="nc" id="L745">        else prepareAndHandleInfo(currentInfo, false);</span>
+<span class="nc" id="L746">    }</span>
+
+    public void selectAndLoadVideo(int serviceId, String videoUrl, String name) {
+<span class="nc" id="L749">        setInitialData(serviceId, videoUrl, name);</span>
+<span class="nc" id="L750">        prepareAndLoadInfo();</span>
+<span class="nc" id="L751">    }</span>
+
+    public void prepareAndHandleInfo(final StreamInfo info, boolean scrollToTop) {
+<span class="nc bnc" id="L754" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;prepareAndHandleInfo() called with: info = [&quot;</span>
+                + info + &quot;], scrollToTop = [&quot; + scrollToTop + &quot;]&quot;);
+
+<span class="nc" id="L757">        setInitialData(info.getServiceId(), info.getUrl(), info.getName());</span>
+<span class="nc" id="L758">        pushToStack(serviceId, url, name);</span>
+<span class="nc" id="L759">        showLoading();</span>
+<span class="nc" id="L760">        initTabs();</span>
+
+<span class="nc bnc" id="L762" title="All 2 branches missed.">        if (scrollToTop) appBarLayout.setExpanded(true, true);</span>
+<span class="nc" id="L763">        handleResult(info);</span>
+<span class="nc" id="L764">        showContent();</span>
+
+<span class="nc" id="L766">    }</span>
+
+    protected void prepareAndLoadInfo() {
+<span class="nc" id="L769">        appBarLayout.setExpanded(true, true);</span>
+<span class="nc" id="L770">        pushToStack(serviceId, url, name);</span>
+<span class="nc" id="L771">        startLoading(false);</span>
+<span class="nc" id="L772">    }</span>
+
+    @Override
+    public void startLoading(boolean forceLoad) {
+<span class="nc" id="L776">        super.startLoading(forceLoad);</span>
+
+<span class="nc" id="L778">        initTabs();</span>
+<span class="nc" id="L779">        currentInfo = null;</span>
+<span class="nc bnc" id="L780" title="All 2 branches missed.">        if (currentWorker != null) currentWorker.dispose();</span>
+
+<span class="nc" id="L782">        currentWorker = ExtractorHelper.getStreamInfo(serviceId, url, forceLoad)</span>
+<span class="nc" id="L783">                .subscribeOn(Schedulers.io())</span>
+<span class="nc" id="L784">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L785">                .subscribe((@NonNull StreamInfo result) -&gt; {</span>
+<span class="nc" id="L786">                    isLoading.set(false);</span>
+<span class="nc" id="L787">                    currentInfo = result;</span>
+<span class="nc" id="L788">                    handleResult(result);</span>
+<span class="nc" id="L789">                    showContent();</span>
+<span class="nc" id="L790">                }, (@NonNull Throwable throwable) -&gt; {</span>
+<span class="nc" id="L791">                    isLoading.set(false);</span>
+<span class="nc" id="L792">                    onError(throwable);</span>
+<span class="nc" id="L793">                });</span>
+
+<span class="nc" id="L795">    }</span>
+
+    private void initTabs() {
+<span class="nc bnc" id="L798" title="All 2 branches missed.">        if (pageAdapter.getCount() != 0) {</span>
+<span class="nc" id="L799">            selectedTabTag = pageAdapter.getItemTitle(viewPager.getCurrentItem());</span>
+        }
+<span class="nc" id="L801">        pageAdapter.clearAllItems();</span>
+
+<span class="nc bnc" id="L803" title="All 2 branches missed.">        if(shouldShowComments()){</span>
+<span class="nc" id="L804">            pageAdapter.addFragment(CommentsFragment.getInstance(serviceId, url, name), COMMENTS_TAB_TAG);</span>
+        }
+
+<span class="nc bnc" id="L807" title="All 4 branches missed.">        if(showRelatedStreams &amp;&amp; null == relatedStreamsLayout){</span>
+            //temp empty fragment. will be updated in handleResult
+<span class="nc" id="L809">            pageAdapter.addFragment(new Fragment(), RELATED_TAB_TAG);</span>
+        }
+
+<span class="nc bnc" id="L812" title="All 2 branches missed.">        if(pageAdapter.getCount() == 0){</span>
+<span class="nc" id="L813">            pageAdapter.addFragment(new EmptyFragment(), EMPTY_TAB_TAG);</span>
+        }
+
+<span class="nc" id="L816">        pageAdapter.notifyDataSetUpdate();</span>
+
+<span class="nc bnc" id="L818" title="All 2 branches missed.">        if(pageAdapter.getCount() &lt; 2){</span>
+<span class="nc" id="L819">            tabLayout.setVisibility(View.GONE);</span>
+        }else{
+<span class="nc" id="L821">            int position = pageAdapter.getItemPositionByTitle(selectedTabTag);</span>
+<span class="nc bnc" id="L822" title="All 2 branches missed.">            if(position != -1) viewPager.setCurrentItem(position);</span>
+<span class="nc" id="L823">            tabLayout.setVisibility(View.VISIBLE);</span>
+        }
+<span class="nc" id="L825">    }</span>
+
+    private boolean shouldShowComments() {
+        try {
+<span class="nc bnc" id="L829" title="All 2 branches missed.">            return showComments &amp;&amp; NewPipe.getService(serviceId)</span>
+<span class="nc" id="L830">                    .getServiceInfo()</span>
+<span class="nc" id="L831">                    .getMediaCapabilities()</span>
+<span class="nc bnc" id="L832" title="All 2 branches missed.">                    .contains(COMMENTS);</span>
+<span class="nc" id="L833">        } catch (ExtractionException e) {</span>
+<span class="nc" id="L834">            return false;</span>
+        }
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Play Utils
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private void openBackgroundPlayer(final boolean append) {
+<span class="nc" id="L843">        AudioStream audioStream = currentInfo.getAudioStreams()</span>
+<span class="nc" id="L844">                .get(ListHelper.getDefaultAudioFormat(activity, currentInfo.getAudioStreams()));</span>
+
+<span class="nc" id="L846">        boolean useExternalAudioPlayer = PreferenceManager.getDefaultSharedPreferences(activity)</span>
+<span class="nc" id="L847">                .getBoolean(activity.getString(R.string.use_external_audio_player_key), false);</span>
+
+<span class="nc bnc" id="L849" title="All 4 branches missed.">        if (!useExternalAudioPlayer &amp;&amp; android.os.Build.VERSION.SDK_INT &gt;= 16) {</span>
+<span class="nc" id="L850">            openNormalBackgroundPlayer(append);</span>
+        } else {
+<span class="nc" id="L852">            startOnExternalPlayer(activity, currentInfo, audioStream);</span>
+        }
+<span class="nc" id="L854">    }</span>
+
+    private void openPopupPlayer(final boolean append) {
+<span class="nc bnc" id="L857" title="All 2 branches missed.">        if (!PermissionHelper.isPopupEnabled(activity)) {</span>
+<span class="nc" id="L858">            PermissionHelper.showPopupEnablementToast(activity);</span>
+<span class="nc" id="L859">            return;</span>
+        }
+
+<span class="nc" id="L862">        final PlayQueue itemQueue = new SinglePlayQueue(currentInfo);</span>
+<span class="nc bnc" id="L863" title="All 2 branches missed.">        if (append) {</span>
+<span class="nc" id="L864">            NavigationHelper.enqueueOnPopupPlayer(activity, itemQueue, false);</span>
+        } else {
+<span class="nc" id="L866">            Toast.makeText(activity, R.string.popup_playing_toast, Toast.LENGTH_SHORT).show();</span>
+<span class="nc" id="L867">            final Intent intent = NavigationHelper.getPlayerIntent(</span>
+<span class="nc" id="L868">                    activity, PopupVideoPlayer.class, itemQueue, getSelectedVideoStream().resolution, true</span>
+            );
+<span class="nc" id="L870">            activity.startService(intent);</span>
+        }
+<span class="nc" id="L872">    }</span>
+
+    private void openVideoPlayer() {
+<span class="nc" id="L875">        VideoStream selectedVideoStream = getSelectedVideoStream();</span>
+
+<span class="nc" id="L877">        if (PreferenceManager.getDefaultSharedPreferences(activity)</span>
+<span class="nc bnc" id="L878" title="All 2 branches missed.">                .getBoolean(this.getString(R.string.use_external_video_player_key), false)) {</span>
+<span class="nc" id="L879">            startOnExternalPlayer(activity, currentInfo, selectedVideoStream);</span>
+        } else {
+<span class="nc" id="L881">            openNormalPlayer();</span>
+        }
+<span class="nc" id="L883">    }</span>
+
+    private void openNormalBackgroundPlayer(final boolean append) {
+<span class="nc" id="L886">        final PlayQueue itemQueue = new SinglePlayQueue(currentInfo);</span>
+<span class="nc bnc" id="L887" title="All 2 branches missed.">        if (append) {</span>
+<span class="nc" id="L888">            NavigationHelper.enqueueOnBackgroundPlayer(activity, itemQueue, false);</span>
+        } else {
+<span class="nc" id="L890">            NavigationHelper.playOnBackgroundPlayer(activity, itemQueue, true);</span>
+        }
+<span class="nc" id="L892">    }</span>
+
+    private void openNormalPlayer() {
+        Intent mIntent;
+<span class="nc" id="L896">        final PlayQueue playQueue = new SinglePlayQueue(currentInfo);</span>
+<span class="nc" id="L897">        mIntent = NavigationHelper.getPlayerIntent(activity,</span>
+                MainVideoPlayer.class,
+                playQueue,
+<span class="nc" id="L900">                getSelectedVideoStream().getResolution(), true);</span>
+<span class="nc" id="L901">        startActivity(mIntent);</span>
+<span class="nc" id="L902">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Utils
+    //////////////////////////////////////////////////////////////////////////*/
+
+    public void setAutoplay(boolean autoplay) {
+<span class="nc" id="L909">        this.autoPlayEnabled = autoplay;</span>
+<span class="nc" id="L910">    }</span>
+
+    private void startOnExternalPlayer(@NonNull final Context context,
+                                       @NonNull final StreamInfo info,
+                                       @NonNull final Stream selectedStream) {
+<span class="nc" id="L915">        NavigationHelper.playOnExternalPlayer(context, currentInfo.getName(),</span>
+<span class="nc" id="L916">                currentInfo.getUploaderName(), selectedStream);</span>
+
+<span class="nc" id="L918">        final HistoryRecordManager recordManager = new HistoryRecordManager(requireContext());</span>
+<span class="nc" id="L919">        disposables.add(recordManager.onViewed(info).onErrorComplete()</span>
+<span class="nc" id="L920">                .subscribe(</span>
+<span class="nc" id="L921">                        ignored -&gt; {/* successful */},</span>
+<span class="nc" id="L922">                        error -&gt; Log.e(TAG, &quot;Register view failure: &quot;, error)</span>
+                ));
+<span class="nc" id="L924">    }</span>
+
+    @Nullable
+    private VideoStream getSelectedVideoStream() {
+<span class="nc bnc" id="L928" title="All 2 branches missed.">        return sortedVideoStreams != null ? sortedVideoStreams.get(selectedVideoStreamIndex) : null;</span>
+    }
+
+    private void prepareDescription(final String descriptionHtml) {
+<span class="nc bnc" id="L932" title="All 2 branches missed.">        if (TextUtils.isEmpty(descriptionHtml)) {</span>
+<span class="nc" id="L933">            return;</span>
+        }
+
+<span class="nc" id="L936">        disposables.add(Single.just(descriptionHtml)</span>
+<span class="nc" id="L937">                .map((@io.reactivex.annotations.NonNull String description) -&gt; {</span>
+                    Spanned parsedDescription;
+<span class="nc bnc" id="L939" title="All 2 branches missed.">                    if (Build.VERSION.SDK_INT &gt;= 24) {</span>
+<span class="nc" id="L940">                        parsedDescription = Html.fromHtml(description, 0);</span>
+                    } else {
+                        //noinspection deprecation
+<span class="nc" id="L943">                        parsedDescription = Html.fromHtml(description);</span>
+                    }
+<span class="nc" id="L945">                    return parsedDescription;</span>
+                })
+<span class="nc" id="L947">                .subscribeOn(Schedulers.computation())</span>
+<span class="nc" id="L948">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L949">                .subscribe((@io.reactivex.annotations.NonNull Spanned spanned) -&gt; {</span>
+<span class="nc" id="L950">                    videoDescriptionView.setText(spanned);</span>
+<span class="nc" id="L951">                    videoDescriptionView.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L952">                }));</span>
+<span class="nc" id="L953">    }</span>
+
+    private void setHeightThumbnail() {
+<span class="nc" id="L956">        final DisplayMetrics metrics = getResources().getDisplayMetrics();</span>
+<span class="nc bnc" id="L957" title="All 2 branches missed.">        boolean isPortrait = metrics.heightPixels &gt; metrics.widthPixels;</span>
+<span class="nc bnc" id="L958" title="All 2 branches missed.">        int height = isPortrait</span>
+                ? (int) (metrics.widthPixels / (16.0f / 9.0f))
+                : (int) (metrics.heightPixels / 2f);
+<span class="nc" id="L961">        thumbnailImageView.setLayoutParams(</span>
+                new FrameLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, height));
+<span class="nc" id="L963">        thumbnailImageView.setMinimumHeight(height);</span>
+<span class="nc" id="L964">    }</span>
+
+    private void showContent() {
+<span class="nc" id="L967">        contentRootLayoutHiding.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L968">    }</span>
+
+    protected void setInitialData(int serviceId, String url, String name) {
+<span class="nc" id="L971">        this.serviceId = serviceId;</span>
+<span class="nc" id="L972">        this.url = url;</span>
+<span class="nc bnc" id="L973" title="All 2 branches missed.">        this.name = !TextUtils.isEmpty(name) ? name : &quot;&quot;;</span>
+<span class="nc" id="L974">    }</span>
+
+    private void setErrorImage(final int imageResource) {
+<span class="nc bnc" id="L977" title="All 4 branches missed.">        if (thumbnailImageView == null || activity == null) return;</span>
+
+<span class="nc" id="L979">        thumbnailImageView.setImageDrawable(ContextCompat.getDrawable(activity, imageResource));</span>
+<span class="nc" id="L980">        animateView(thumbnailImageView, false, 0, 0,</span>
+<span class="nc" id="L981">                () -&gt; animateView(thumbnailImageView, true, 500));</span>
+<span class="nc" id="L982">    }</span>
+
+    @Override
+    public void showError(String message, boolean showRetryButton) {
+<span class="nc" id="L986">        showError(message, showRetryButton, R.drawable.not_available_monkey);</span>
+<span class="nc" id="L987">    }</span>
+
+    protected void showError(String message, boolean showRetryButton, @DrawableRes int imageError) {
+<span class="nc" id="L990">        super.showError(message, showRetryButton);</span>
+<span class="nc" id="L991">        setErrorImage(imageError);</span>
+<span class="nc" id="L992">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Contract
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void showLoading() {
+
+<span class="nc" id="L1001">        super.showLoading();</span>
+
+        //if data is already cached, transition from VISIBLE -&gt; INVISIBLE -&gt; VISIBLE is not required
+<span class="nc bnc" id="L1004" title="All 2 branches missed.">        if(!ExtractorHelper.isCached(serviceId, url, InfoItem.InfoType.STREAM)){</span>
+<span class="nc" id="L1005">            contentRootLayoutHiding.setVisibility(View.INVISIBLE);</span>
+        }
+
+<span class="nc" id="L1008">        animateView(spinnerToolbar, false, 200);</span>
+<span class="nc" id="L1009">        animateView(thumbnailPlayButton, false, 50);</span>
+<span class="nc" id="L1010">        animateView(detailDurationView, false, 100);</span>
+<span class="nc" id="L1011">        animateView(detailPositionView, false, 100);</span>
+<span class="nc" id="L1012">        animateView(positionView, false, 50);</span>
+
+<span class="nc bnc" id="L1014" title="All 2 branches missed.">        videoTitleTextView.setText(name != null ? name : &quot;&quot;);</span>
+<span class="nc" id="L1015">        videoTitleTextView.setMaxLines(1);</span>
+<span class="nc" id="L1016">        animateView(videoTitleTextView, true, 0);</span>
+
+<span class="nc" id="L1018">        videoDescriptionRootLayout.setVisibility(View.GONE);</span>
+<span class="nc" id="L1019">        videoTitleToggleArrow.setImageResource(R.drawable.arrow_down);</span>
+<span class="nc" id="L1020">        videoTitleToggleArrow.setVisibility(View.GONE);</span>
+<span class="nc" id="L1021">        videoTitleRoot.setClickable(false);</span>
+
+<span class="nc bnc" id="L1023" title="All 2 branches missed.">        if(relatedStreamsLayout != null){</span>
+<span class="nc bnc" id="L1024" title="All 2 branches missed.">            if(showRelatedStreams){</span>
+<span class="nc" id="L1025">                relatedStreamsLayout.setVisibility(View.INVISIBLE);</span>
+            }else{
+<span class="nc" id="L1027">                relatedStreamsLayout.setVisibility(View.GONE);</span>
+            }
+        }
+
+<span class="nc" id="L1031">        imageLoader.cancelDisplayTask(thumbnailImageView);</span>
+<span class="nc" id="L1032">        imageLoader.cancelDisplayTask(uploaderThumb);</span>
+<span class="nc" id="L1033">        thumbnailImageView.setImageBitmap(null);</span>
+<span class="nc" id="L1034">        uploaderThumb.setImageBitmap(null);</span>
+<span class="nc" id="L1035">    }</span>
+
+    @Override
+    public void handleResult(@NonNull StreamInfo info) {
+<span class="nc" id="L1039">        super.handleResult(info);</span>
+
+<span class="nc" id="L1041">        setInitialData(info.getServiceId(), info.getOriginalUrl(), info.getName());</span>
+
+<span class="nc bnc" id="L1043" title="All 2 branches missed.">        if(showRelatedStreams){</span>
+<span class="nc bnc" id="L1044" title="All 2 branches missed.">            if(null == relatedStreamsLayout){ //phone</span>
+<span class="nc" id="L1045">                pageAdapter.updateItem(RELATED_TAB_TAG, RelatedVideosFragment.getInstance(currentInfo));</span>
+<span class="nc" id="L1046">                pageAdapter.notifyDataSetUpdate();</span>
+            }else{ //tablet
+<span class="nc" id="L1048">                getChildFragmentManager().beginTransaction()</span>
+<span class="nc" id="L1049">                        .replace(R.id.relatedStreamsLayout, RelatedVideosFragment.getInstance(currentInfo))</span>
+<span class="nc" id="L1050">                        .commitNow();</span>
+<span class="nc" id="L1051">                relatedStreamsLayout.setVisibility(View.VISIBLE);</span>
+            }
+        }
+
+        //pushToStack(serviceId, url, name);
+
+<span class="nc" id="L1057">        animateView(thumbnailPlayButton, true, 200);</span>
+<span class="nc" id="L1058">        videoTitleTextView.setText(name);</span>
+
+<span class="nc bnc" id="L1060" title="All 2 branches missed.">        if (!TextUtils.isEmpty(info.getUploaderName())) {</span>
+<span class="nc" id="L1061">            uploaderTextView.setText(info.getUploaderName());</span>
+<span class="nc" id="L1062">            uploaderTextView.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L1063">            uploaderTextView.setSelected(true);</span>
+        } else {
+<span class="nc" id="L1065">            uploaderTextView.setVisibility(View.GONE);</span>
+        }
+<span class="nc" id="L1067">        uploaderThumb.setImageDrawable(ContextCompat.getDrawable(activity, R.drawable.buddy));</span>
+
+<span class="nc bnc" id="L1069" title="All 2 branches missed.">        if (info.getViewCount() &gt;= 0) {</span>
+<span class="nc" id="L1070">            videoCountView.setText(Localization.localizeViewCount(activity, info.getViewCount()));</span>
+<span class="nc" id="L1071">            videoCountView.setVisibility(View.VISIBLE);</span>
+        } else {
+<span class="nc" id="L1073">            videoCountView.setVisibility(View.GONE);</span>
+        }
+
+<span class="nc bnc" id="L1076" title="All 4 branches missed.">        if (info.getDislikeCount() == -1 &amp;&amp; info.getLikeCount() == -1) {</span>
+<span class="nc" id="L1077">            thumbsDownImageView.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L1078">            thumbsUpImageView.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L1079">            thumbsUpTextView.setVisibility(View.GONE);</span>
+<span class="nc" id="L1080">            thumbsDownTextView.setVisibility(View.GONE);</span>
+
+<span class="nc" id="L1082">            thumbsDisabledTextView.setVisibility(View.VISIBLE);</span>
+        } else {
+<span class="nc bnc" id="L1084" title="All 2 branches missed.">            if (info.getDislikeCount() &gt;= 0) {</span>
+<span class="nc" id="L1085">                thumbsDownTextView.setText(Localization.shortCount(activity, info.getDislikeCount()));</span>
+<span class="nc" id="L1086">                thumbsDownTextView.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L1087">                thumbsDownImageView.setVisibility(View.VISIBLE);</span>
+            } else {
+<span class="nc" id="L1089">                thumbsDownTextView.setVisibility(View.GONE);</span>
+<span class="nc" id="L1090">                thumbsDownImageView.setVisibility(View.GONE);</span>
+            }
+
+<span class="nc bnc" id="L1093" title="All 2 branches missed.">            if (info.getLikeCount() &gt;= 0) {</span>
+<span class="nc" id="L1094">                thumbsUpTextView.setText(Localization.shortCount(activity, info.getLikeCount()));</span>
+<span class="nc" id="L1095">                thumbsUpTextView.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L1096">                thumbsUpImageView.setVisibility(View.VISIBLE);</span>
+            } else {
+<span class="nc" id="L1098">                thumbsUpTextView.setVisibility(View.GONE);</span>
+<span class="nc" id="L1099">                thumbsUpImageView.setVisibility(View.GONE);</span>
+            }
+<span class="nc" id="L1101">            thumbsDisabledTextView.setVisibility(View.GONE);</span>
+        }
+
+<span class="nc bnc" id="L1104" title="All 2 branches missed.">        if (info.getDuration() &gt; 0) {</span>
+<span class="nc" id="L1105">            detailDurationView.setText(Localization.getDurationString(info.getDuration()));</span>
+<span class="nc" id="L1106">            detailDurationView.setBackgroundColor(</span>
+<span class="nc" id="L1107">                    ContextCompat.getColor(activity, R.color.duration_background_color));</span>
+<span class="nc" id="L1108">            animateView(detailDurationView, true, 100);</span>
+<span class="nc bnc" id="L1109" title="All 2 branches missed.">        } else if (info.getStreamType() == StreamType.LIVE_STREAM) {</span>
+<span class="nc" id="L1110">            detailDurationView.setText(R.string.duration_live);</span>
+<span class="nc" id="L1111">            detailDurationView.setBackgroundColor(</span>
+<span class="nc" id="L1112">                    ContextCompat.getColor(activity, R.color.live_duration_background_color));</span>
+<span class="nc" id="L1113">            animateView(detailDurationView, true, 100);</span>
+        } else {
+<span class="nc" id="L1115">            detailDurationView.setVisibility(View.GONE);</span>
+        }
+
+<span class="nc" id="L1118">        videoDescriptionView.setVisibility(View.GONE);</span>
+<span class="nc" id="L1119">        videoTitleRoot.setClickable(true);</span>
+<span class="nc" id="L1120">        videoTitleToggleArrow.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L1121">        videoTitleToggleArrow.setImageResource(R.drawable.arrow_down);</span>
+<span class="nc" id="L1122">        videoDescriptionRootLayout.setVisibility(View.GONE);</span>
+<span class="nc bnc" id="L1123" title="All 2 branches missed.">        if (!TextUtils.isEmpty(info.getUploadDate())) {</span>
+<span class="nc" id="L1124">            videoUploadDateView.setText(Localization.localizeDate(activity, info.getUploadDate()));</span>
+        }
+<span class="nc" id="L1126">        prepareDescription(info.getDescription());</span>
+<span class="nc" id="L1127">        updateProgressInfo(info);</span>
+
+<span class="nc" id="L1129">        animateView(spinnerToolbar, true, 500);</span>
+<span class="nc" id="L1130">        setupActionBar(info);</span>
+<span class="nc" id="L1131">        initThumbnailViews(info);</span>
+
+<span class="nc" id="L1133">        setTitleToUrl(info.getServiceId(), info.getUrl(), info.getName());</span>
+<span class="nc" id="L1134">        setTitleToUrl(info.getServiceId(), info.getOriginalUrl(), info.getName());</span>
+
+<span class="nc bnc" id="L1136" title="All 2 branches missed.">        if (!info.getErrors().isEmpty()) {</span>
+<span class="nc" id="L1137">            showSnackBarError(info.getErrors(),</span>
+                    UserAction.REQUESTED_STREAM,
+<span class="nc" id="L1139">                    NewPipe.getNameOfService(info.getServiceId()),</span>
+<span class="nc" id="L1140">                    info.getUrl(),</span>
+                    0);
+        }
+
+<span class="nc bnc" id="L1144" title="All 2 branches missed.">        switch (info.getStreamType()) {</span>
+            case LIVE_STREAM:
+            case AUDIO_LIVE_STREAM:
+<span class="nc" id="L1147">                detailControlsDownload.setVisibility(View.GONE);</span>
+<span class="nc" id="L1148">                spinnerToolbar.setVisibility(View.GONE);</span>
+<span class="nc" id="L1149">                break;</span>
+            default:
+<span class="nc bnc" id="L1151" title="All 2 branches missed.">                if(info.getAudioStreams().isEmpty()) detailControlsBackground.setVisibility(View.GONE);</span>
+<span class="nc bnc" id="L1152" title="All 2 branches missed.">                if (!info.getVideoStreams().isEmpty()</span>
+<span class="nc bnc" id="L1153" title="All 2 branches missed.">                        || !info.getVideoOnlyStreams().isEmpty()) break;</span>
+
+<span class="nc" id="L1155">                detailControlsPopup.setVisibility(View.GONE);</span>
+<span class="nc" id="L1156">                spinnerToolbar.setVisibility(View.GONE);</span>
+<span class="nc" id="L1157">                thumbnailPlayButton.setImageResource(R.drawable.ic_headset_white_24dp);</span>
+                break;
+        }
+
+<span class="nc bnc" id="L1161" title="All 2 branches missed.">        if (autoPlayEnabled) {</span>
+<span class="nc" id="L1162">            openVideoPlayer();</span>
+            // Only auto play in the first open
+<span class="nc" id="L1164">            autoPlayEnabled = false;</span>
+        }
+<span class="nc" id="L1166">    }</span>
+
+
+    public void openDownloadDialog() {
+            try {
+<span class="nc" id="L1171">                DownloadDialog downloadDialog = DownloadDialog.newInstance(currentInfo);</span>
+<span class="nc" id="L1172">                downloadDialog.setVideoStreams(sortedVideoStreams);</span>
+<span class="nc" id="L1173">                downloadDialog.setAudioStreams(currentInfo.getAudioStreams());</span>
+<span class="nc" id="L1174">                downloadDialog.setSelectedVideoStream(selectedVideoStreamIndex);</span>
+<span class="nc" id="L1175">                downloadDialog.setSubtitleStreams(currentInfo.getSubtitles());</span>
+
+<span class="nc" id="L1177">                downloadDialog.show(getActivity().getSupportFragmentManager(), &quot;downloadDialog&quot;);</span>
+<span class="nc" id="L1178">            } catch (Exception e) {</span>
+<span class="nc" id="L1179">                ErrorActivity.ErrorInfo info = ErrorActivity.ErrorInfo.make(UserAction.UI_ERROR,</span>
+<span class="nc" id="L1180">                        ServiceList.all()</span>
+<span class="nc" id="L1181">                                .get(currentInfo</span>
+<span class="nc" id="L1182">                                        .getServiceId())</span>
+<span class="nc" id="L1183">                                .getServiceInfo()</span>
+<span class="nc" id="L1184">                                .getName(), &quot;&quot;,</span>
+                        R.string.could_not_setup_download_menu);
+
+<span class="nc" id="L1187">                ErrorActivity.reportError(getActivity(),</span>
+                        e,
+<span class="nc" id="L1189">                        getActivity().getClass(),</span>
+<span class="nc" id="L1190">                        getActivity().findViewById(android.R.id.content), info);</span>
+<span class="nc" id="L1191">            }</span>
+<span class="nc" id="L1192">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Stream Results
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    protected boolean onError(Throwable exception) {
+<span class="nc bnc" id="L1200" title="All 2 branches missed.">        if (super.onError(exception)) return true;</span>
+
+<span class="nc bnc" id="L1202" title="All 2 branches missed.">        else if (exception instanceof ContentNotAvailableException) {</span>
+<span class="nc" id="L1203">            showError(getString(R.string.content_not_available), false);</span>
+        } else {
+<span class="nc bnc" id="L1205" title="All 4 branches missed.">            int errorId = exception instanceof YoutubeStreamExtractor.DecryptException</span>
+                    ? R.string.youtube_signature_decryption_error
+                    : exception instanceof ParsingException
+                    ? R.string.parsing_error
+                    : R.string.general_error;
+<span class="nc" id="L1210">            onUnrecoverableError(exception,</span>
+                    UserAction.REQUESTED_STREAM,
+<span class="nc" id="L1212">                    NewPipe.getNameOfService(serviceId),</span>
+                    url,
+                    errorId);
+        }
+
+<span class="nc" id="L1217">        return true;</span>
+    }
+
+    private void updateProgressInfo(@NonNull final StreamInfo info) {
+<span class="nc bnc" id="L1221" title="All 2 branches missed.">        if (positionSubscriber != null) {</span>
+<span class="nc" id="L1222">            positionSubscriber.dispose();</span>
+        }
+<span class="nc" id="L1224">        final SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(activity);</span>
+<span class="nc" id="L1225">        final boolean playbackResumeEnabled =</span>
+<span class="nc bnc" id="L1226" title="All 2 branches missed.">                prefs.getBoolean(activity.getString(R.string.enable_watch_history_key), true)</span>
+<span class="nc bnc" id="L1227" title="All 2 branches missed.">                        &amp;&amp; prefs.getBoolean(activity.getString(R.string.enable_playback_resume_key), true);</span>
+<span class="nc bnc" id="L1228" title="All 4 branches missed.">        if (!playbackResumeEnabled || info.getDuration() &lt;= 0) {</span>
+<span class="nc" id="L1229">            positionView.setVisibility(View.INVISIBLE);</span>
+<span class="nc" id="L1230">            detailPositionView.setVisibility(View.GONE);</span>
+<span class="nc" id="L1231">            return;</span>
+        }
+<span class="nc" id="L1233">        final HistoryRecordManager recordManager = new HistoryRecordManager(requireContext());</span>
+<span class="nc" id="L1234">        positionSubscriber = recordManager.loadStreamState(info)</span>
+<span class="nc" id="L1235">                .subscribeOn(Schedulers.io())</span>
+<span class="nc" id="L1236">                .onErrorComplete()</span>
+<span class="nc" id="L1237">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L1238">                .subscribe(state -&gt; {</span>
+<span class="nc" id="L1239">                    final int seconds = (int) TimeUnit.MILLISECONDS.toSeconds(state.getProgressTime());</span>
+<span class="nc" id="L1240">                    positionView.setMax((int) info.getDuration());</span>
+<span class="nc" id="L1241">                    positionView.setProgressAnimated(seconds);</span>
+<span class="nc" id="L1242">                    detailPositionView.setText(Localization.getDurationString(seconds));</span>
+<span class="nc" id="L1243">                    animateView(positionView, true, 500);</span>
+<span class="nc" id="L1244">                    animateView(detailPositionView, true, 500);</span>
+<span class="nc" id="L1245">                }, e -&gt; {</span>
+<span class="nc bnc" id="L1246" title="All 2 branches missed.">                    if (DEBUG) e.printStackTrace();</span>
+<span class="nc" id="L1247">                }, () -&gt; {</span>
+<span class="nc" id="L1248">                    animateView(positionView, false, 500);</span>
+<span class="nc" id="L1249">                    animateView(detailPositionView, false, 500);</span>
+<span class="nc" id="L1250">                });</span>
+<span class="nc" id="L1251">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

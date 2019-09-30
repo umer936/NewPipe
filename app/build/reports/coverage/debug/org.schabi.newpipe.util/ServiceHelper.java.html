@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ServiceHelper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.util</a> &gt; <span class="el_source">ServiceHelper.java</span></div><h1>ServiceHelper.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.util;
+
+import android.content.Context;
+import android.preference.PreferenceManager;
+import android.support.annotation.DrawableRes;
+import android.support.annotation.StringRes;
+
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.extractor.NewPipe;
+import org.schabi.newpipe.extractor.ServiceList;
+import org.schabi.newpipe.extractor.StreamingService;
+import org.schabi.newpipe.extractor.exceptions.ExtractionException;
+
+import java.util.concurrent.TimeUnit;
+
+import static org.schabi.newpipe.extractor.ServiceList.SoundCloud;
+
+<span class="nc" id="L18">public class ServiceHelper {</span>
+<span class="nc" id="L19">    private static final StreamingService DEFAULT_FALLBACK_SERVICE = ServiceList.YouTube;</span>
+
+    @DrawableRes
+    public static int getIcon(int serviceId) {
+<span class="nc bnc" id="L23" title="All 4 branches missed.">        switch (serviceId) {</span>
+            case 0:
+<span class="nc" id="L25">                return R.drawable.place_holder_youtube;</span>
+            case 1:
+<span class="nc" id="L27">                return R.drawable.place_holder_cloud;</span>
+            case 2:
+<span class="nc" id="L29">                return R.drawable.place_holder_gadse;</span>
+            default:
+<span class="nc" id="L31">                return R.drawable.place_holder_circle;</span>
+        }
+    }
+
+    public static String getTranslatedFilterString(String filter, Context c) {
+<span class="nc bnc" id="L36" title="All 34 branches missed.">        switch(filter) {</span>
+<span class="nc" id="L37">            case &quot;all&quot;: return c.getString(R.string.all);</span>
+<span class="nc" id="L38">            case &quot;videos&quot;: return c.getString(R.string.videos);</span>
+<span class="nc" id="L39">            case &quot;channels&quot;: return c.getString(R.string.channels);</span>
+<span class="nc" id="L40">            case &quot;playlists&quot;: return c.getString(R.string.playlists);</span>
+<span class="nc" id="L41">            case &quot;tracks&quot;: return c.getString(R.string.tracks);</span>
+<span class="nc" id="L42">            case &quot;users&quot;: return c.getString(R.string.users);</span>
+<span class="nc" id="L43">            case &quot;conferences&quot; : return c.getString(R.string.conferences);</span>
+<span class="nc" id="L44">            case &quot;events&quot; : return c.getString(R.string.events);</span>
+<span class="nc" id="L45">            default: return filter;</span>
+        }
+    }
+
+    /**
+     * Get a resource string with instructions for importing subscriptions for each service.
+     *
+     * @return the string resource containing the instructions or -1 if the service don't support it
+     */
+    @StringRes
+    public static int getImportInstructions(int serviceId) {
+<span class="nc bnc" id="L56" title="All 3 branches missed.">        switch (serviceId) {</span>
+            case 0:
+<span class="nc" id="L58">                return R.string.import_youtube_instructions;</span>
+            case 1:
+<span class="nc" id="L60">                return R.string.import_soundcloud_instructions;</span>
+            default:
+<span class="nc" id="L62">                return -1;</span>
+        }
+    }
+
+    /**
+     * For services that support importing from a channel url, return a hint that will
+     * be used in the EditText that the user will type in his channel url.
+     *
+     * @return the hint's string resource or -1 if the service don't support it
+     */
+    @StringRes
+    public static int getImportInstructionsHint(int serviceId) {
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        switch (serviceId) {</span>
+            case 1:
+<span class="nc" id="L76">                return R.string.import_soundcloud_instructions_hint;</span>
+            default:
+<span class="nc" id="L78">                return -1;</span>
+        }
+    }
+
+    public static int getSelectedServiceId(Context context) {
+
+<span class="nc" id="L84">        final String serviceName = PreferenceManager.getDefaultSharedPreferences(context)</span>
+<span class="nc" id="L85">                .getString(context.getString(R.string.current_service_key), context.getString(R.string.default_service_value));</span>
+
+        int serviceId;
+        try {
+<span class="nc" id="L89">            serviceId = NewPipe.getService(serviceName).getServiceId();</span>
+<span class="nc" id="L90">        } catch (ExtractionException e) {</span>
+<span class="nc" id="L91">            serviceId = DEFAULT_FALLBACK_SERVICE.getServiceId();</span>
+<span class="nc" id="L92">        }</span>
+
+<span class="nc" id="L94">        return serviceId;</span>
+    }
+
+    public static void setSelectedServiceId(Context context, int serviceId) {
+        String serviceName;
+        try {
+<span class="nc" id="L100">            serviceName = NewPipe.getService(serviceId).getServiceInfo().getName();</span>
+<span class="nc" id="L101">        } catch (ExtractionException e) {</span>
+<span class="nc" id="L102">            serviceName = DEFAULT_FALLBACK_SERVICE.getServiceInfo().getName();</span>
+<span class="nc" id="L103">        }</span>
+
+<span class="nc" id="L105">        setSelectedServicePreferences(context, serviceName);</span>
+<span class="nc" id="L106">    }</span>
+
+    public static void setSelectedServiceId(Context context, String serviceName) {
+<span class="nc" id="L109">        int serviceId = NewPipe.getIdOfService(serviceName);</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">        if (serviceId == -1) serviceName = DEFAULT_FALLBACK_SERVICE.getServiceInfo().getName();</span>
+
+<span class="nc" id="L112">        setSelectedServicePreferences(context, serviceName);</span>
+<span class="nc" id="L113">    }</span>
+
+    private static void setSelectedServicePreferences(Context context, String serviceName) {
+<span class="nc" id="L116">        PreferenceManager.getDefaultSharedPreferences(context).edit().</span>
+<span class="nc" id="L117">                putString(context.getString(R.string.current_service_key), serviceName).apply();</span>
+<span class="nc" id="L118">    }</span>
+
+    public static long getCacheExpirationMillis(final int serviceId) {
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        if (serviceId == SoundCloud.getServiceId()) {</span>
+<span class="nc" id="L122">            return TimeUnit.MILLISECONDS.convert(5, TimeUnit.MINUTES);</span>
+        } else {
+<span class="nc" id="L124">            return TimeUnit.MILLISECONDS.convert(1, TimeUnit.HOURS);</span>
+        }
+    }
+
+    public static boolean isBeta(final StreamingService s) {
+<span class="nc bnc" id="L129" title="All 6 branches missed.">        switch(s.getServiceInfo().getName()) {</span>
+<span class="nc" id="L130">            case &quot;YouTube&quot;: return false;</span>
+<span class="nc" id="L131">            default: return true;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

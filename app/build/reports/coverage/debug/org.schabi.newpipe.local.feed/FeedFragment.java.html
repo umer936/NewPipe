@@ -1,0 +1,445 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FeedFragment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.local.feed</a> &gt; <span class="el_source">FeedFragment.java</span></div><h1>FeedFragment.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.local.feed;
+
+import android.os.Bundle;
+import android.os.Handler;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v7.app.ActionBar;
+import android.util.Log;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.View;
+import android.view.ViewGroup;
+
+import org.reactivestreams.Subscriber;
+import org.reactivestreams.Subscription;
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.database.subscription.SubscriptionEntity;
+import org.schabi.newpipe.extractor.InfoItem;
+import org.schabi.newpipe.extractor.NewPipe;
+import org.schabi.newpipe.extractor.channel.ChannelInfo;
+import org.schabi.newpipe.extractor.exceptions.ExtractionException;
+import org.schabi.newpipe.fragments.list.BaseListFragment;
+import org.schabi.newpipe.local.subscription.SubscriptionService;
+import org.schabi.newpipe.report.UserAction;
+
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import io.reactivex.Flowable;
+import io.reactivex.MaybeObserver;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.disposables.Disposable;
+
+<span class="nc" id="L40">public class FeedFragment extends BaseListFragment&lt;List&lt;SubscriptionEntity&gt;, Void&gt; {</span>
+
+    private static final int OFF_SCREEN_ITEMS_COUNT = 3;
+    private static final int MIN_ITEMS_INITIAL_LOAD = 8;
+<span class="nc" id="L44">    private int FEED_LOAD_COUNT = MIN_ITEMS_INITIAL_LOAD;</span>
+
+    private int subscriptionPoolSize;
+
+    private SubscriptionService subscriptionService;
+
+<span class="nc" id="L50">    private AtomicBoolean allItemsLoaded = new AtomicBoolean(false);</span>
+<span class="nc" id="L51">    private HashSet&lt;String&gt; itemsLoaded = new HashSet&lt;&gt;();</span>
+<span class="nc" id="L52">    private final AtomicInteger requestLoadedAtomic = new AtomicInteger();</span>
+
+<span class="nc" id="L54">    private CompositeDisposable compositeDisposable = new CompositeDisposable();</span>
+    private Disposable subscriptionObserver;
+    private Subscription feedSubscriber;
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Fragment LifeCycle
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+<span class="nc" id="L64">        super.onCreate(savedInstanceState);</span>
+<span class="nc" id="L65">        subscriptionService = SubscriptionService.getInstance(activity);</span>
+
+<span class="nc" id="L67">        FEED_LOAD_COUNT = howManyItemsToLoad();</span>
+<span class="nc" id="L68">    }</span>
+
+    @Override
+    public View onCreateView(LayoutInflater inflater, @Nullable ViewGroup container, Bundle savedInstanceState) {
+
+<span class="nc bnc" id="L73" title="All 2 branches missed.">        if(!useAsFrontPage) {</span>
+<span class="nc" id="L74">            setTitle(activity.getString(R.string.fragment_whats_new));</span>
+        }
+<span class="nc" id="L76">        return inflater.inflate(R.layout.fragment_feed, container, false);</span>
+    }
+
+    @Override
+    public void onPause() {
+<span class="nc" id="L81">        super.onPause();</span>
+<span class="nc" id="L82">        disposeEverything();</span>
+<span class="nc" id="L83">    }</span>
+
+    @Override
+    public void onResume() {
+<span class="nc" id="L87">        super.onResume();</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">        if (wasLoading.get()) doInitialLoadLogic();</span>
+<span class="nc" id="L89">    }</span>
+
+    @Override
+    public void onDestroy() {
+<span class="nc" id="L93">        super.onDestroy();</span>
+
+<span class="nc" id="L95">        disposeEverything();</span>
+<span class="nc" id="L96">        subscriptionService = null;</span>
+<span class="nc" id="L97">        compositeDisposable = null;</span>
+<span class="nc" id="L98">        subscriptionObserver = null;</span>
+<span class="nc" id="L99">        feedSubscriber = null;</span>
+<span class="nc" id="L100">    }</span>
+
+    @Override
+    public void onDestroyView() {
+        // Do not monitor for updates when user is not viewing the feed fragment.
+        // This is a waste of bandwidth.
+<span class="nc" id="L106">        disposeEverything();</span>
+<span class="nc" id="L107">        super.onDestroyView();</span>
+<span class="nc" id="L108">    }</span>
+
+    @Override
+    public void setUserVisibleHint(boolean isVisibleToUser) {
+<span class="nc" id="L112">        super.setUserVisibleHint(isVisibleToUser);</span>
+<span class="nc bnc" id="L113" title="All 4 branches missed.">        if (activity != null &amp;&amp; isVisibleToUser) {</span>
+<span class="nc" id="L114">            setTitle(activity.getString(R.string.fragment_whats_new));</span>
+        }
+<span class="nc" id="L116">    }</span>
+
+    @Override
+    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+<span class="nc" id="L120">        super.onCreateOptionsMenu(menu, inflater);</span>
+
+<span class="nc" id="L122">        ActionBar supportActionBar = activity.getSupportActionBar();</span>
+
+<span class="nc bnc" id="L124" title="All 2 branches missed.">        if(useAsFrontPage) {</span>
+<span class="nc" id="L125">            supportActionBar.setDisplayShowTitleEnabled(true);</span>
+            //supportActionBar.setDisplayShowTitleEnabled(false);
+        }
+<span class="nc" id="L128">    }</span>
+
+    @Override
+    public void reloadContent() {
+<span class="nc" id="L132">        resetFragment();</span>
+<span class="nc" id="L133">        super.reloadContent();</span>
+<span class="nc" id="L134">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // StateSaving
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void writeTo(Queue&lt;Object&gt; objectsToSave) {
+<span class="nc" id="L142">        super.writeTo(objectsToSave);</span>
+<span class="nc" id="L143">        objectsToSave.add(allItemsLoaded);</span>
+<span class="nc" id="L144">        objectsToSave.add(itemsLoaded);</span>
+<span class="nc" id="L145">    }</span>
+
+    @Override
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void readFrom(@NonNull Queue&lt;Object&gt; savedObjects) throws Exception {
+<span class="nc" id="L150">        super.readFrom(savedObjects);</span>
+<span class="nc" id="L151">        allItemsLoaded = (AtomicBoolean) savedObjects.poll();</span>
+<span class="nc" id="L152">        itemsLoaded = (HashSet&lt;String&gt;) savedObjects.poll();</span>
+<span class="nc" id="L153">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Feed Loader
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void startLoading(boolean forceLoad) {
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;startLoading() called with: forceLoad = [&quot; + forceLoad + &quot;]&quot;);</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">        if (subscriptionObserver != null) subscriptionObserver.dispose();</span>
+
+<span class="nc bnc" id="L164" title="All 2 branches missed.">        if (allItemsLoaded.get()) {</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">            if (infoListAdapter.getItemsList().size() == 0) {</span>
+<span class="nc" id="L166">                showEmptyState();</span>
+            } else {
+<span class="nc" id="L168">                showListFooter(false);</span>
+<span class="nc" id="L169">                hideLoading();</span>
+            }
+
+<span class="nc" id="L172">            isLoading.set(false);</span>
+<span class="nc" id="L173">            return;</span>
+        }
+
+<span class="nc" id="L176">        isLoading.set(true);</span>
+<span class="nc" id="L177">        showLoading();</span>
+<span class="nc" id="L178">        showListFooter(true);</span>
+<span class="nc" id="L179">        subscriptionObserver = subscriptionService.getSubscription()</span>
+<span class="nc" id="L180">                .onErrorReturnItem(Collections.emptyList())</span>
+<span class="nc" id="L181">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L182">                .subscribe(this::handleResult, this::onError);</span>
+<span class="nc" id="L183">    }</span>
+
+    @Override
+    public void handleResult(@android.support.annotation.NonNull List&lt;SubscriptionEntity&gt; result) {
+<span class="nc" id="L187">        super.handleResult(result);</span>
+
+<span class="nc bnc" id="L189" title="All 2 branches missed.">        if (result.isEmpty()) {</span>
+<span class="nc" id="L190">            infoListAdapter.clearStreamItemList();</span>
+<span class="nc" id="L191">            showEmptyState();</span>
+<span class="nc" id="L192">            return;</span>
+        }
+
+<span class="nc" id="L195">        subscriptionPoolSize = result.size();</span>
+<span class="nc" id="L196">        Flowable.fromIterable(result)</span>
+<span class="nc" id="L197">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L198">                .subscribe(getSubscriptionObserver());</span>
+<span class="nc" id="L199">    }</span>
+
+    /**
+     * Responsible for reacting to user pulling request and starting a request for new feed stream.
+     * &lt;p&gt;
+     * On initialization, it automatically requests the amount of feed needed to display
+     * a minimum amount required (FEED_LOAD_SIZE).
+     * &lt;p&gt;
+     * Upon receiving a user pull, it creates a Single Observer to fetch the ChannelInfo
+     * containing the feed streams.
+     **/
+    private Subscriber&lt;SubscriptionEntity&gt; getSubscriptionObserver() {
+<span class="nc" id="L211">        return new Subscriber&lt;SubscriptionEntity&gt;() {</span>
+            @Override
+            public void onSubscribe(Subscription s) {
+<span class="nc bnc" id="L214" title="All 2 branches missed.">                if (feedSubscriber != null) feedSubscriber.cancel();</span>
+<span class="nc" id="L215">                feedSubscriber = s;</span>
+
+<span class="nc" id="L217">                int requestSize = FEED_LOAD_COUNT - infoListAdapter.getItemsList().size();</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">                if (wasLoading.getAndSet(false)) requestSize = FEED_LOAD_COUNT;</span>
+
+<span class="nc bnc" id="L220" title="All 2 branches missed.">                boolean hasToLoad = requestSize &gt; 0;</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">                if (hasToLoad) {</span>
+<span class="nc" id="L222">                    requestLoadedAtomic.set(infoListAdapter.getItemsList().size());</span>
+<span class="nc" id="L223">                    requestFeed(requestSize);</span>
+                }
+<span class="nc" id="L225">                isLoading.set(hasToLoad);</span>
+<span class="nc" id="L226">            }</span>
+
+            @Override
+            public void onNext(SubscriptionEntity subscriptionEntity) {
+<span class="nc bnc" id="L230" title="All 2 branches missed.">                if (!itemsLoaded.contains(subscriptionEntity.getServiceId() + subscriptionEntity.getUrl())) {</span>
+<span class="nc" id="L231">                    subscriptionService.getChannelInfo(subscriptionEntity)</span>
+<span class="nc" id="L232">                            .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L233">                            .onErrorComplete(</span>
+                                    (@io.reactivex.annotations.NonNull Throwable throwable) -&gt;
+<span class="nc" id="L235">                                            FeedFragment.super.onError(throwable))</span>
+<span class="nc" id="L236">                            .subscribe(</span>
+<span class="nc" id="L237">                                    getChannelInfoObserver(subscriptionEntity.getServiceId(),</span>
+<span class="nc" id="L238">                                            subscriptionEntity.getUrl()));</span>
+                } else {
+<span class="nc" id="L240">                    requestFeed(1);</span>
+                }
+<span class="nc" id="L242">            }</span>
+
+            @Override
+            public void onError(Throwable exception) {
+<span class="nc" id="L246">                FeedFragment.this.onError(exception);</span>
+<span class="nc" id="L247">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc bnc" id="L251" title="All 2 branches missed.">                if (DEBUG) Log.d(TAG, &quot;getSubscriptionObserver &gt; onComplete() called&quot;);</span>
+<span class="nc" id="L252">            }</span>
+        };
+    }
+
+    /**
+     * On each request, a subscription item from the updated table is transformed
+     * into a ChannelInfo, containing the latest streams from the channel.
+     * &lt;p&gt;
+     * Currently, the feed uses the first into from the list of streams.
+     * &lt;p&gt;
+     * If chosen feed already displayed, then we request another feed from another
+     * subscription, until the subscription table runs out of new items.
+     * &lt;p&gt;
+     * This Observer is self-contained and will close itself when complete. However, this
+     * does not obey the fragment lifecycle and may continue running in the background
+     * until it is complete. This is done due to RxJava2 no longer propagate errors once
+     * an observer is unsubscribed while the thread process is still running.
+     * &lt;p&gt;
+     * To solve the above issue, we can either set a global RxJava Error Handler, or
+     * manage exceptions case by case. This should be done if the current implementation is
+     * too costly when dealing with larger subscription sets.
+     *
+     * @param url + serviceId to put in {@link #allItemsLoaded} to signal that this specific entity has been loaded.
+     */
+    private MaybeObserver&lt;ChannelInfo&gt; getChannelInfoObserver(final int serviceId, final String url) {
+<span class="nc" id="L277">        return new MaybeObserver&lt;ChannelInfo&gt;() {</span>
+            private Disposable observer;
+
+            @Override
+            public void onSubscribe(Disposable d) {
+<span class="nc" id="L282">                observer = d;</span>
+<span class="nc" id="L283">                compositeDisposable.add(d);</span>
+<span class="nc" id="L284">                isLoading.set(true);</span>
+<span class="nc" id="L285">            }</span>
+
+            // Called only when response is non-empty
+            @Override
+            public void onSuccess(final ChannelInfo channelInfo) {
+<span class="nc bnc" id="L290" title="All 4 branches missed.">                if (infoListAdapter == null || channelInfo.getRelatedItems().isEmpty()) {</span>
+<span class="nc" id="L291">                    onDone();</span>
+<span class="nc" id="L292">                    return;</span>
+                }
+
+<span class="nc" id="L295">                final InfoItem item = channelInfo.getRelatedItems().get(0);</span>
+                // Keep requesting new items if the current one already exists
+<span class="nc" id="L297">                boolean itemExists = doesItemExist(infoListAdapter.getItemsList(), item);</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">                if (!itemExists) {</span>
+<span class="nc" id="L299">                    infoListAdapter.addInfoItem(item);</span>
+                    //updateSubscription(channelInfo);
+                } else {
+<span class="nc" id="L302">                    requestFeed(1);</span>
+                }
+<span class="nc" id="L304">                onDone();</span>
+<span class="nc" id="L305">            }</span>
+
+            @Override
+            public void onError(Throwable exception) {
+<span class="nc" id="L309">                showSnackBarError(exception,</span>
+                        UserAction.SUBSCRIPTION,
+<span class="nc" id="L311">                        NewPipe.getNameOfService(serviceId),</span>
+                        url, 0);
+<span class="nc" id="L313">                requestFeed(1);</span>
+<span class="nc" id="L314">                onDone();</span>
+<span class="nc" id="L315">            }</span>
+
+            // Called only when response is empty
+            @Override
+            public void onComplete() {
+<span class="nc" id="L320">                onDone();</span>
+<span class="nc" id="L321">            }</span>
+
+            private void onDone() {
+<span class="nc bnc" id="L324" title="All 2 branches missed.">                if (observer.isDisposed()) {</span>
+<span class="nc" id="L325">                    return;</span>
+                }
+
+<span class="nc" id="L328">                itemsLoaded.add(serviceId + url);</span>
+<span class="nc" id="L329">                compositeDisposable.remove(observer);</span>
+
+<span class="nc" id="L331">                int loaded = requestLoadedAtomic.incrementAndGet();</span>
+<span class="nc bnc" id="L332" title="All 2 branches missed.">                if (loaded &gt;= Math.min(FEED_LOAD_COUNT, subscriptionPoolSize)) {</span>
+<span class="nc" id="L333">                    requestLoadedAtomic.set(0);</span>
+<span class="nc" id="L334">                    isLoading.set(false);</span>
+                }
+
+<span class="nc bnc" id="L337" title="All 2 branches missed.">                if (itemsLoaded.size() == subscriptionPoolSize) {</span>
+<span class="nc bnc" id="L338" title="All 2 branches missed.">                    if (DEBUG) Log.d(TAG, &quot;getChannelInfoObserver &gt; All Items Loaded&quot;);</span>
+<span class="nc" id="L339">                    allItemsLoaded.set(true);</span>
+<span class="nc" id="L340">                    showListFooter(false);</span>
+<span class="nc" id="L341">                    isLoading.set(false);</span>
+<span class="nc" id="L342">                    hideLoading();</span>
+<span class="nc bnc" id="L343" title="All 2 branches missed.">                    if (infoListAdapter.getItemsList().size() == 0) {</span>
+<span class="nc" id="L344">                        showEmptyState();</span>
+                    }
+                }
+<span class="nc" id="L347">            }</span>
+        };
+    }
+
+    @Override
+    protected void loadMoreItems() {
+<span class="nc" id="L353">        isLoading.set(true);</span>
+<span class="nc" id="L354">        delayHandler.removeCallbacksAndMessages(null);</span>
+        // Add a little of a delay when requesting more items because the cache is so fast,
+        // that the view seems stuck to the user when he scroll to the bottom
+<span class="nc" id="L357">        delayHandler.postDelayed(() -&gt; requestFeed(FEED_LOAD_COUNT), 300);</span>
+<span class="nc" id="L358">    }</span>
+
+    @Override
+    protected boolean hasMoreItems() {
+<span class="nc bnc" id="L362" title="All 2 branches missed.">        return !allItemsLoaded.get();</span>
+    }
+
+<span class="nc" id="L365">    private final Handler delayHandler = new Handler();</span>
+
+    private void requestFeed(final int count) {
+<span class="nc bnc" id="L368" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;requestFeed() called with: count = [&quot; + count + &quot;], feedSubscriber = [&quot; + feedSubscriber + &quot;]&quot;);</span>
+<span class="nc bnc" id="L369" title="All 2 branches missed.">        if (feedSubscriber == null) return;</span>
+
+<span class="nc" id="L371">        isLoading.set(true);</span>
+<span class="nc" id="L372">        delayHandler.removeCallbacksAndMessages(null);</span>
+<span class="nc" id="L373">        feedSubscriber.request(count);</span>
+<span class="nc" id="L374">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Utils
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private void resetFragment() {
+<span class="nc bnc" id="L381" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;resetFragment() called&quot;);</span>
+<span class="nc bnc" id="L382" title="All 2 branches missed.">        if (subscriptionObserver != null) subscriptionObserver.dispose();</span>
+<span class="nc bnc" id="L383" title="All 2 branches missed.">        if (compositeDisposable != null) compositeDisposable.clear();</span>
+<span class="nc bnc" id="L384" title="All 2 branches missed.">        if (infoListAdapter != null) infoListAdapter.clearStreamItemList();</span>
+
+<span class="nc" id="L386">        delayHandler.removeCallbacksAndMessages(null);</span>
+<span class="nc" id="L387">        requestLoadedAtomic.set(0);</span>
+<span class="nc" id="L388">        allItemsLoaded.set(false);</span>
+<span class="nc" id="L389">        showListFooter(false);</span>
+<span class="nc" id="L390">        itemsLoaded.clear();</span>
+<span class="nc" id="L391">    }</span>
+
+    private void disposeEverything() {
+<span class="nc bnc" id="L394" title="All 2 branches missed.">        if (subscriptionObserver != null) subscriptionObserver.dispose();</span>
+<span class="nc bnc" id="L395" title="All 2 branches missed.">        if (compositeDisposable != null) compositeDisposable.clear();</span>
+<span class="nc bnc" id="L396" title="All 2 branches missed.">        if (feedSubscriber != null) feedSubscriber.cancel();</span>
+<span class="nc" id="L397">        delayHandler.removeCallbacksAndMessages(null);</span>
+<span class="nc" id="L398">    }</span>
+
+    private boolean doesItemExist(final List&lt;InfoItem&gt; items, final InfoItem item) {
+<span class="nc bnc" id="L401" title="All 2 branches missed.">        for (final InfoItem existingItem : items) {</span>
+<span class="nc bnc" id="L402" title="All 2 branches missed.">            if (existingItem.getInfoType() == item.getInfoType() &amp;&amp;</span>
+<span class="nc bnc" id="L403" title="All 2 branches missed.">                    existingItem.getServiceId() == item.getServiceId() &amp;&amp;</span>
+<span class="nc bnc" id="L404" title="All 2 branches missed.">                    existingItem.getName().equals(item.getName()) &amp;&amp;</span>
+<span class="nc bnc" id="L405" title="All 2 branches missed.">                    existingItem.getUrl().equals(item.getUrl())) return true;</span>
+<span class="nc" id="L406">        }</span>
+<span class="nc" id="L407">        return false;</span>
+    }
+
+    private int howManyItemsToLoad() {
+<span class="nc" id="L411">        int heightPixels = getResources().getDisplayMetrics().heightPixels;</span>
+<span class="nc" id="L412">        int itemHeightPixels = activity.getResources().getDimensionPixelSize(R.dimen.video_item_search_height);</span>
+
+<span class="nc bnc" id="L414" title="All 2 branches missed.">        int items = itemHeightPixels &gt; 0</span>
+                ? heightPixels / itemHeightPixels + OFF_SCREEN_ITEMS_COUNT
+                : MIN_ITEMS_INITIAL_LOAD;
+<span class="nc" id="L417">        return Math.max(MIN_ITEMS_INITIAL_LOAD, items);</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Fragment Error Handling
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void showError(String message, boolean showRetryButton) {
+<span class="nc" id="L426">        resetFragment();</span>
+<span class="nc" id="L427">        super.showError(message, showRetryButton);</span>
+<span class="nc" id="L428">    }</span>
+
+    @Override
+    protected boolean onError(Throwable exception) {
+<span class="nc bnc" id="L432" title="All 2 branches missed.">        if (super.onError(exception)) return true;</span>
+
+<span class="nc bnc" id="L434" title="All 2 branches missed.">        int errorId = exception instanceof ExtractionException</span>
+                ? R.string.parsing_error
+                : R.string.general_error;
+<span class="nc" id="L437">        onUnrecoverableError(exception,</span>
+                UserAction.SOMETHING_ELSE,
+                &quot;none&quot;,
+                &quot;Requesting feed&quot;,
+                errorId);
+<span class="nc" id="L442">        return true;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="org.schabi.newpipe.util.ListHelperTest" tests="10" skipped="0" failures="0" errors="0" timestamp="2019-09-30T21:08:09" hostname="galliumos" time="0.2">
+  <properties/>
+  <testcase name="getHighestQualityAudioNull" classname="org.schabi.newpipe.util.ListHelperTest" time="0.012"/>
+  <testcase name="getLowestQualityAudioNull" classname="org.schabi.newpipe.util.ListHelperTest" time="0.002"/>
+  <testcase name="getSortedStreamVideosExceptHighResolutionsTest" classname="org.schabi.newpipe.util.ListHelperTest" time="0.045"/>
+  <testcase name="getLowestQualityAudioFormatPreferredAbsent" classname="org.schabi.newpipe.util.ListHelperTest" time="0.001"/>
+  <testcase name="getHighestQualityAudioFormatTest" classname="org.schabi.newpipe.util.ListHelperTest" time="0.001"/>
+  <testcase name="getHighestQualityAudioFormatPreferredAbsent" classname="org.schabi.newpipe.util.ListHelperTest" time="0.004"/>
+  <testcase name="getLowestQualityAudioFormatTest" classname="org.schabi.newpipe.util.ListHelperTest" time="0.001"/>
+  <testcase name="getVideoDefaultStreamIndexCombinations" classname="org.schabi.newpipe.util.ListHelperTest" time="0.061"/>
+  <testcase name="getSortedStreamVideosListTest" classname="org.schabi.newpipe.util.ListHelperTest" time="0.03"/>
+  <testcase name="getDefaultResolutionTest" classname="org.schabi.newpipe.util.ListHelperTest" time="0.024"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,674 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ServicePlayerActivity.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.player</a> &gt; <span class="el_source">ServicePlayerActivity.java</span></div><h1>ServicePlayerActivity.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.player;
+
+import android.content.ComponentName;
+import android.content.Intent;
+import android.content.ServiceConnection;
+import android.os.Bundle;
+import android.os.IBinder;
+import android.provider.Settings;
+import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
+import android.support.v7.widget.Toolbar;
+import android.support.v7.widget.helper.ItemTouchHelper;
+import android.util.Log;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ImageButton;
+import android.widget.LinearLayout;
+import android.widget.PopupMenu;
+import android.widget.ProgressBar;
+import android.widget.SeekBar;
+import android.widget.TextView;
+
+import com.google.android.exoplayer2.PlaybackParameters;
+import com.google.android.exoplayer2.Player;
+
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.extractor.stream.StreamInfo;
+import org.schabi.newpipe.fragments.OnScrollBelowItemsListener;
+import org.schabi.newpipe.local.dialog.PlaylistAppendDialog;
+import org.schabi.newpipe.player.event.PlayerEventListener;
+import org.schabi.newpipe.player.helper.PlaybackParameterDialog;
+import org.schabi.newpipe.player.playqueue.PlayQueueAdapter;
+import org.schabi.newpipe.player.playqueue.PlayQueueItem;
+import org.schabi.newpipe.player.playqueue.PlayQueueItemBuilder;
+import org.schabi.newpipe.player.playqueue.PlayQueueItemHolder;
+import org.schabi.newpipe.player.playqueue.PlayQueueItemTouchCallback;
+import org.schabi.newpipe.util.Localization;
+import org.schabi.newpipe.util.NavigationHelper;
+import org.schabi.newpipe.util.ThemeHelper;
+
+import java.util.Collections;
+import java.util.List;
+
+import static org.schabi.newpipe.player.helper.PlayerHelper.formatPitch;
+import static org.schabi.newpipe.player.helper.PlayerHelper.formatSpeed;
+
+<span class="nc" id="L50">public abstract class ServicePlayerActivity extends AppCompatActivity</span>
+        implements PlayerEventListener, SeekBar.OnSeekBarChangeListener,
+        View.OnClickListener, PlaybackParameterDialog.Callback {
+
+    private boolean serviceBound;
+    private ServiceConnection serviceConnection;
+
+    protected BasePlayer player;
+
+    private boolean seeking;
+    private boolean redraw;
+    ////////////////////////////////////////////////////////////////////////////
+    // Views
+    ////////////////////////////////////////////////////////////////////////////
+
+    private static final int RECYCLER_ITEM_POPUP_MENU_GROUP_ID = 47;
+
+    private static final int SMOOTH_SCROLL_MAXIMUM_DISTANCE = 80;
+
+    private View rootView;
+
+    private RecyclerView itemsList;
+    private ItemTouchHelper itemTouchHelper;
+
+    private LinearLayout metadata;
+    private TextView metadataTitle;
+    private TextView metadataArtist;
+
+    private SeekBar progressSeekBar;
+    private TextView progressCurrentTime;
+    private TextView progressEndTime;
+    private TextView progressLiveSync;
+    private TextView seekDisplay;
+
+    private ImageButton repeatButton;
+    private ImageButton backwardButton;
+    private ImageButton playPauseButton;
+    private ImageButton forwardButton;
+    private ImageButton shuffleButton;
+    private ProgressBar progressBar;
+
+    private TextView playbackSpeedButton;
+    private TextView playbackPitchButton;
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Abstracts
+    ////////////////////////////////////////////////////////////////////////////
+
+    public abstract String getTag();
+
+    public abstract String getSupportActionTitle();
+
+    public abstract Intent getBindIntent();
+
+    public abstract void startPlayerListener();
+
+    public abstract void stopPlayerListener();
+
+    public abstract int getPlayerOptionMenuResource();
+
+    public abstract boolean onPlayerOptionSelected(MenuItem item);
+
+    public abstract Intent getPlayerShutdownIntent();
+    ////////////////////////////////////////////////////////////////////////////
+    // Activity Lifecycle
+    ////////////////////////////////////////////////////////////////////////////
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+<span class="nc" id="L119">        super.onCreate(savedInstanceState);</span>
+<span class="nc" id="L120">        ThemeHelper.setTheme(this);</span>
+<span class="nc" id="L121">        setContentView(R.layout.activity_player_queue_control);</span>
+<span class="nc" id="L122">        rootView = findViewById(R.id.main_content);</span>
+
+<span class="nc" id="L124">        final Toolbar toolbar = rootView.findViewById(R.id.toolbar);</span>
+<span class="nc" id="L125">        setSupportActionBar(toolbar);</span>
+<span class="nc bnc" id="L126" title="All 2 branches missed.">        if (getSupportActionBar() != null) {</span>
+<span class="nc" id="L127">            getSupportActionBar().setDisplayHomeAsUpEnabled(true);</span>
+<span class="nc" id="L128">            getSupportActionBar().setTitle(getSupportActionTitle());</span>
+        }
+
+<span class="nc" id="L131">        serviceConnection = getServiceConnection();</span>
+<span class="nc" id="L132">        bind();</span>
+<span class="nc" id="L133">    }</span>
+
+    @Override
+    protected void onResume() {
+<span class="nc" id="L137">        super.onResume();</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">        if (redraw) {</span>
+<span class="nc" id="L139">            recreate();</span>
+<span class="nc" id="L140">            redraw = false;</span>
+        }
+<span class="nc" id="L142">    }</span>
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+<span class="nc" id="L146">        getMenuInflater().inflate(R.menu.menu_play_queue, menu);</span>
+<span class="nc" id="L147">        getMenuInflater().inflate(getPlayerOptionMenuResource(), menu);</span>
+<span class="nc" id="L148">        return true;</span>
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+<span class="nc bnc" id="L153" title="All 6 branches missed.">        switch (item.getItemId()) {</span>
+            case android.R.id.home:
+<span class="nc" id="L155">                finish();</span>
+<span class="nc" id="L156">                return true;</span>
+            case R.id.action_append_playlist:
+<span class="nc" id="L158">                appendAllToPlaylist();</span>
+<span class="nc" id="L159">                return true;</span>
+            case R.id.action_settings:
+<span class="nc" id="L161">                NavigationHelper.openSettings(this);</span>
+<span class="nc" id="L162">                redraw = true;</span>
+<span class="nc" id="L163">                return true;</span>
+            case R.id.action_system_audio:
+<span class="nc" id="L165">                startActivity(new Intent(Settings.ACTION_SOUND_SETTINGS));</span>
+<span class="nc" id="L166">                return true;</span>
+            case R.id.action_switch_main:
+<span class="nc" id="L168">                this.player.setRecovery();</span>
+<span class="nc" id="L169">                getApplicationContext().sendBroadcast(getPlayerShutdownIntent());</span>
+<span class="nc" id="L170">                getApplicationContext().startActivity(getSwitchIntent(MainVideoPlayer.class));</span>
+<span class="nc" id="L171">                return true;</span>
+        }
+<span class="nc bnc" id="L173" title="All 4 branches missed.">        return onPlayerOptionSelected(item) || super.onOptionsItemSelected(item);</span>
+    }
+
+    @Override
+    protected void onDestroy() {
+<span class="nc" id="L178">        super.onDestroy();</span>
+<span class="nc" id="L179">        unbind();</span>
+<span class="nc" id="L180">    }</span>
+
+    protected Intent getSwitchIntent(final Class clazz) {
+<span class="nc" id="L183">        return NavigationHelper.getPlayerIntent(</span>
+<span class="nc" id="L184">                getApplicationContext(),</span>
+                clazz,
+<span class="nc" id="L186">                this.player.getPlayQueue(),</span>
+<span class="nc" id="L187">                this.player.getRepeatMode(),</span>
+<span class="nc" id="L188">                this.player.getPlaybackSpeed(),</span>
+<span class="nc" id="L189">                this.player.getPlaybackPitch(),</span>
+<span class="nc" id="L190">                this.player.getPlaybackSkipSilence(),</span>
+                null,
+                false
+<span class="nc" id="L193">        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);</span>
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Service Connection
+    ////////////////////////////////////////////////////////////////////////////
+
+    private void bind() {
+<span class="nc" id="L201">        final boolean success = bindService(getBindIntent(), serviceConnection, BIND_AUTO_CREATE);</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">        if (!success) {</span>
+<span class="nc" id="L203">            unbindService(serviceConnection);</span>
+        }
+<span class="nc" id="L205">        serviceBound = success;</span>
+<span class="nc" id="L206">    }</span>
+
+    private void unbind() {
+<span class="nc bnc" id="L209" title="All 2 branches missed.">        if(serviceBound) {</span>
+<span class="nc" id="L210">            unbindService(serviceConnection);</span>
+<span class="nc" id="L211">            serviceBound = false;</span>
+<span class="nc" id="L212">            stopPlayerListener();</span>
+
+<span class="nc bnc" id="L214" title="All 4 branches missed.">            if (player != null &amp;&amp; player.getPlayQueueAdapter() != null) {</span>
+<span class="nc" id="L215">                player.getPlayQueueAdapter().unsetSelectedListener();</span>
+            }
+<span class="nc bnc" id="L217" title="All 2 branches missed.">            if (itemsList != null) itemsList.setAdapter(null);</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">            if (itemTouchHelper != null) itemTouchHelper.attachToRecyclerView(null);</span>
+
+<span class="nc" id="L220">            itemsList = null;</span>
+<span class="nc" id="L221">            itemTouchHelper = null;</span>
+<span class="nc" id="L222">            player = null;</span>
+        }
+<span class="nc" id="L224">    }</span>
+
+    private ServiceConnection getServiceConnection() {
+<span class="nc" id="L227">        return new ServiceConnection() {</span>
+            @Override
+            public void onServiceDisconnected(ComponentName name) {
+<span class="nc" id="L230">                Log.d(getTag(), &quot;Player service is disconnected&quot;);</span>
+<span class="nc" id="L231">            }</span>
+
+            @Override
+            public void onServiceConnected(ComponentName name, IBinder service) {
+<span class="nc" id="L235">                Log.d(getTag(), &quot;Player service is connected&quot;);</span>
+
+<span class="nc bnc" id="L237" title="All 2 branches missed.">                if (service instanceof PlayerServiceBinder) {</span>
+<span class="nc" id="L238">                    player = ((PlayerServiceBinder) service).getPlayerInstance();</span>
+                }
+
+<span class="nc bnc" id="L241" title="All 4 branches missed.">                if (player == null || player.getPlayQueue() == null ||</span>
+<span class="nc bnc" id="L242" title="All 4 branches missed.">                        player.getPlayQueueAdapter() == null || player.getPlayer() == null) {</span>
+<span class="nc" id="L243">                    unbind();</span>
+<span class="nc" id="L244">                    finish();</span>
+                } else {
+<span class="nc" id="L246">                    buildComponents();</span>
+<span class="nc" id="L247">                    startPlayerListener();</span>
+                }
+<span class="nc" id="L249">            }</span>
+        };
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Component Building
+    ////////////////////////////////////////////////////////////////////////////
+
+    private void buildComponents() {
+<span class="nc" id="L258">        buildQueue();</span>
+<span class="nc" id="L259">        buildMetadata();</span>
+<span class="nc" id="L260">        buildSeekBar();</span>
+<span class="nc" id="L261">        buildControls();</span>
+<span class="nc" id="L262">    }</span>
+
+    private void buildQueue() {
+<span class="nc" id="L265">        itemsList = findViewById(R.id.play_queue);</span>
+<span class="nc" id="L266">        itemsList.setLayoutManager(new LinearLayoutManager(this));</span>
+<span class="nc" id="L267">        itemsList.setAdapter(player.getPlayQueueAdapter());</span>
+<span class="nc" id="L268">        itemsList.setClickable(true);</span>
+<span class="nc" id="L269">        itemsList.setLongClickable(true);</span>
+<span class="nc" id="L270">        itemsList.clearOnScrollListeners();</span>
+<span class="nc" id="L271">        itemsList.addOnScrollListener(getQueueScrollListener());</span>
+
+<span class="nc" id="L273">        itemTouchHelper = new ItemTouchHelper(getItemTouchCallback());</span>
+<span class="nc" id="L274">        itemTouchHelper.attachToRecyclerView(itemsList);</span>
+
+<span class="nc" id="L276">        player.getPlayQueueAdapter().setSelectedListener(getOnSelectedListener());</span>
+<span class="nc" id="L277">    }</span>
+
+    private void buildMetadata() {
+<span class="nc" id="L280">        metadata = rootView.findViewById(R.id.metadata);</span>
+<span class="nc" id="L281">        metadataTitle = rootView.findViewById(R.id.song_name);</span>
+<span class="nc" id="L282">        metadataArtist = rootView.findViewById(R.id.artist_name);</span>
+
+<span class="nc" id="L284">        metadata.setOnClickListener(this);</span>
+<span class="nc" id="L285">        metadataTitle.setSelected(true);</span>
+<span class="nc" id="L286">        metadataArtist.setSelected(true);</span>
+<span class="nc" id="L287">    }</span>
+
+    private void buildSeekBar() {
+<span class="nc" id="L290">        progressCurrentTime = rootView.findViewById(R.id.current_time);</span>
+<span class="nc" id="L291">        progressSeekBar = rootView.findViewById(R.id.seek_bar);</span>
+<span class="nc" id="L292">        progressEndTime = rootView.findViewById(R.id.end_time);</span>
+<span class="nc" id="L293">        progressLiveSync = rootView.findViewById(R.id.live_sync);</span>
+<span class="nc" id="L294">        seekDisplay = rootView.findViewById(R.id.seek_display);</span>
+
+<span class="nc" id="L296">        progressSeekBar.setOnSeekBarChangeListener(this);</span>
+<span class="nc" id="L297">        progressLiveSync.setOnClickListener(this);</span>
+<span class="nc" id="L298">    }</span>
+
+    private void buildControls() {
+<span class="nc" id="L301">        repeatButton = rootView.findViewById(R.id.control_repeat);</span>
+<span class="nc" id="L302">        backwardButton = rootView.findViewById(R.id.control_backward);</span>
+<span class="nc" id="L303">        playPauseButton = rootView.findViewById(R.id.control_play_pause);</span>
+<span class="nc" id="L304">        forwardButton = rootView.findViewById(R.id.control_forward);</span>
+<span class="nc" id="L305">        shuffleButton = rootView.findViewById(R.id.control_shuffle);</span>
+<span class="nc" id="L306">        playbackSpeedButton = rootView.findViewById(R.id.control_playback_speed);</span>
+<span class="nc" id="L307">        playbackPitchButton = rootView.findViewById(R.id.control_playback_pitch);</span>
+<span class="nc" id="L308">        progressBar = rootView.findViewById(R.id.control_progress_bar);</span>
+
+<span class="nc" id="L310">        repeatButton.setOnClickListener(this);</span>
+<span class="nc" id="L311">        backwardButton.setOnClickListener(this);</span>
+<span class="nc" id="L312">        playPauseButton.setOnClickListener(this);</span>
+<span class="nc" id="L313">        forwardButton.setOnClickListener(this);</span>
+<span class="nc" id="L314">        shuffleButton.setOnClickListener(this);</span>
+<span class="nc" id="L315">        playbackSpeedButton.setOnClickListener(this);</span>
+<span class="nc" id="L316">        playbackPitchButton.setOnClickListener(this);</span>
+<span class="nc" id="L317">    }</span>
+
+    private void buildItemPopupMenu(final PlayQueueItem item, final View view) {
+<span class="nc" id="L320">        final PopupMenu menu = new PopupMenu(this, view);</span>
+<span class="nc" id="L321">        final MenuItem remove = menu.getMenu().add(RECYCLER_ITEM_POPUP_MENU_GROUP_ID, /*pos=*/0,</span>
+                Menu.NONE, R.string.play_queue_remove);
+<span class="nc" id="L323">        remove.setOnMenuItemClickListener(menuItem -&gt; {</span>
+<span class="nc bnc" id="L324" title="All 2 branches missed.">            if (player == null) return false;</span>
+
+<span class="nc" id="L326">            final int index = player.getPlayQueue().indexOf(item);</span>
+<span class="nc bnc" id="L327" title="All 2 branches missed.">            if (index != -1) player.getPlayQueue().remove(index);</span>
+<span class="nc" id="L328">            return true;</span>
+        });
+
+<span class="nc" id="L331">        final MenuItem detail = menu.getMenu().add(RECYCLER_ITEM_POPUP_MENU_GROUP_ID, /*pos=*/1,</span>
+                Menu.NONE, R.string.play_queue_stream_detail);
+<span class="nc" id="L333">        detail.setOnMenuItemClickListener(menuItem -&gt; {</span>
+<span class="nc" id="L334">            onOpenDetail(item.getServiceId(), item.getUrl(), item.getTitle());</span>
+<span class="nc" id="L335">            return true;</span>
+        });
+
+<span class="nc" id="L338">        final MenuItem append = menu.getMenu().add(RECYCLER_ITEM_POPUP_MENU_GROUP_ID, /*pos=*/2,</span>
+                Menu.NONE, R.string.append_playlist);
+<span class="nc" id="L340">        append.setOnMenuItemClickListener(menuItem -&gt; {</span>
+<span class="nc" id="L341">            openPlaylistAppendDialog(Collections.singletonList(item));</span>
+<span class="nc" id="L342">            return true;</span>
+        });
+
+<span class="nc" id="L345">        final MenuItem share = menu.getMenu().add(RECYCLER_ITEM_POPUP_MENU_GROUP_ID, /*pos=*/3,</span>
+                Menu.NONE, R.string.share);
+<span class="nc" id="L347">        share.setOnMenuItemClickListener(menuItem -&gt; {</span>
+<span class="nc" id="L348">            shareUrl(item.getTitle(), item.getUrl());</span>
+<span class="nc" id="L349">            return true;</span>
+        });
+
+<span class="nc" id="L352">        menu.show();</span>
+<span class="nc" id="L353">    }</span>
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Component Helpers
+    ////////////////////////////////////////////////////////////////////////////
+
+    private OnScrollBelowItemsListener getQueueScrollListener() {
+<span class="nc" id="L360">        return new OnScrollBelowItemsListener() {</span>
+            @Override
+            public void onScrolledDown(RecyclerView recyclerView) {
+<span class="nc bnc" id="L363" title="All 6 branches missed.">                if (player != null &amp;&amp; player.getPlayQueue() != null &amp;&amp; !player.getPlayQueue().isComplete()) {</span>
+<span class="nc" id="L364">                    player.getPlayQueue().fetch();</span>
+<span class="nc bnc" id="L365" title="All 2 branches missed.">                } else if (itemsList != null) {</span>
+<span class="nc" id="L366">                    itemsList.clearOnScrollListeners();</span>
+                }
+<span class="nc" id="L368">            }</span>
+        };
+    }
+
+    private ItemTouchHelper.SimpleCallback getItemTouchCallback() {
+<span class="nc" id="L373">        return new PlayQueueItemTouchCallback() {</span>
+            @Override
+            public void onMove(int sourceIndex, int targetIndex) {
+<span class="nc bnc" id="L376" title="All 2 branches missed.">                if (player != null) player.getPlayQueue().move(sourceIndex, targetIndex);</span>
+<span class="nc" id="L377">            }</span>
+
+            @Override
+            public void onSwiped(int index) {
+<span class="nc bnc" id="L381" title="All 2 branches missed.">                if (index != -1) player.getPlayQueue().remove(index);</span>
+<span class="nc" id="L382">            }</span>
+        };
+    }
+
+    private PlayQueueItemBuilder.OnSelectedListener getOnSelectedListener() {
+<span class="nc" id="L387">        return new PlayQueueItemBuilder.OnSelectedListener() {</span>
+            @Override
+            public void selected(PlayQueueItem item, View view) {
+<span class="nc bnc" id="L390" title="All 2 branches missed.">                if (player != null) player.onSelected(item);</span>
+<span class="nc" id="L391">            }</span>
+
+            @Override
+            public void held(PlayQueueItem item, View view) {
+<span class="nc bnc" id="L395" title="All 2 branches missed.">                if (player == null) return;</span>
+
+<span class="nc" id="L397">                final int index = player.getPlayQueue().indexOf(item);</span>
+<span class="nc bnc" id="L398" title="All 2 branches missed.">                if (index != -1) buildItemPopupMenu(item, view);</span>
+<span class="nc" id="L399">            }</span>
+
+            @Override
+            public void onStartDrag(PlayQueueItemHolder viewHolder) {
+<span class="nc bnc" id="L403" title="All 2 branches missed.">                if (itemTouchHelper != null) itemTouchHelper.startDrag(viewHolder);</span>
+<span class="nc" id="L404">            }</span>
+        };
+    }
+
+    private void onOpenDetail(int serviceId, String videoUrl, String videoTitle) {
+<span class="nc" id="L409">        NavigationHelper.openVideoDetail(this, serviceId, videoUrl, videoTitle);</span>
+<span class="nc" id="L410">    }</span>
+
+    private void scrollToSelected() {
+<span class="nc bnc" id="L413" title="All 2 branches missed.">        if (player == null) return;</span>
+
+<span class="nc" id="L415">        final int currentPlayingIndex = player.getPlayQueue().getIndex();</span>
+        final int currentVisibleIndex;
+<span class="nc bnc" id="L417" title="All 2 branches missed.">        if (itemsList.getLayoutManager() instanceof LinearLayoutManager) {</span>
+<span class="nc" id="L418">            final LinearLayoutManager layout = ((LinearLayoutManager) itemsList.getLayoutManager());</span>
+<span class="nc" id="L419">            currentVisibleIndex = layout.findFirstVisibleItemPosition();</span>
+<span class="nc" id="L420">        } else {</span>
+<span class="nc" id="L421">            currentVisibleIndex = 0;</span>
+        }
+
+<span class="nc" id="L424">        final int distance = Math.abs(currentPlayingIndex - currentVisibleIndex);</span>
+<span class="nc bnc" id="L425" title="All 2 branches missed.">        if (distance &lt; SMOOTH_SCROLL_MAXIMUM_DISTANCE) {</span>
+<span class="nc" id="L426">            itemsList.smoothScrollToPosition(currentPlayingIndex);</span>
+        } else {
+<span class="nc" id="L428">            itemsList.scrollToPosition(currentPlayingIndex);</span>
+        }
+<span class="nc" id="L430">    }</span>
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Component On-Click Listener
+    ////////////////////////////////////////////////////////////////////////////
+
+    @Override
+    public void onClick(View view) {
+<span class="nc bnc" id="L438" title="All 2 branches missed.">        if (player == null) return;</span>
+
+<span class="nc bnc" id="L440" title="All 2 branches missed.">        if (view.getId() == repeatButton.getId()) {</span>
+<span class="nc" id="L441">            player.onRepeatClicked();</span>
+
+<span class="nc bnc" id="L443" title="All 2 branches missed.">        } else if (view.getId() == backwardButton.getId()) {</span>
+<span class="nc" id="L444">            player.onPlayPrevious();</span>
+
+<span class="nc bnc" id="L446" title="All 2 branches missed.">        } else if (view.getId() == playPauseButton.getId()) {</span>
+<span class="nc" id="L447">            player.onPlayPause();</span>
+
+<span class="nc bnc" id="L449" title="All 2 branches missed.">        } else if (view.getId() == forwardButton.getId()) {</span>
+<span class="nc" id="L450">            player.onPlayNext();</span>
+
+<span class="nc bnc" id="L452" title="All 2 branches missed.">        } else if (view.getId() == shuffleButton.getId()) {</span>
+<span class="nc" id="L453">            player.onShuffleClicked();</span>
+
+<span class="nc bnc" id="L455" title="All 2 branches missed.">        } else if (view.getId() == playbackSpeedButton.getId()) {</span>
+<span class="nc" id="L456">            openPlaybackParameterDialog();</span>
+
+<span class="nc bnc" id="L458" title="All 2 branches missed.">        } else if (view.getId() == playbackPitchButton.getId()) {</span>
+<span class="nc" id="L459">            openPlaybackParameterDialog();</span>
+
+<span class="nc bnc" id="L461" title="All 2 branches missed.">        } else if (view.getId() == metadata.getId()) {</span>
+<span class="nc" id="L462">            scrollToSelected();</span>
+
+<span class="nc bnc" id="L464" title="All 2 branches missed.">        } else if (view.getId() == progressLiveSync.getId()) {</span>
+<span class="nc" id="L465">            player.seekToDefault();</span>
+
+        }
+<span class="nc" id="L468">    }</span>
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Playback Parameters
+    ////////////////////////////////////////////////////////////////////////////
+
+    private void openPlaybackParameterDialog() {
+<span class="nc bnc" id="L475" title="All 2 branches missed.">        if (player == null) return;</span>
+<span class="nc" id="L476">        PlaybackParameterDialog.newInstance(player.getPlaybackSpeed(), player.getPlaybackPitch(),</span>
+<span class="nc" id="L477">                player.getPlaybackSkipSilence()).show(getSupportFragmentManager(), getTag());</span>
+<span class="nc" id="L478">    }</span>
+
+    @Override
+    public void onPlaybackParameterChanged(float playbackTempo, float playbackPitch,
+                                           boolean playbackSkipSilence) {
+<span class="nc bnc" id="L483" title="All 2 branches missed.">        if (player != null) {</span>
+<span class="nc" id="L484">            player.setPlaybackParameters(playbackTempo, playbackPitch, playbackSkipSilence);</span>
+        }
+<span class="nc" id="L486">    }</span>
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Seekbar Listener
+    ////////////////////////////////////////////////////////////////////////////
+
+    @Override
+    public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+<span class="nc bnc" id="L494" title="All 2 branches missed.">        if (fromUser) {</span>
+<span class="nc" id="L495">            final String seekTime = Localization.getDurationString(progress / 1000);</span>
+<span class="nc" id="L496">            progressCurrentTime.setText(seekTime);</span>
+<span class="nc" id="L497">            seekDisplay.setText(seekTime);</span>
+        }
+<span class="nc" id="L499">    }</span>
+
+    @Override
+    public void onStartTrackingTouch(SeekBar seekBar) {
+<span class="nc" id="L503">        seeking = true;</span>
+<span class="nc" id="L504">        seekDisplay.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L505">    }</span>
+
+    @Override
+    public void onStopTrackingTouch(SeekBar seekBar) {
+<span class="nc bnc" id="L509" title="All 2 branches missed.">        if (player != null) player.seekTo(seekBar.getProgress());</span>
+<span class="nc" id="L510">        seekDisplay.setVisibility(View.GONE);</span>
+<span class="nc" id="L511">        seeking = false;</span>
+<span class="nc" id="L512">    }</span>
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Playlist append
+    ////////////////////////////////////////////////////////////////////////////
+
+    private void appendAllToPlaylist() {
+<span class="nc bnc" id="L519" title="All 4 branches missed.">        if (player != null &amp;&amp; player.getPlayQueue() != null) {</span>
+<span class="nc" id="L520">            openPlaylistAppendDialog(player.getPlayQueue().getStreams());</span>
+        }
+<span class="nc" id="L522">    }</span>
+
+    private void openPlaylistAppendDialog(final List&lt;PlayQueueItem&gt; playlist) {
+<span class="nc" id="L525">        PlaylistAppendDialog.fromPlayQueueItems(playlist)</span>
+<span class="nc" id="L526">                .show(getSupportFragmentManager(), getTag());</span>
+<span class="nc" id="L527">    }</span>
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Share
+    ////////////////////////////////////////////////////////////////////////////
+
+    private void shareUrl(String subject, String url) {
+<span class="nc" id="L534">        Intent intent = new Intent(Intent.ACTION_SEND);</span>
+<span class="nc" id="L535">        intent.setType(&quot;text/plain&quot;);</span>
+<span class="nc" id="L536">        intent.putExtra(Intent.EXTRA_SUBJECT, subject);</span>
+<span class="nc" id="L537">        intent.putExtra(Intent.EXTRA_TEXT, url);</span>
+<span class="nc" id="L538">        startActivity(Intent.createChooser(intent, getString(R.string.share_dialog_title)));</span>
+<span class="nc" id="L539">    }</span>
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Binding Service Listener
+    ////////////////////////////////////////////////////////////////////////////
+
+    @Override
+    public void onPlaybackUpdate(int state, int repeatMode, boolean shuffled, PlaybackParameters parameters) {
+<span class="nc" id="L547">        onStateChanged(state);</span>
+<span class="nc" id="L548">        onPlayModeChanged(repeatMode, shuffled);</span>
+<span class="nc" id="L549">        onPlaybackParameterChanged(parameters);</span>
+<span class="nc" id="L550">        onMaybePlaybackAdapterChanged();</span>
+<span class="nc" id="L551">    }</span>
+
+    @Override
+    public void onProgressUpdate(int currentProgress, int duration, int bufferPercent) {
+        // Set buffer progress
+<span class="nc" id="L556">        progressSeekBar.setSecondaryProgress((int) (progressSeekBar.getMax() * ((float) bufferPercent / 100)));</span>
+
+        // Set Duration
+<span class="nc" id="L559">        progressSeekBar.setMax(duration);</span>
+<span class="nc" id="L560">        progressEndTime.setText(Localization.getDurationString(duration / 1000));</span>
+
+        // Set current time if not seeking
+<span class="nc bnc" id="L563" title="All 2 branches missed.">        if (!seeking) {</span>
+<span class="nc" id="L564">            progressSeekBar.setProgress(currentProgress);</span>
+<span class="nc" id="L565">            progressCurrentTime.setText(Localization.getDurationString(currentProgress / 1000));</span>
+        }
+
+<span class="nc bnc" id="L568" title="All 2 branches missed.">        if (player != null) {</span>
+<span class="nc bnc" id="L569" title="All 2 branches missed.">            progressLiveSync.setClickable(!player.isLiveEdge());</span>
+        }
+
+        // this will make shure progressCurrentTime has the same width as progressEndTime
+<span class="nc" id="L573">        final ViewGroup.LayoutParams endTimeParams = progressEndTime.getLayoutParams();</span>
+<span class="nc" id="L574">        final ViewGroup.LayoutParams currentTimeParams = progressCurrentTime.getLayoutParams();</span>
+<span class="nc" id="L575">        currentTimeParams.width = progressEndTime.getWidth();</span>
+<span class="nc" id="L576">        progressCurrentTime.setLayoutParams(currentTimeParams);</span>
+<span class="nc" id="L577">    }</span>
+
+    @Override
+    public void onMetadataUpdate(StreamInfo info) {
+<span class="nc bnc" id="L581" title="All 2 branches missed.">        if (info != null) {</span>
+<span class="nc" id="L582">            metadataTitle.setText(info.getName());</span>
+<span class="nc" id="L583">            metadataArtist.setText(info.getUploaderName());</span>
+
+<span class="nc" id="L585">            progressEndTime.setVisibility(View.GONE);</span>
+<span class="nc" id="L586">            progressLiveSync.setVisibility(View.GONE);</span>
+<span class="nc bnc" id="L587" title="All 2 branches missed.">            switch (info.getStreamType()) {</span>
+                case LIVE_STREAM:
+                case AUDIO_LIVE_STREAM:
+<span class="nc" id="L590">                    progressLiveSync.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L591">                    break;</span>
+                default:
+<span class="nc" id="L593">                    progressEndTime.setVisibility(View.VISIBLE);</span>
+                    break;
+            }
+
+<span class="nc" id="L597">            scrollToSelected();</span>
+        }
+<span class="nc" id="L599">    }</span>
+
+    @Override
+    public void onServiceStopped() {
+<span class="nc" id="L603">        unbind();</span>
+<span class="nc" id="L604">        finish();</span>
+<span class="nc" id="L605">    }</span>
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Binding Service Helper
+    ////////////////////////////////////////////////////////////////////////////
+
+    private void onStateChanged(final int state) {
+<span class="nc bnc" id="L612" title="All 4 branches missed.">        switch (state) {</span>
+            case BasePlayer.STATE_PAUSED:
+<span class="nc" id="L614">                playPauseButton.setImageResource(R.drawable.ic_play_arrow_white);</span>
+<span class="nc" id="L615">                break;</span>
+            case BasePlayer.STATE_PLAYING:
+<span class="nc" id="L617">                playPauseButton.setImageResource(R.drawable.ic_pause_white);</span>
+<span class="nc" id="L618">                break;</span>
+            case BasePlayer.STATE_COMPLETED:
+<span class="nc" id="L620">                playPauseButton.setImageResource(R.drawable.ic_replay_white);</span>
+<span class="nc" id="L621">                break;</span>
+            default:
+                break;
+        }
+
+<span class="nc bnc" id="L626" title="All 2 branches missed.">        switch (state) {</span>
+            case BasePlayer.STATE_PAUSED:
+            case BasePlayer.STATE_PLAYING:
+            case BasePlayer.STATE_COMPLETED:
+<span class="nc" id="L630">                playPauseButton.setClickable(true);</span>
+<span class="nc" id="L631">                playPauseButton.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L632">                progressBar.setVisibility(View.GONE);</span>
+<span class="nc" id="L633">                break;</span>
+            default:
+<span class="nc" id="L635">                playPauseButton.setClickable(false);</span>
+<span class="nc" id="L636">                playPauseButton.setVisibility(View.INVISIBLE);</span>
+<span class="nc" id="L637">                progressBar.setVisibility(View.VISIBLE);</span>
+                break;
+        }
+<span class="nc" id="L640">    }</span>
+
+    private void onPlayModeChanged(final int repeatMode, final boolean shuffled) {
+<span class="nc bnc" id="L643" title="All 4 branches missed.">        switch (repeatMode) {</span>
+            case Player.REPEAT_MODE_OFF:
+<span class="nc" id="L645">                repeatButton.setImageResource(R.drawable.exo_controls_repeat_off);</span>
+<span class="nc" id="L646">                break;</span>
+            case Player.REPEAT_MODE_ONE:
+<span class="nc" id="L648">                repeatButton.setImageResource(R.drawable.exo_controls_repeat_one);</span>
+<span class="nc" id="L649">                break;</span>
+            case Player.REPEAT_MODE_ALL:
+<span class="nc" id="L651">                repeatButton.setImageResource(R.drawable.exo_controls_repeat_all);</span>
+                break;
+        }
+
+<span class="nc bnc" id="L655" title="All 2 branches missed.">        final int shuffleAlpha = shuffled ? 255 : 77;</span>
+<span class="nc" id="L656">        shuffleButton.setImageAlpha(shuffleAlpha);</span>
+<span class="nc" id="L657">    }</span>
+
+    private void onPlaybackParameterChanged(final PlaybackParameters parameters) {
+<span class="nc bnc" id="L660" title="All 2 branches missed.">        if (parameters != null) {</span>
+<span class="nc" id="L661">            playbackSpeedButton.setText(formatSpeed(parameters.speed));</span>
+<span class="nc" id="L662">            playbackPitchButton.setText(formatPitch(parameters.pitch));</span>
+        }
+<span class="nc" id="L664">    }</span>
+
+    private void onMaybePlaybackAdapterChanged() {
+<span class="nc bnc" id="L667" title="All 4 branches missed.">        if (itemsList == null || player == null) return;</span>
+<span class="nc" id="L668">        final PlayQueueAdapter maybeNewAdapter = player.getPlayQueueAdapter();</span>
+<span class="nc bnc" id="L669" title="All 4 branches missed.">        if (maybeNewAdapter != null &amp;&amp; itemsList.getAdapter() != maybeNewAdapter) {</span>
+<span class="nc" id="L670">            itemsList.setAdapter(maybeNewAdapter);</span>
+        }
+<span class="nc" id="L672">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

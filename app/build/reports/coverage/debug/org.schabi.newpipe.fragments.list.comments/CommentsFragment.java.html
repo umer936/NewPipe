@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CommentsFragment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.fragments.list.comments</a> &gt; <span class="el_source">CommentsFragment.java</span></div><h1>CommentsFragment.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.fragments.list.comments;
+
+import android.content.Context;
+import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.View;
+import android.view.ViewGroup;
+
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.extractor.ListExtractor;
+import org.schabi.newpipe.extractor.NewPipe;
+import org.schabi.newpipe.extractor.comments.CommentsInfo;
+import org.schabi.newpipe.fragments.list.BaseListInfoFragment;
+import org.schabi.newpipe.report.UserAction;
+import org.schabi.newpipe.util.AnimationUtils;
+import org.schabi.newpipe.util.ExtractorHelper;
+
+import io.reactivex.Single;
+import io.reactivex.disposables.CompositeDisposable;
+
+<span class="nc" id="L25">public class CommentsFragment extends BaseListInfoFragment&lt;CommentsInfo&gt; {</span>
+
+<span class="nc" id="L27">    private CompositeDisposable disposables = new CompositeDisposable();</span>
+    /*//////////////////////////////////////////////////////////////////////////
+    // Views
+    //////////////////////////////////////////////////////////////////////////*/
+
+
+
+<span class="nc" id="L34">    private boolean mIsVisibleToUser = false;</span>
+
+    public static CommentsFragment getInstance(int serviceId, String url, String name) {
+<span class="nc" id="L37">        CommentsFragment instance = new CommentsFragment();</span>
+<span class="nc" id="L38">        instance.setInitialData(serviceId, url, name);</span>
+<span class="nc" id="L39">        return instance;</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // LifeCycle
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void setUserVisibleHint(boolean isVisibleToUser) {
+<span class="nc" id="L48">        super.setUserVisibleHint(isVisibleToUser);</span>
+<span class="nc" id="L49">        mIsVisibleToUser = isVisibleToUser;</span>
+<span class="nc" id="L50">    }</span>
+
+    @Override
+    public void onAttach(Context context) {
+<span class="nc" id="L54">        super.onAttach(context);</span>
+<span class="nc" id="L55">    }</span>
+
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+<span class="nc" id="L59">        return inflater.inflate(R.layout.fragment_comments, container, false);</span>
+    }
+
+    @Override
+    public void onDestroy() {
+<span class="nc" id="L64">        super.onDestroy();</span>
+<span class="nc bnc" id="L65" title="All 2 branches missed.">        if (disposables != null) disposables.clear();</span>
+<span class="nc" id="L66">    }</span>
+
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Load and handle
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    protected Single&lt;ListExtractor.InfoItemsPage&gt; loadMoreItemsLogic() {
+<span class="nc" id="L75">        return ExtractorHelper.getMoreCommentItems(serviceId, currentInfo, currentNextPageUrl);</span>
+    }
+
+    @Override
+    protected Single&lt;CommentsInfo&gt; loadResult(boolean forceLoad) {
+<span class="nc" id="L80">        return ExtractorHelper.getCommentsInfo(serviceId, url, forceLoad);</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Contract
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void showLoading() {
+<span class="nc" id="L89">        super.showLoading();</span>
+<span class="nc" id="L90">    }</span>
+
+    @Override
+    public void handleResult(@NonNull CommentsInfo result) {
+<span class="nc" id="L94">        super.handleResult(result);</span>
+
+<span class="nc" id="L96">        AnimationUtils.slideUp(getView(),120, 96, 0.06f);</span>
+
+<span class="nc bnc" id="L98" title="All 2 branches missed.">        if (!result.getErrors().isEmpty()) {</span>
+<span class="nc" id="L99">            showSnackBarError(result.getErrors(), UserAction.REQUESTED_COMMENTS, NewPipe.getNameOfService(result.getServiceId()), result.getUrl(), 0);</span>
+        }
+
+<span class="nc bnc" id="L102" title="All 2 branches missed.">        if (disposables != null) disposables.clear();</span>
+<span class="nc" id="L103">    }</span>
+
+    @Override
+    public void handleNextItems(ListExtractor.InfoItemsPage result) {
+<span class="nc" id="L107">        super.handleNextItems(result);</span>
+
+<span class="nc bnc" id="L109" title="All 2 branches missed.">        if (!result.getErrors().isEmpty()) {</span>
+<span class="nc" id="L110">            showSnackBarError(result.getErrors(),</span>
+                    UserAction.REQUESTED_COMMENTS,
+<span class="nc" id="L112">                    NewPipe.getNameOfService(serviceId),</span>
+                    &quot;Get next page of: &quot; + url,
+                    R.string.general_error);
+        }
+<span class="nc" id="L116">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // OnError
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    protected boolean onError(Throwable exception) {
+<span class="nc bnc" id="L124" title="All 2 branches missed.">        if (super.onError(exception)) return true;</span>
+
+<span class="nc" id="L126">        hideLoading();</span>
+<span class="nc" id="L127">        showSnackBarError(exception, UserAction.REQUESTED_COMMENTS, NewPipe.getNameOfService(serviceId), url, R.string.error_unable_to_load_comments);</span>
+<span class="nc" id="L128">        return true;</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Utils
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void setTitle(String title) {
+<span class="nc" id="L137">        return;</span>
+    }
+
+    @Override
+    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+<span class="nc" id="L142">        return;</span>
+    }
+
+    @Override
+    protected boolean isGridLayout() {
+<span class="nc" id="L147">        return false;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DownloadRunnable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">us.shandian.giga.get</a> &gt; <span class="el_source">DownloadRunnable.java</span></div><h1>DownloadRunnable.java</h1><pre class="source lang-java linenums">package us.shandian.giga.get;
+
+import android.util.Log;
+
+import org.schabi.newpipe.streams.io.SharpStream;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.nio.channels.ClosedByInterruptException;
+
+import us.shandian.giga.get.DownloadMission.Block;
+
+import static org.schabi.newpipe.BuildConfig.DEBUG;
+
+
+/**
+ * Runnable to download blocks of a file until the file is completely downloaded,
+ * an error occurs or the process is stopped.
+ */
+public class DownloadRunnable extends Thread {
+<span class="nc" id="L22">    private static final String TAG = DownloadRunnable.class.getSimpleName();</span>
+
+    private final DownloadMission mMission;
+    private final int mId;
+
+    private HttpURLConnection mConn;
+
+<span class="nc" id="L29">    DownloadRunnable(DownloadMission mission, int id) {</span>
+<span class="nc bnc" id="L30" title="All 2 branches missed.">        if (mission == null) throw new NullPointerException(&quot;mission is null&quot;);</span>
+<span class="nc" id="L31">        mMission = mission;</span>
+<span class="nc" id="L32">        mId = id;</span>
+<span class="nc" id="L33">    }</span>
+
+    private void releaseBlock(Block block, long remain) {
+        // set the block offset to -1 if it is completed
+<span class="nc bnc" id="L37" title="All 2 branches missed.">        mMission.releaseBlock(block.position, remain &lt; 0 ? -1 : block.done);</span>
+<span class="nc" id="L38">    }</span>
+
+    @Override
+    public void run() {
+<span class="nc" id="L42">        boolean retry = false;</span>
+<span class="nc" id="L43">        Block block = null;</span>
+
+<span class="nc" id="L45">        int retryCount = 0;</span>
+
+<span class="nc bnc" id="L47" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L48">            Log.d(TAG, mId + &quot;:recovered: &quot; + mMission.recovered);</span>
+        }
+
+        SharpStream f;
+
+        try {
+<span class="nc" id="L54">            f = mMission.storage.getStream();</span>
+<span class="nc" id="L55">        } catch (IOException e) {</span>
+<span class="nc" id="L56">            mMission.notifyError(e);// this never should happen</span>
+<span class="nc" id="L57">            return;</span>
+<span class="nc" id="L58">        }</span>
+
+<span class="nc bnc" id="L60" title="All 4 branches missed.">        while (mMission.running &amp;&amp; mMission.errCode == DownloadMission.ERROR_NOTHING) {</span>
+<span class="nc bnc" id="L61" title="All 2 branches missed.">            if (!retry) {</span>
+<span class="nc" id="L62">                block = mMission.acquireBlock();</span>
+            }
+
+<span class="nc bnc" id="L65" title="All 2 branches missed.">            if (block == null) {</span>
+<span class="nc bnc" id="L66" title="All 2 branches missed.">                if (DEBUG) Log.d(TAG, mId + &quot;:no more blocks left, exiting&quot;);</span>
+                break;
+            }
+
+<span class="nc bnc" id="L70" title="All 2 branches missed.">            if (DEBUG) {</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">                if (retry)</span>
+<span class="nc" id="L72">                    Log.d(TAG, mId + &quot;:retry block at position=&quot; + block.position + &quot; from the start&quot;);</span>
+                else
+<span class="nc" id="L74">                    Log.d(TAG, mId + &quot;:acquired block at position=&quot; + block.position + &quot; done=&quot; + block.done);</span>
+            }
+
+<span class="nc" id="L77">            long start = block.position * DownloadMission.BLOCK_SIZE;</span>
+<span class="nc" id="L78">            long end = start + DownloadMission.BLOCK_SIZE - 1;</span>
+
+<span class="nc" id="L80">            start += block.done;</span>
+
+<span class="nc bnc" id="L82" title="All 2 branches missed.">            if (end &gt;= mMission.length) {</span>
+<span class="nc" id="L83">                end = mMission.length - 1;</span>
+            }
+
+            try {
+<span class="nc" id="L87">                mConn = mMission.openConnection(mId, start, end);</span>
+<span class="nc" id="L88">                mMission.establishConnection(mId, mConn);</span>
+
+                // check if the download can be resumed
+<span class="nc bnc" id="L91" title="All 2 branches missed.">                if (mConn.getResponseCode() == 416) {</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">                    if (block.done &gt; 0) {</span>
+                        // try again from the start (of the block)
+<span class="nc" id="L94">                        block.done = 0;</span>
+<span class="nc" id="L95">                        retry = true;</span>
+<span class="nc" id="L96">                        mConn.disconnect();</span>
+                        continue;
+                    }
+
+<span class="nc" id="L100">                    throw new DownloadMission.HttpError(416);</span>
+                }
+
+<span class="nc" id="L103">                retry = false;</span>
+
+                // The server may be ignoring the range request
+<span class="nc bnc" id="L106" title="All 2 branches missed.">                if (mConn.getResponseCode() != 206) {</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">                    if (DEBUG) {</span>
+<span class="nc" id="L108">                        Log.e(TAG, mId + &quot;:Unsupported &quot; + mConn.getResponseCode());</span>
+                    }
+<span class="nc" id="L110">                    mMission.notifyError(new DownloadMission.HttpError(mConn.getResponseCode()));</span>
+                    break;
+                }
+
+<span class="nc" id="L114">                f.seek(mMission.offsets[mMission.current] + start);</span>
+
+<span class="nc" id="L116">                try (InputStream is = mConn.getInputStream()) {</span>
+<span class="nc" id="L117">                    byte[] buf = new byte[DownloadMission.BUFFER_SIZE];</span>
+                    int len;
+
+<span class="nc bnc" id="L120" title="All 6 branches missed.">                    while (start &lt; end &amp;&amp; mMission.running &amp;&amp; (len = is.read(buf, 0, buf.length)) != -1) {</span>
+<span class="nc" id="L121">                        f.write(buf, 0, len);</span>
+<span class="nc" id="L122">                        start += len;</span>
+<span class="nc" id="L123">                        block.done += len;</span>
+<span class="nc" id="L124">                        mMission.notifyProgress(len);</span>
+                    }
+<span class="nc bnc" id="L126" title="All 8 branches missed.">                }</span>
+
+<span class="nc bnc" id="L128" title="All 4 branches missed.">                if (DEBUG &amp;&amp; mMission.running) {</span>
+<span class="nc" id="L129">                    Log.d(TAG, mId + &quot;:position &quot; + block.position + &quot; stopped &quot; + start + &quot;/&quot; + end);</span>
+                }
+<span class="nc" id="L131">            } catch (Exception e) {</span>
+<span class="nc bnc" id="L132" title="All 4 branches missed.">                if (!mMission.running || e instanceof ClosedByInterruptException) break;</span>
+
+<span class="nc bnc" id="L134" title="All 2 branches missed.">                if (retryCount++ &gt;= mMission.maxRetry) {</span>
+<span class="nc" id="L135">                    mMission.notifyError(e);</span>
+                    break;
+                }
+
+<span class="nc" id="L139">                retry = true;</span>
+            } finally {
+<span class="nc bnc" id="L141" title="All 14 branches missed.">                if (!retry) releaseBlock(block, end - start);</span>
+<span class="nc" id="L142">            }</span>
+<span class="nc" id="L143">        }</span>
+
+        try {
+<span class="nc" id="L146">            f.close();</span>
+<span class="nc" id="L147">        } catch (Exception err) {</span>
+            // ¿ejected media storage?  ¿file deleted?  ¿storage ran out of space?
+<span class="nc" id="L149">        }</span>
+
+<span class="nc bnc" id="L151" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L152">            Log.d(TAG, &quot;thread &quot; + mId + &quot; exited from main download loop&quot;);</span>
+        }
+
+<span class="nc bnc" id="L155" title="All 4 branches missed.">        if (mMission.errCode == DownloadMission.ERROR_NOTHING &amp;&amp; mMission.running) {</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">            if (DEBUG) {</span>
+<span class="nc" id="L157">                Log.d(TAG, &quot;no error has happened, notifying&quot;);</span>
+            }
+<span class="nc" id="L159">            mMission.notifyFinished();</span>
+        }
+
+<span class="nc bnc" id="L162" title="All 4 branches missed.">        if (DEBUG &amp;&amp; !mMission.running) {</span>
+<span class="nc" id="L163">            Log.d(TAG, &quot;The mission has been paused. Passing.&quot;);</span>
+        }
+<span class="nc" id="L165">    }</span>
+
+    @Override
+    public void interrupt() {
+<span class="nc" id="L169">        super.interrupt();</span>
+
+        try {
+<span class="nc bnc" id="L172" title="All 2 branches missed.">            if (mConn != null) mConn.disconnect();</span>
+<span class="nc" id="L173">        } catch (Exception e) {</span>
+            // nothing to do
+<span class="nc" id="L175">        }</span>
+<span class="nc" id="L176">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

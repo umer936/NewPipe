@@ -1,0 +1,456 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ListHelper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.util</a> &gt; <span class="el_source">ListHelper.java</span></div><h1>ListHelper.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.util;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.net.ConnectivityManager;
+import android.preference.PreferenceManager;
+import android.support.annotation.StringRes;
+
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.extractor.MediaFormat;
+import org.schabi.newpipe.extractor.stream.AudioStream;
+import org.schabi.newpipe.extractor.stream.VideoStream;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+
+@SuppressWarnings(&quot;WeakerAccess&quot;)
+<span class="nc" id="L21">public final class ListHelper {</span>
+
+    // Video format in order of quality. 0=lowest quality, n=highest quality
+<span class="nc" id="L24">    private static final List&lt;MediaFormat&gt; VIDEO_FORMAT_QUALITY_RANKING =</span>
+<span class="nc" id="L25">        Arrays.asList(MediaFormat.v3GPP, MediaFormat.WEBM, MediaFormat.MPEG_4);</span>
+
+    // Audio format in order of quality. 0=lowest quality, n=highest quality
+<span class="nc" id="L28">    private static final List&lt;MediaFormat&gt; AUDIO_FORMAT_QUALITY_RANKING =</span>
+<span class="nc" id="L29">        Arrays.asList(MediaFormat.MP3, MediaFormat.WEBMA, MediaFormat.M4A);</span>
+    // Audio format in order of efficiency. 0=most efficient, n=least efficient
+<span class="nc" id="L31">    private static final List&lt;MediaFormat&gt; AUDIO_FORMAT_EFFICIENCY_RANKING =</span>
+<span class="nc" id="L32">            Arrays.asList(MediaFormat.WEBMA, MediaFormat.M4A, MediaFormat.MP3);</span>
+
+<span class="nc" id="L34">    private static final List&lt;String&gt; HIGH_RESOLUTION_LIST = Arrays.asList(&quot;1440p&quot;, &quot;2160p&quot;, &quot;1440p60&quot;, &quot;2160p60&quot;);</span>
+
+    /**
+     * @see #getDefaultResolutionIndex(String, String, MediaFormat, List)
+     */
+    public static int getDefaultResolutionIndex(Context context, List&lt;VideoStream&gt; videoStreams) {
+<span class="nc" id="L40">        String defaultResolution = computeDefaultResolution(context,</span>
+                R.string.default_resolution_key, R.string.default_resolution_value);
+<span class="nc" id="L42">        return getDefaultResolutionWithDefaultFormat(context, defaultResolution, videoStreams);</span>
+    }
+
+    /**
+     * @see #getDefaultResolutionIndex(String, String, MediaFormat, List)
+     */
+    public static int getResolutionIndex(Context context, List&lt;VideoStream&gt; videoStreams, String defaultResolution) {
+<span class="nc" id="L49">        return getDefaultResolutionWithDefaultFormat(context, defaultResolution, videoStreams);</span>
+    }
+
+    /**
+     * @see #getDefaultResolutionIndex(String, String, MediaFormat, List)
+     */
+    public static int getPopupDefaultResolutionIndex(Context context, List&lt;VideoStream&gt; videoStreams) {
+<span class="nc" id="L56">        String defaultResolution = computeDefaultResolution(context,</span>
+                R.string.default_popup_resolution_key, R.string.default_popup_resolution_value);
+<span class="nc" id="L58">        return getDefaultResolutionWithDefaultFormat(context, defaultResolution, videoStreams);</span>
+    }
+
+    /**
+     * @see #getDefaultResolutionIndex(String, String, MediaFormat, List)
+     */
+    public static int getPopupResolutionIndex(Context context, List&lt;VideoStream&gt; videoStreams, String defaultResolution) {
+<span class="nc" id="L65">        return getDefaultResolutionWithDefaultFormat(context, defaultResolution, videoStreams);</span>
+    }
+
+    public static int getDefaultAudioFormat(Context context, List&lt;AudioStream&gt; audioStreams) {
+<span class="nc" id="L69">        MediaFormat defaultFormat = getDefaultFormat(context, R.string.default_audio_format_key,</span>
+                R.string.default_audio_format_value);
+
+        // If the user has chosen to limit resolution to conserve mobile data
+        // usage then we should also limit our audio usage.
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        if (isLimitingDataUsage(context)) {</span>
+<span class="nc" id="L75">            return getMostCompactAudioIndex(defaultFormat, audioStreams);</span>
+        } else {
+<span class="nc" id="L77">            return getHighestQualityAudioIndex(defaultFormat, audioStreams);</span>
+        }
+    }
+
+    /**
+     * Join the two lists of video streams (video_only and normal videos), and sort them according with default format
+     * chosen by the user
+     *
+     * @param context          context to search for the format to give preference
+     * @param videoStreams     normal videos list
+     * @param videoOnlyStreams video only stream list
+     * @param ascendingOrder   true -&gt; smallest to greatest | false -&gt; greatest to smallest
+     * @return the sorted list
+     */
+    public static List&lt;VideoStream&gt; getSortedStreamVideosList(Context context, List&lt;VideoStream&gt; videoStreams, List&lt;VideoStream&gt; videoOnlyStreams, boolean ascendingOrder) {
+<span class="nc" id="L92">        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);</span>
+
+<span class="nc" id="L94">        boolean showHigherResolutions = preferences.getBoolean(context.getString(R.string.show_higher_resolutions_key), false);</span>
+<span class="nc" id="L95">        MediaFormat defaultFormat = getDefaultFormat(context, R.string.default_video_format_key, R.string.default_video_format_value);</span>
+
+<span class="nc" id="L97">        return getSortedStreamVideosList(defaultFormat, showHigherResolutions, videoStreams, videoOnlyStreams, ascendingOrder);</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Utils
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private static String computeDefaultResolution(Context context, int key, int value) {
+<span class="nc" id="L105">        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);</span>
+
+        // Load the prefered resolution otherwise the best available
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        String resolution = preferences != null</span>
+<span class="nc" id="L109">                ? preferences.getString(context.getString(key), context.getString(value))</span>
+<span class="nc" id="L110">                : context.getString(R.string.best_resolution_key);</span>
+
+<span class="nc" id="L112">        String maxResolution = getResolutionLimit(context);</span>
+<span class="nc bnc" id="L113" title="All 4 branches missed.">        if (maxResolution != null &amp;&amp; (resolution.equals(context.getString(R.string.best_resolution_key))</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">                || compareVideoStreamResolution(maxResolution, resolution) &lt; 1)) {</span>
+<span class="nc" id="L115">            resolution = maxResolution;</span>
+        }
+<span class="nc" id="L117">        return resolution;</span>
+    }
+
+    /**
+     * Return the index of the default stream in the list, based on the parameters
+     * defaultResolution and defaultFormat
+     *
+     * @return index of the default resolution&amp;format
+     */
+    static int getDefaultResolutionIndex(String defaultResolution, String bestResolutionKey,
+                                         MediaFormat defaultFormat, List&lt;VideoStream&gt; videoStreams) {
+<span class="nc bnc" id="L128" title="All 4 branches missed.">        if (videoStreams == null || videoStreams.isEmpty()) return -1;</span>
+
+<span class="nc" id="L130">        sortStreamList(videoStreams, false);</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        if (defaultResolution.equals(bestResolutionKey)) {</span>
+<span class="nc" id="L132">            return 0;</span>
+        }
+
+<span class="nc" id="L135">        int defaultStreamIndex = getVideoStreamIndex(defaultResolution, defaultFormat, videoStreams);</span>
+
+        // this is actually an error,
+        // but maybe there is really no stream fitting to the default value.
+<span class="nc bnc" id="L139" title="All 2 branches missed.">        if (defaultStreamIndex == -1) {</span>
+<span class="nc" id="L140">            return 0;</span>
+        }
+<span class="nc" id="L142">        return defaultStreamIndex;</span>
+    }
+
+    /**
+     * Join the two lists of video streams (video_only and normal videos), and sort them according with default format
+     * chosen by the user
+     *
+     * @param defaultFormat       format to give preference
+     * @param showHigherResolutions show &gt;1080p resolutions
+     * @param videoStreams          normal videos list
+     * @param videoOnlyStreams      video only stream list
+     * @param ascendingOrder        true -&gt; smallest to greatest | false -&gt; greatest to smallest    @return the sorted list
+     * @return the sorted list
+     */
+    static List&lt;VideoStream&gt; getSortedStreamVideosList(MediaFormat defaultFormat, boolean showHigherResolutions, List&lt;VideoStream&gt; videoStreams, List&lt;VideoStream&gt; videoOnlyStreams, boolean ascendingOrder) {
+<span class="nc" id="L157">        ArrayList&lt;VideoStream&gt; retList = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L158">        HashMap&lt;String, VideoStream&gt; hashMap = new HashMap&lt;&gt;();</span>
+
+<span class="nc bnc" id="L160" title="All 2 branches missed.">        if (videoOnlyStreams != null) {</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">            for (VideoStream stream : videoOnlyStreams) {</span>
+<span class="nc bnc" id="L162" title="All 4 branches missed.">                if (!showHigherResolutions &amp;&amp; HIGH_RESOLUTION_LIST.contains(stream.getResolution())) continue;</span>
+<span class="nc" id="L163">                retList.add(stream);</span>
+<span class="nc" id="L164">            }</span>
+        }
+<span class="nc bnc" id="L166" title="All 2 branches missed.">        if (videoStreams != null) {</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">            for (VideoStream stream : videoStreams) {</span>
+<span class="nc bnc" id="L168" title="All 4 branches missed.">                if (!showHigherResolutions &amp;&amp; HIGH_RESOLUTION_LIST.contains(stream.getResolution())) continue;</span>
+<span class="nc" id="L169">                retList.add(stream);</span>
+<span class="nc" id="L170">            }</span>
+        }
+
+        // Add all to the hashmap
+<span class="nc bnc" id="L174" title="All 2 branches missed.">        for (VideoStream videoStream : retList) hashMap.put(videoStream.getResolution(), videoStream);</span>
+
+        // Override the values when the key == resolution, with the defaultFormat
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        for (VideoStream videoStream : retList) {</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">            if (videoStream.getFormat() == defaultFormat) hashMap.put(videoStream.getResolution(), videoStream);</span>
+<span class="nc" id="L179">        }</span>
+
+<span class="nc" id="L181">        retList.clear();</span>
+<span class="nc" id="L182">        retList.addAll(hashMap.values());</span>
+<span class="nc" id="L183">        sortStreamList(retList, ascendingOrder);</span>
+<span class="nc" id="L184">        return retList;</span>
+    }
+
+    /**
+     * Sort the streams list depending on the parameter ascendingOrder;
+     * &lt;p&gt;
+     * It works like that:&lt;br&gt;
+     * - Take a string resolution, remove the letters, replace &quot;0p60&quot; (for 60fps videos) with &quot;1&quot;
+     * and sort by the greatest:&lt;br&gt;
+     * &lt;blockquote&gt;&lt;pre&gt;
+     *      720p     -&gt;  720
+     *      720p60   -&gt;  721
+     *      360p     -&gt;  360
+     *      1080p    -&gt;  1080
+     *      1080p60  -&gt;  1081
+     * &lt;br&gt;
+     *  ascendingOrder  ? 360 &lt; 720 &lt; 721 &lt; 1080 &lt; 1081
+     *  !ascendingOrder ? 1081 &lt; 1080 &lt; 721 &lt; 720 &lt; 360&lt;/pre&gt;&lt;/blockquote&gt;
+     *
+     * @param videoStreams   list that the sorting will be applied
+     * @param ascendingOrder true -&gt; smallest to greatest | false -&gt; greatest to smallest
+     */
+    private static void sortStreamList(List&lt;VideoStream&gt; videoStreams, final boolean ascendingOrder) {
+<span class="nc" id="L207">        Collections.sort(videoStreams, (o1, o2) -&gt; {</span>
+<span class="nc" id="L208">            int result = compareVideoStreamResolution(o1, o2);</span>
+<span class="nc bnc" id="L209" title="All 4 branches missed.">            return result == 0 ? 0 : (ascendingOrder ? result : -result);</span>
+        });
+<span class="nc" id="L211">    }</span>
+
+    /**
+     * Get the audio from the list with the highest quality. Format will be ignored if it yields
+     * no results.
+     *
+     * @param audioStreams list the audio streams
+     * @return index of the audio with the highest average bitrate of the default format
+     */
+    static int getHighestQualityAudioIndex(MediaFormat format, List&lt;AudioStream&gt; audioStreams) {
+<span class="nc" id="L221">        int result = -1;</span>
+<span class="nc bnc" id="L222" title="All 2 branches missed.">        if (audioStreams != null) {</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">            while(result == -1) {</span>
+<span class="nc" id="L224">                AudioStream prevStream = null;</span>
+<span class="nc bnc" id="L225" title="All 2 branches missed.">                for (int idx = 0; idx &lt; audioStreams.size(); idx++) {</span>
+<span class="nc" id="L226">                    AudioStream stream = audioStreams.get(idx);</span>
+<span class="nc bnc" id="L227" title="All 6 branches missed.">                    if ((format == null || stream.getFormat() == format) &amp;&amp;</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">                            (prevStream == null || compareAudioStreamBitrate(prevStream, stream,</span>
+                                    AUDIO_FORMAT_QUALITY_RANKING) &lt; 0)) {
+<span class="nc" id="L230">                        prevStream = stream;</span>
+<span class="nc" id="L231">                        result = idx;</span>
+                    }
+                }
+<span class="nc bnc" id="L234" title="All 4 branches missed.">                if (result == -1 &amp;&amp; format == null) {</span>
+<span class="nc" id="L235">                    break;</span>
+                }
+<span class="nc" id="L237">                format = null;</span>
+<span class="nc" id="L238">            }</span>
+        }
+<span class="nc" id="L240">        return result;</span>
+    }
+
+    /**
+     * Get the audio from the list with the lowest bitrate and efficient format. Format will be
+     * ignored if it yields no results.
+     *
+     * @param format The target format type or null if it doesn't matter
+     * @param audioStreams list the audio streams
+     * @return index of the audio stream that can produce the most compact results or -1 if not found.
+     */
+    static int getMostCompactAudioIndex(MediaFormat format, List&lt;AudioStream&gt; audioStreams) {
+<span class="nc" id="L252">        int result = -1;</span>
+<span class="nc bnc" id="L253" title="All 2 branches missed.">        if (audioStreams != null) {</span>
+<span class="nc bnc" id="L254" title="All 2 branches missed.">            while(result == -1) {</span>
+<span class="nc" id="L255">                AudioStream prevStream = null;</span>
+<span class="nc bnc" id="L256" title="All 2 branches missed.">                for (int idx = 0; idx &lt; audioStreams.size(); idx++) {</span>
+<span class="nc" id="L257">                    AudioStream stream = audioStreams.get(idx);</span>
+<span class="nc bnc" id="L258" title="All 6 branches missed.">                    if ((format == null || stream.getFormat() == format) &amp;&amp;</span>
+<span class="nc bnc" id="L259" title="All 2 branches missed.">                            (prevStream == null || compareAudioStreamBitrate(prevStream, stream,</span>
+                                    AUDIO_FORMAT_EFFICIENCY_RANKING) &gt; 0)) {
+<span class="nc" id="L261">                        prevStream = stream;</span>
+<span class="nc" id="L262">                        result = idx;</span>
+                    }
+                }
+<span class="nc bnc" id="L265" title="All 4 branches missed.">                if (result == -1 &amp;&amp; format == null) {</span>
+<span class="nc" id="L266">                    break;</span>
+                }
+<span class="nc" id="L268">                format = null;</span>
+<span class="nc" id="L269">            }</span>
+        }
+<span class="nc" id="L271">        return result;</span>
+    }
+
+    /**
+     * Locates a possible match for the given resolution and format in the provided list.
+     * In this order:
+     *  1. Find a format and resolution match
+     *  2. Find a format and resolution match and ignore the refresh
+     *  3. Find a resolution match
+     *  4. Find a resolution match and ignore the refresh
+     *  5. Find a resolution just below the requested resolution and ignore the refresh
+     *  6. Give up
+     */
+    static int getVideoStreamIndex(String targetResolution, MediaFormat targetFormat,
+                                   List&lt;VideoStream&gt; videoStreams) {
+<span class="nc" id="L286">        int fullMatchIndex = -1;</span>
+<span class="nc" id="L287">        int fullMatchNoRefreshIndex = -1;</span>
+<span class="nc" id="L288">        int resMatchOnlyIndex = -1;</span>
+<span class="nc" id="L289">        int resMatchOnlyNoRefreshIndex = -1;</span>
+<span class="nc" id="L290">        int lowerResMatchNoRefreshIndex = -1;</span>
+<span class="nc" id="L291">        String targetResolutionNoRefresh = targetResolution.replaceAll(&quot;p\\d+$&quot;, &quot;p&quot;);</span>
+
+<span class="nc bnc" id="L293" title="All 2 branches missed.">        for (int idx = 0; idx &lt; videoStreams.size(); idx++) {</span>
+<span class="nc bnc" id="L294" title="All 2 branches missed.">            MediaFormat format = targetFormat == null ? null : videoStreams.get(idx).getFormat();</span>
+<span class="nc" id="L295">            String resolution = videoStreams.get(idx).getResolution();</span>
+<span class="nc" id="L296">            String resolutionNoRefresh = resolution.replaceAll(&quot;p\\d+$&quot;, &quot;p&quot;);</span>
+
+<span class="nc bnc" id="L298" title="All 4 branches missed.">            if (format == targetFormat &amp;&amp; resolution.equals(targetResolution)) {</span>
+<span class="nc" id="L299">                fullMatchIndex = idx;</span>
+            }
+
+<span class="nc bnc" id="L302" title="All 4 branches missed.">            if (format == targetFormat &amp;&amp; resolutionNoRefresh.equals(targetResolutionNoRefresh)) {</span>
+<span class="nc" id="L303">                fullMatchNoRefreshIndex = idx;</span>
+            }
+
+<span class="nc bnc" id="L306" title="All 4 branches missed.">            if (resMatchOnlyIndex == -1 &amp;&amp; resolution.equals(targetResolution)) {</span>
+<span class="nc" id="L307">                resMatchOnlyIndex = idx;</span>
+            }
+
+<span class="nc bnc" id="L310" title="All 4 branches missed.">            if (resMatchOnlyNoRefreshIndex == -1 &amp;&amp; resolutionNoRefresh.equals(targetResolutionNoRefresh)) {</span>
+<span class="nc" id="L311">                resMatchOnlyNoRefreshIndex = idx;</span>
+            }
+
+<span class="nc bnc" id="L314" title="All 4 branches missed.">            if (lowerResMatchNoRefreshIndex == -1 &amp;&amp; compareVideoStreamResolution(resolutionNoRefresh, targetResolutionNoRefresh) &lt; 0) {</span>
+<span class="nc" id="L315">                lowerResMatchNoRefreshIndex = idx;</span>
+            }
+        }
+
+<span class="nc bnc" id="L319" title="All 2 branches missed.">        if (fullMatchIndex != -1) {</span>
+<span class="nc" id="L320">            return fullMatchIndex;</span>
+        }
+<span class="nc bnc" id="L322" title="All 2 branches missed.">        if (fullMatchNoRefreshIndex != -1) {</span>
+<span class="nc" id="L323">            return fullMatchNoRefreshIndex;</span>
+        }
+<span class="nc bnc" id="L325" title="All 2 branches missed.">        if (resMatchOnlyIndex != -1) {</span>
+<span class="nc" id="L326">            return resMatchOnlyIndex;</span>
+        }
+<span class="nc bnc" id="L328" title="All 2 branches missed.">        if (resMatchOnlyNoRefreshIndex != -1) {</span>
+<span class="nc" id="L329">            return resMatchOnlyNoRefreshIndex;</span>
+        }
+<span class="nc" id="L331">        return lowerResMatchNoRefreshIndex;</span>
+    }
+
+    /**
+     * Fetches the desired resolution or returns the default if it is not found. The resolution
+     * will be reduced if video chocking is active.
+     */
+    private static int getDefaultResolutionWithDefaultFormat(Context context, String defaultResolution, List&lt;VideoStream&gt; videoStreams) {
+<span class="nc" id="L339">        MediaFormat defaultFormat = getDefaultFormat(context, R.string.default_video_format_key, R.string.default_video_format_value);</span>
+<span class="nc" id="L340">        return getDefaultResolutionIndex(defaultResolution, context.getString(R.string.best_resolution_key), defaultFormat, videoStreams);</span>
+    }
+
+    private static MediaFormat getDefaultFormat(Context context, @StringRes int defaultFormatKey, @StringRes int defaultFormatValueKey) {
+<span class="nc" id="L344">        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);</span>
+
+<span class="nc" id="L346">        String defaultFormat = context.getString(defaultFormatValueKey);</span>
+<span class="nc" id="L347">        String defaultFormatString = preferences.getString(context.getString(defaultFormatKey), defaultFormat);</span>
+
+<span class="nc" id="L349">        MediaFormat defaultMediaFormat = getMediaFormatFromKey(context, defaultFormatString);</span>
+<span class="nc bnc" id="L350" title="All 2 branches missed.">        if (defaultMediaFormat == null) {</span>
+<span class="nc" id="L351">            preferences.edit().putString(context.getString(defaultFormatKey), defaultFormat).apply();</span>
+<span class="nc" id="L352">            defaultMediaFormat = getMediaFormatFromKey(context, defaultFormat);</span>
+        }
+
+<span class="nc" id="L355">        return defaultMediaFormat;</span>
+    }
+
+    private static MediaFormat getMediaFormatFromKey(Context context, String formatKey) {
+<span class="nc" id="L359">        MediaFormat format = null;</span>
+<span class="nc bnc" id="L360" title="All 2 branches missed.">        if (formatKey.equals(context.getString(R.string.video_webm_key))) {</span>
+<span class="nc" id="L361">            format = MediaFormat.WEBM;</span>
+<span class="nc bnc" id="L362" title="All 2 branches missed.">        } else if (formatKey.equals(context.getString(R.string.video_mp4_key))) {</span>
+<span class="nc" id="L363">            format = MediaFormat.MPEG_4;</span>
+<span class="nc bnc" id="L364" title="All 2 branches missed.">        } else if (formatKey.equals(context.getString(R.string.video_3gp_key))) {</span>
+<span class="nc" id="L365">            format = MediaFormat.v3GPP;</span>
+<span class="nc bnc" id="L366" title="All 2 branches missed.">        } else if (formatKey.equals(context.getString(R.string.audio_webm_key))) {</span>
+<span class="nc" id="L367">            format = MediaFormat.WEBMA;</span>
+<span class="nc bnc" id="L368" title="All 2 branches missed.">        } else if (formatKey.equals(context.getString(R.string.audio_m4a_key))) {</span>
+<span class="nc" id="L369">            format = MediaFormat.M4A;</span>
+        }
+<span class="nc" id="L371">        return format;</span>
+    }
+
+    // Compares the quality of two audio streams
+    private static int compareAudioStreamBitrate(AudioStream streamA, AudioStream streamB,
+                                                 List&lt;MediaFormat&gt; formatRanking) {
+<span class="nc bnc" id="L377" title="All 2 branches missed.">        if (streamA == null) {</span>
+<span class="nc" id="L378">            return -1;</span>
+        }
+<span class="nc bnc" id="L380" title="All 2 branches missed.">        if (streamB == null) {</span>
+<span class="nc" id="L381">            return 1;</span>
+        }
+<span class="nc bnc" id="L383" title="All 2 branches missed.">        if (streamA.getAverageBitrate() &lt; streamB.getAverageBitrate()) {</span>
+<span class="nc" id="L384">            return -1;</span>
+        }
+<span class="nc bnc" id="L386" title="All 2 branches missed.">        if (streamA.getAverageBitrate() &gt; streamB.getAverageBitrate()) {</span>
+<span class="nc" id="L387">            return 1;</span>
+        }
+
+        // Same bitrate and format
+<span class="nc" id="L391">        return formatRanking.indexOf(streamA.getFormat()) - formatRanking.indexOf(streamB.getFormat());</span>
+    }
+
+    private static int compareVideoStreamResolution(String r1, String r2) {
+<span class="nc" id="L395">        int res1 = Integer.parseInt(r1.replaceAll(&quot;0p\\d+$&quot;, &quot;1&quot;)</span>
+<span class="nc" id="L396">                .replaceAll(&quot;[^\\d.]&quot;, &quot;&quot;));</span>
+<span class="nc" id="L397">        int res2 = Integer.parseInt(r2.replaceAll(&quot;0p\\d+$&quot;, &quot;1&quot;)</span>
+<span class="nc" id="L398">                .replaceAll(&quot;[^\\d.]&quot;, &quot;&quot;));</span>
+<span class="nc" id="L399">        return res1 - res2;</span>
+    }
+
+    // Compares the quality of two video streams.
+    private static int compareVideoStreamResolution(VideoStream streamA, VideoStream streamB) {
+<span class="nc bnc" id="L404" title="All 2 branches missed.">        if (streamA == null) {</span>
+<span class="nc" id="L405">            return -1;</span>
+        }
+<span class="nc bnc" id="L407" title="All 2 branches missed.">        if (streamB == null) {</span>
+<span class="nc" id="L408">            return 1;</span>
+        }
+
+<span class="nc" id="L411">        int resComp = compareVideoStreamResolution(streamA.getResolution(), streamB.getResolution());</span>
+<span class="nc bnc" id="L412" title="All 2 branches missed.">        if (resComp != 0) {</span>
+<span class="nc" id="L413">            return resComp;</span>
+        }
+
+        // Same bitrate and format
+<span class="nc" id="L417">        return ListHelper.VIDEO_FORMAT_QUALITY_RANKING.indexOf(streamA.getFormat()) - ListHelper.VIDEO_FORMAT_QUALITY_RANKING.indexOf(streamB.getFormat());</span>
+    }
+
+
+
+    private static boolean isLimitingDataUsage(Context context) {
+<span class="nc bnc" id="L423" title="All 2 branches missed.">        return getResolutionLimit(context) != null;</span>
+    }
+
+    /**
+     * The maximum resolution allowed
+     * @param context App context
+     * @return maximum resolution allowed or null if there is no maximum
+     */
+    private static String getResolutionLimit(Context context) {
+<span class="nc" id="L432">        String resolutionLimit = null;</span>
+<span class="nc bnc" id="L433" title="All 2 branches missed.">        if (isMeteredNetwork(context)) {</span>
+<span class="nc" id="L434">            SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);</span>
+<span class="nc" id="L435">            String defValue = context.getString(R.string.limit_data_usage_none_key);</span>
+<span class="nc" id="L436">            String value = preferences.getString(</span>
+<span class="nc" id="L437">                    context.getString(R.string.limit_mobile_data_usage_key), defValue);</span>
+<span class="nc bnc" id="L438" title="All 2 branches missed.">            resolutionLimit = defValue.equals(value) ? null : value;</span>
+        }
+<span class="nc" id="L440">        return resolutionLimit;</span>
+    }
+
+    /**
+     * The current network is metered (like mobile data)?
+     * @param context App context
+     * @return {@code true} if connected to a metered network
+     */
+    private static boolean isMeteredNetwork(Context context)
+    {
+<span class="nc" id="L450">        ConnectivityManager manager = (ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);</span>
+<span class="nc bnc" id="L451" title="All 4 branches missed.">        if (manager == null || manager.getActiveNetworkInfo() == null) return false;</span>
+
+<span class="nc" id="L453">        return manager.isActiveNetworkMetered();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

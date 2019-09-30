@@ -1,0 +1,796 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DownloadMission.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">us.shandian.giga.get</a> &gt; <span class="el_source">DownloadMission.java</span></div><h1>DownloadMission.java</h1><pre class="source lang-java linenums">package us.shandian.giga.get;
+
+import android.os.Handler;
+import android.util.Log;
+
+import org.schabi.newpipe.Downloader;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.Serializable;
+import java.net.ConnectException;
+import java.net.HttpURLConnection;
+import java.net.SocketTimeoutException;
+import java.net.URL;
+import java.net.UnknownHostException;
+
+import javax.annotation.Nullable;
+import javax.net.ssl.SSLException;
+
+import us.shandian.giga.io.StoredFileHelper;
+import us.shandian.giga.postprocessing.Postprocessing;
+import us.shandian.giga.service.DownloadManagerService;
+import us.shandian.giga.util.Utility;
+
+import static org.schabi.newpipe.BuildConfig.DEBUG;
+
+public class DownloadMission extends Mission {
+    private static final long serialVersionUID = 5L;// last bump: 30 june 2019
+
+    static final int BUFFER_SIZE = 64 * 1024;
+    static final int BLOCK_SIZE = 512 * 1024;
+
+    @SuppressWarnings(&quot;SpellCheckingInspection&quot;)
+    private static final String INSUFFICIENT_STORAGE = &quot;ENOSPC&quot;;
+
+    private static final String TAG = &quot;DownloadMission&quot;;
+
+    public static final int ERROR_NOTHING = -1;
+    public static final int ERROR_PATH_CREATION = 1000;
+    public static final int ERROR_FILE_CREATION = 1001;
+    public static final int ERROR_UNKNOWN_EXCEPTION = 1002;
+    public static final int ERROR_PERMISSION_DENIED = 1003;
+    public static final int ERROR_SSL_EXCEPTION = 1004;
+    public static final int ERROR_UNKNOWN_HOST = 1005;
+    public static final int ERROR_CONNECT_HOST = 1006;
+    public static final int ERROR_POSTPROCESSING = 1007;
+    public static final int ERROR_POSTPROCESSING_STOPPED = 1008;
+    public static final int ERROR_POSTPROCESSING_HOLD = 1009;
+    public static final int ERROR_INSUFFICIENT_STORAGE = 1010;
+    public static final int ERROR_PROGRESS_LOST = 1011;
+    public static final int ERROR_TIMEOUT = 1012;
+    public static final int ERROR_HTTP_NO_CONTENT = 204;
+    public static final int ERROR_HTTP_UNSUPPORTED_RANGE = 206;
+
+    /**
+     * The urls of the file to download
+     */
+    public String[] urls;
+
+    /**
+     * Number of bytes downloaded
+     */
+    public long done;
+
+    /**
+     * Indicates a file generated dynamically on the web server
+     */
+    public boolean unknownLength;
+
+    /**
+     * offset in the file where the data should be written
+     */
+    public long[] offsets;
+
+    /**
+     * Indicates if the post-processing state:
+     * 0: ready
+     * 1: running
+     * 2: completed
+     * 3: hold
+     */
+    public volatile int psState;
+
+    /**
+     * the post-processing algorithm instance
+     */
+    public Postprocessing psAlgorithm;
+
+    /**
+     * The current resource to download, {@code urls[current]} and {@code offsets[current]}
+     */
+    public int current;
+
+    /**
+     * Metadata where the mission state is saved
+     */
+    public transient File metadata;
+
+    /**
+     * maximum attempts
+     */
+    public transient int maxRetry;
+
+    /**
+     * Approximated final length, this represent the sum of all resources sizes
+     */
+    public long nearLength;
+
+    /**
+     * Download blocks, the size is multiple of {@link DownloadMission#BLOCK_SIZE}.
+     * Every entry (block) in this array holds an offset, used to resume the download.
+     * An block offset can be -1 if the block was downloaded successfully.
+     */
+    int[] blocks;
+
+    /**
+     * Download/File resume offset in fallback mode (if applicable) {@link DownloadRunnableFallback}
+     */
+    long fallbackResumeOffset;
+
+    /**
+     * Maximum of download threads running, chosen by the user
+     */
+<span class="nc" id="L125">    public int threadCount = 3;</span>
+
+    private transient int finishCount;
+    public transient boolean running;
+    public boolean enqueued;
+
+<span class="nc" id="L131">    public int errCode = ERROR_NOTHING;</span>
+<span class="nc" id="L132">    public Exception errObject = null;</span>
+
+    public transient boolean recovered;
+    public transient Handler mHandler;
+    private transient boolean mWritingToFile;
+    private transient boolean[] blockAcquired;
+
+<span class="nc" id="L139">    final Object LOCK = new Lock();</span>
+
+    private transient boolean deleted;
+
+<span class="nc" id="L143">    public transient volatile Thread[] threads = new Thread[0];</span>
+<span class="nc" id="L144">    private transient Thread init = null;</span>
+
+<span class="nc" id="L146">    public DownloadMission(String[] urls, StoredFileHelper storage, char kind, Postprocessing psInstance) {</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">        if (urls == null) throw new NullPointerException(&quot;urls is null&quot;);</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">        if (urls.length &lt; 1) throw new IllegalArgumentException(&quot;urls is empty&quot;);</span>
+<span class="nc" id="L149">        this.urls = urls;</span>
+<span class="nc" id="L150">        this.kind = kind;</span>
+<span class="nc" id="L151">        this.offsets = new long[urls.length];</span>
+<span class="nc" id="L152">        this.enqueued = true;</span>
+<span class="nc" id="L153">        this.maxRetry = 3;</span>
+<span class="nc" id="L154">        this.storage = storage;</span>
+<span class="nc" id="L155">        this.psAlgorithm = psInstance;</span>
+
+<span class="nc bnc" id="L157" title="All 6 branches missed.">        if (DEBUG &amp;&amp; psInstance == null &amp;&amp; urls.length &gt; 1) {</span>
+<span class="nc" id="L158">            Log.w(TAG, &quot;mission created with multiple urls ¿missing post-processing algorithm?&quot;);</span>
+        }
+<span class="nc" id="L160">    }</span>
+
+    /**
+     * Acquire a block
+     *
+     * @return the block or {@code null} if no more blocks left
+     */
+    @Nullable
+    Block acquireBlock() {
+<span class="nc" id="L169">        synchronized (LOCK) {</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">            for (int i = 0; i &lt; blockAcquired.length; i++) {</span>
+<span class="nc bnc" id="L171" title="All 4 branches missed.">                if (!blockAcquired[i] &amp;&amp; blocks[i] &gt;= 0) {</span>
+<span class="nc" id="L172">                    Block block = new Block();</span>
+<span class="nc" id="L173">                    block.position = i;</span>
+<span class="nc" id="L174">                    block.done = blocks[i];</span>
+
+<span class="nc" id="L176">                    blockAcquired[i] = true;</span>
+<span class="nc" id="L177">                    return block;</span>
+                }
+            }
+<span class="nc" id="L180">        }</span>
+
+<span class="nc" id="L182">        return null;</span>
+    }
+
+    /**
+     * Release an block
+     *
+     * @param position the index of the block
+     * @param done     amount of bytes downloaded
+     */
+    void releaseBlock(int position, int done) {
+<span class="nc" id="L192">        synchronized (LOCK) {</span>
+<span class="nc" id="L193">            blockAcquired[position] = false;</span>
+<span class="nc" id="L194">            blocks[position] = done;</span>
+<span class="nc" id="L195">        }</span>
+<span class="nc" id="L196">    }</span>
+
+    /**
+     * Open connection
+     *
+     * @param threadId   id of the calling thread, used only for debug
+     * @param rangeStart range start
+     * @param rangeEnd   range end
+     * @return a {@link java.net.URLConnection URLConnection} linking to the URL.
+     * @throws IOException if an I/O exception occurs.
+     */
+    HttpURLConnection openConnection(int threadId, long rangeStart, long rangeEnd) throws IOException {
+<span class="nc" id="L208">        return openConnection(urls[current], threadId, rangeStart, rangeEnd);</span>
+    }
+
+    HttpURLConnection openConnection(String url, int threadId, long rangeStart, long rangeEnd) throws IOException {
+<span class="nc" id="L212">        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();</span>
+<span class="nc" id="L213">        conn.setInstanceFollowRedirects(true);</span>
+<span class="nc" id="L214">        conn.setRequestProperty(&quot;User-Agent&quot;, Downloader.USER_AGENT);</span>
+<span class="nc" id="L215">        conn.setRequestProperty(&quot;Accept&quot;, &quot;*/*&quot;);</span>
+
+        // BUG workaround: switching between networks can freeze the download forever
+<span class="nc" id="L218">        conn.setConnectTimeout(30000);</span>
+<span class="nc" id="L219">        conn.setReadTimeout(10000);</span>
+
+<span class="nc bnc" id="L221" title="All 2 branches missed.">        if (rangeStart &gt;= 0) {</span>
+<span class="nc" id="L222">            String req = &quot;bytes=&quot; + rangeStart + &quot;-&quot;;</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">            if (rangeEnd &gt; 0) req += rangeEnd;</span>
+
+<span class="nc" id="L225">            conn.setRequestProperty(&quot;Range&quot;, req);</span>
+
+<span class="nc bnc" id="L227" title="All 2 branches missed.">            if (DEBUG) {</span>
+<span class="nc" id="L228">                Log.d(TAG, threadId + &quot;:&quot; + conn.getRequestProperty(&quot;Range&quot;));</span>
+            }
+        }
+
+<span class="nc" id="L232">        return conn;</span>
+    }
+
+    /**
+     * @param threadId id of the calling thread
+     * @param conn     Opens and establish the communication
+     * @throws IOException if an error occurred connecting to the server.
+     * @throws HttpError   if the HTTP Status-Code is not satisfiable
+     */
+    void establishConnection(int threadId, HttpURLConnection conn) throws IOException, HttpError {
+<span class="nc" id="L242">        conn.connect();</span>
+<span class="nc" id="L243">        int statusCode = conn.getResponseCode();</span>
+
+<span class="nc bnc" id="L245" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L246">            Log.d(TAG, threadId + &quot;:Content-Length=&quot; + conn.getContentLength() + &quot; Code:&quot; + statusCode);</span>
+        }
+
+<span class="nc bnc" id="L249" title="All 3 branches missed.">        switch (statusCode) {</span>
+            case 204:
+            case 205:
+            case 207:
+<span class="nc" id="L253">                throw new HttpError(conn.getResponseCode());</span>
+            case 416:
+<span class="nc" id="L255">                return;// let the download thread handle this error</span>
+            default:
+<span class="nc bnc" id="L257" title="All 4 branches missed.">                if (statusCode &lt; 200 || statusCode &gt; 299) {</span>
+<span class="nc" id="L258">                    throw new HttpError(statusCode);</span>
+                }
+        }
+
+<span class="nc" id="L262">    }</span>
+
+
+    private void notify(int what) {
+<span class="nc" id="L266">        mHandler.obtainMessage(what, this).sendToTarget();</span>
+<span class="nc" id="L267">    }</span>
+
+    synchronized void notifyProgress(long deltaLen) {
+<span class="nc bnc" id="L270" title="All 2 branches missed.">        if (!running) return;</span>
+
+<span class="nc bnc" id="L272" title="All 2 branches missed.">        if (recovered) {</span>
+<span class="nc" id="L273">            recovered = false;</span>
+        }
+
+<span class="nc bnc" id="L276" title="All 2 branches missed.">        if (unknownLength) {</span>
+<span class="nc" id="L277">            length += deltaLen;// Update length before proceeding</span>
+        }
+
+<span class="nc" id="L280">        done += deltaLen;</span>
+
+<span class="nc bnc" id="L282" title="All 2 branches missed.">        if (done &gt; length) {</span>
+<span class="nc" id="L283">            done = length;</span>
+        }
+
+<span class="nc bnc" id="L286" title="All 6 branches missed.">        if (done != length &amp;&amp; !deleted &amp;&amp; !mWritingToFile) {</span>
+<span class="nc" id="L287">            mWritingToFile = true;</span>
+<span class="nc" id="L288">            runAsync(-2, this::writeThisToFile);</span>
+        }
+
+<span class="nc" id="L291">        notify(DownloadManagerService.MESSAGE_PROGRESS);</span>
+<span class="nc" id="L292">    }</span>
+
+    synchronized void notifyError(Exception err) {
+<span class="nc" id="L295">        Log.e(TAG, &quot;notifyError()&quot;, err);</span>
+
+<span class="nc bnc" id="L297" title="All 2 branches missed.">        if (err instanceof FileNotFoundException) {</span>
+<span class="nc" id="L298">            notifyError(ERROR_FILE_CREATION, null);</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">        } else if (err instanceof SSLException) {</span>
+<span class="nc" id="L300">            notifyError(ERROR_SSL_EXCEPTION, null);</span>
+<span class="nc bnc" id="L301" title="All 2 branches missed.">        } else if (err instanceof HttpError) {</span>
+<span class="nc" id="L302">            notifyError(((HttpError) err).statusCode, null);</span>
+<span class="nc bnc" id="L303" title="All 2 branches missed.">        } else if (err instanceof ConnectException) {</span>
+<span class="nc" id="L304">            notifyError(ERROR_CONNECT_HOST, null);</span>
+<span class="nc bnc" id="L305" title="All 2 branches missed.">        } else if (err instanceof UnknownHostException) {</span>
+<span class="nc" id="L306">            notifyError(ERROR_UNKNOWN_HOST, null);</span>
+<span class="nc bnc" id="L307" title="All 2 branches missed.">        } else if (err instanceof SocketTimeoutException) {</span>
+<span class="nc" id="L308">            notifyError(ERROR_TIMEOUT, null);</span>
+        } else {
+<span class="nc" id="L310">            notifyError(ERROR_UNKNOWN_EXCEPTION, err);</span>
+        }
+<span class="nc" id="L312">    }</span>
+
+    public synchronized void notifyError(int code, Exception err) {
+<span class="nc" id="L315">        Log.e(TAG, &quot;notifyError() code = &quot; + code, err);</span>
+<span class="nc bnc" id="L316" title="All 2 branches missed.">        if (err instanceof IOException) {</span>
+<span class="nc bnc" id="L317" title="All 4 branches missed.">            if (!storage.canWrite() || err.getMessage().contains(&quot;Permission denied&quot;)) {</span>
+<span class="nc" id="L318">                code = ERROR_PERMISSION_DENIED;</span>
+<span class="nc" id="L319">                err = null;</span>
+<span class="nc bnc" id="L320" title="All 2 branches missed.">            } else if (err.getMessage().contains(INSUFFICIENT_STORAGE)) {</span>
+<span class="nc" id="L321">                code = ERROR_INSUFFICIENT_STORAGE;</span>
+<span class="nc" id="L322">                err = null;</span>
+            }
+        }
+
+<span class="nc" id="L326">        errCode = code;</span>
+<span class="nc" id="L327">        errObject = err;</span>
+
+<span class="nc bnc" id="L329" title="All 2 branches missed.">        switch (code) {</span>
+            case ERROR_SSL_EXCEPTION:
+            case ERROR_UNKNOWN_HOST:
+            case ERROR_CONNECT_HOST:
+            case ERROR_TIMEOUT:
+                // do not change the queue flag for network errors, can be
+                // recovered silently without the user interaction
+<span class="nc" id="L336">                break;</span>
+            default:
+                // also checks for server errors
+<span class="nc bnc" id="L339" title="All 4 branches missed.">                if (code &lt; 500 || code &gt; 599) enqueued = false;</span>
+        }
+
+<span class="nc" id="L342">        notify(DownloadManagerService.MESSAGE_ERROR);</span>
+
+<span class="nc bnc" id="L344" title="All 2 branches missed.">        if (running) {</span>
+<span class="nc" id="L345">            running = false;</span>
+<span class="nc" id="L346">            recovered = true;</span>
+<span class="nc bnc" id="L347" title="All 2 branches missed.">            if (threads != null) selfPause();</span>
+        }
+<span class="nc" id="L349">    }</span>
+
+    synchronized void notifyFinished() {
+<span class="nc bnc" id="L352" title="All 2 branches missed.">        if (errCode &gt; ERROR_NOTHING) return;</span>
+
+<span class="nc" id="L354">        finishCount++;</span>
+
+<span class="nc bnc" id="L356" title="All 6 branches missed.">        if (blocks.length &lt; 1 || threads == null || finishCount == threads.length) {</span>
+<span class="nc bnc" id="L357" title="All 2 branches missed.">            if (errCode != ERROR_NOTHING) return;</span>
+
+<span class="nc bnc" id="L359" title="All 2 branches missed.">            if (DEBUG) {</span>
+<span class="nc" id="L360">                Log.d(TAG, &quot;onFinish: &quot; + (current + 1) + &quot;/&quot; + urls.length);</span>
+            }
+
+<span class="nc bnc" id="L363" title="All 2 branches missed.">            if ((current + 1) &lt; urls.length) {</span>
+                // prepare next sub-mission
+<span class="nc" id="L365">                long current_offset = offsets[current++];</span>
+<span class="nc" id="L366">                offsets[current] = current_offset + length;</span>
+<span class="nc" id="L367">                initializer();</span>
+<span class="nc" id="L368">                return;</span>
+            }
+
+<span class="nc" id="L371">            current++;</span>
+<span class="nc" id="L372">            unknownLength = false;</span>
+
+<span class="nc bnc" id="L374" title="All 2 branches missed.">            if (!doPostprocessing()) return;</span>
+
+<span class="nc" id="L376">            enqueued = false;</span>
+<span class="nc" id="L377">            running = false;</span>
+<span class="nc" id="L378">            deleteThisFromFile();</span>
+
+<span class="nc" id="L380">            notify(DownloadManagerService.MESSAGE_FINISHED);</span>
+        }
+<span class="nc" id="L382">    }</span>
+
+    private void notifyPostProcessing(int state) {
+        String action;
+<span class="nc bnc" id="L386" title="All 3 branches missed.">        switch (state) {</span>
+            case 1:
+<span class="nc" id="L388">                action = &quot;Running&quot;;</span>
+<span class="nc" id="L389">                break;</span>
+            case 2:
+<span class="nc" id="L391">                action = &quot;Completed&quot;;</span>
+<span class="nc" id="L392">                break;</span>
+            default:
+<span class="nc" id="L394">                action = &quot;Failed&quot;;</span>
+        }
+
+<span class="nc" id="L397">        Log.d(TAG, action + &quot; postprocessing on &quot; + storage.getName());</span>
+
+<span class="nc" id="L399">        synchronized (LOCK) {</span>
+            // don't return without fully write the current state
+<span class="nc" id="L401">            psState = state;</span>
+<span class="nc" id="L402">            Utility.writeToFile(metadata, DownloadMission.this);</span>
+<span class="nc" id="L403">        }</span>
+<span class="nc" id="L404">    }</span>
+
+
+    /**
+     * Start downloading with multiple threads.
+     */
+    public void start() {
+<span class="nc bnc" id="L411" title="All 4 branches missed.">        if (running || isFinished()) return;</span>
+
+        // ensure that the previous state is completely paused.
+<span class="nc" id="L414">        joinForThread(init);</span>
+<span class="nc bnc" id="L415" title="All 2 branches missed.">        if (threads != null) {</span>
+<span class="nc bnc" id="L416" title="All 2 branches missed.">            for (Thread thread : threads) joinForThread(thread);</span>
+<span class="nc" id="L417">            threads = null;</span>
+        }
+
+<span class="nc" id="L420">        running = true;</span>
+<span class="nc" id="L421">        errCode = ERROR_NOTHING;</span>
+
+<span class="nc bnc" id="L423" title="All 2 branches missed.">        if (hasInvalidStorage()) {</span>
+<span class="nc" id="L424">            notifyError(ERROR_FILE_CREATION, null);</span>
+<span class="nc" id="L425">            return;</span>
+        }
+
+<span class="nc bnc" id="L428" title="All 2 branches missed.">        if (current &gt;= urls.length) {</span>
+<span class="nc" id="L429">            runAsync(1, this::notifyFinished);</span>
+<span class="nc" id="L430">            return;</span>
+        }
+
+<span class="nc bnc" id="L433" title="All 2 branches missed.">        if (blocks == null) {</span>
+<span class="nc" id="L434">            initializer();</span>
+<span class="nc" id="L435">            return;</span>
+        }
+
+<span class="nc" id="L438">        init = null;</span>
+<span class="nc" id="L439">        finishCount = 0;</span>
+<span class="nc" id="L440">        blockAcquired = new boolean[blocks.length];</span>
+
+<span class="nc bnc" id="L442" title="All 2 branches missed.">        if (blocks.length &lt; 1) {</span>
+<span class="nc bnc" id="L443" title="All 2 branches missed.">            if (unknownLength) {</span>
+<span class="nc" id="L444">                done = 0;</span>
+<span class="nc" id="L445">                length = 0;</span>
+            }
+
+<span class="nc" id="L448">            threads = new Thread[]{runAsync(1, new DownloadRunnableFallback(this))};</span>
+        } else {
+<span class="nc" id="L450">            int remainingBlocks = 0;</span>
+<span class="nc bnc" id="L451" title="All 4 branches missed.">            for (int block : blocks) if (block &gt;= 0) remainingBlocks++;</span>
+
+<span class="nc bnc" id="L453" title="All 2 branches missed.">            if (remainingBlocks &lt; 1) {</span>
+<span class="nc" id="L454">                runAsync(1, this::notifyFinished);</span>
+<span class="nc" id="L455">                return;</span>
+            }
+
+<span class="nc" id="L458">            threads = new Thread[Math.min(threadCount, remainingBlocks)];</span>
+
+<span class="nc bnc" id="L460" title="All 2 branches missed.">            for (int i = 0; i &lt; threads.length; i++) {</span>
+<span class="nc" id="L461">                threads[i] = runAsync(i + 1, new DownloadRunnable(this, i));</span>
+            }
+        }
+<span class="nc" id="L464">    }</span>
+
+    /**
+     * Pause the mission
+     */
+    public void pause() {
+<span class="nc bnc" id="L470" title="All 2 branches missed.">        if (!running) return;</span>
+
+<span class="nc bnc" id="L472" title="All 2 branches missed.">        if (isPsRunning()) {</span>
+<span class="nc bnc" id="L473" title="All 2 branches missed.">            if (DEBUG) {</span>
+<span class="nc" id="L474">                Log.w(TAG, &quot;pause during post-processing is not applicable.&quot;);</span>
+            }
+<span class="nc" id="L476">            return;</span>
+        }
+
+<span class="nc" id="L479">        running = false;</span>
+<span class="nc" id="L480">        recovered = true;</span>
+
+<span class="nc bnc" id="L482" title="All 4 branches missed.">        if (init != null &amp;&amp; init.isAlive()) {</span>
+            // NOTE: if start() method is running ¡will no have effect!
+<span class="nc" id="L484">            init.interrupt();</span>
+<span class="nc" id="L485">            synchronized (LOCK) {</span>
+<span class="nc" id="L486">                resetState(false, true, ERROR_NOTHING);</span>
+<span class="nc" id="L487">            }</span>
+<span class="nc" id="L488">            return;</span>
+        }
+
+<span class="nc bnc" id="L491" title="All 4 branches missed.">        if (DEBUG &amp;&amp; unknownLength) {</span>
+<span class="nc" id="L492">            Log.w(TAG, &quot;pausing a download that can not be resumed (range requests not allowed by the server).&quot;);</span>
+        }
+
+        // check if the calling thread (alias UI thread) is interrupted
+<span class="nc bnc" id="L496" title="All 2 branches missed.">        if (Thread.currentThread().isInterrupted()) {</span>
+<span class="nc" id="L497">            writeThisToFile();</span>
+<span class="nc" id="L498">            return;</span>
+        }
+
+        // wait for all threads are suspended before save the state
+<span class="nc bnc" id="L502" title="All 2 branches missed.">        if (threads != null) runAsync(-1, this::selfPause);</span>
+<span class="nc" id="L503">    }</span>
+
+    private void selfPause() {
+        try {
+<span class="nc bnc" id="L507" title="All 2 branches missed.">            for (Thread thread : threads) {</span>
+<span class="nc bnc" id="L508" title="All 2 branches missed.">                if (thread.isAlive()) {</span>
+<span class="nc" id="L509">                    thread.interrupt();</span>
+<span class="nc" id="L510">                    thread.join(5000);</span>
+                }
+            }
+<span class="nc" id="L513">        } catch (Exception e) {</span>
+            // nothing to do
+        } finally {
+<span class="nc" id="L516">            writeThisToFile();</span>
+<span class="nc" id="L517">        }</span>
+<span class="nc" id="L518">    }</span>
+
+    /**
+     * Removes the downloaded file and the meta file
+     */
+    @Override
+    public boolean delete() {
+<span class="nc" id="L525">        deleted = true;</span>
+<span class="nc bnc" id="L526" title="All 2 branches missed.">        if (psAlgorithm != null) psAlgorithm.cleanupTemporalDir();</span>
+
+<span class="nc" id="L528">        boolean res = deleteThisFromFile();</span>
+
+<span class="nc bnc" id="L530" title="All 2 branches missed.">        if (!super.delete()) return false;</span>
+<span class="nc" id="L531">        return res;</span>
+    }
+
+
+    /**
+     * Resets the mission state
+     *
+     * @param rollback       {@code true} true to forget all progress, otherwise, {@code false}
+     * @param persistChanges {@code true} to commit changes to the metadata file, otherwise, {@code false}
+     */
+    public void resetState(boolean rollback, boolean persistChanges, int errorCode) {
+<span class="nc" id="L542">        done = 0;</span>
+<span class="nc" id="L543">        errCode = errorCode;</span>
+<span class="nc" id="L544">        errObject = null;</span>
+<span class="nc" id="L545">        unknownLength = false;</span>
+<span class="nc" id="L546">        threads = null;</span>
+<span class="nc" id="L547">        fallbackResumeOffset = 0;</span>
+<span class="nc" id="L548">        blocks = null;</span>
+<span class="nc" id="L549">        blockAcquired = null;</span>
+
+<span class="nc bnc" id="L551" title="All 2 branches missed.">        if (rollback) current = 0;</span>
+
+<span class="nc bnc" id="L553" title="All 2 branches missed.">        if (persistChanges)</span>
+<span class="nc" id="L554">            Utility.writeToFile(metadata, DownloadMission.this);</span>
+<span class="nc" id="L555">    }</span>
+
+    private void initializer() {
+<span class="nc" id="L558">        init = runAsync(DownloadInitializer.mId, new DownloadInitializer(this));</span>
+<span class="nc" id="L559">    }</span>
+
+    /**
+     * Write this {@link DownloadMission} to the meta file asynchronously
+     * if no thread is already running.
+     */
+    private void writeThisToFile() {
+<span class="nc" id="L566">        synchronized (LOCK) {</span>
+<span class="nc bnc" id="L567" title="All 2 branches missed.">            if (deleted) return;</span>
+<span class="nc" id="L568">            Utility.writeToFile(metadata, DownloadMission.this);</span>
+<span class="nc" id="L569">        }</span>
+<span class="nc" id="L570">        mWritingToFile = false;</span>
+<span class="nc" id="L571">    }</span>
+
+    /**
+     * Indicates if the download if fully finished
+     *
+     * @return true, otherwise, false
+     */
+    public boolean isFinished() {
+<span class="nc bnc" id="L579" title="All 6 branches missed.">        return current &gt;= urls.length &amp;&amp; (psAlgorithm == null || psState == 2);</span>
+    }
+
+    /**
+     * Indicates if the download file is corrupt due a failed post-processing
+     *
+     * @return {@code true} if this mission is unrecoverable
+     */
+    public boolean isPsFailed() {
+<span class="nc bnc" id="L588" title="All 2 branches missed.">        switch (errCode) {</span>
+            case ERROR_POSTPROCESSING:
+            case ERROR_POSTPROCESSING_STOPPED:
+<span class="nc" id="L591">                return psAlgorithm.worksOnSameFile;</span>
+        }
+
+<span class="nc" id="L594">        return false;</span>
+    }
+
+    /**
+     * Indicates if a post-processing algorithm is running
+     *
+     * @return true, otherwise, false
+     */
+    public boolean isPsRunning() {
+<span class="nc bnc" id="L603" title="All 6 branches missed.">        return psAlgorithm != null &amp;&amp; (psState == 1 || psState == 3);</span>
+    }
+
+    /**
+     * Indicated if the mission is ready
+     *
+     * @return true, otherwise, false
+     */
+    public boolean isInitialized() {
+<span class="nc bnc" id="L612" title="All 2 branches missed.">        return blocks != null; // DownloadMissionInitializer was executed</span>
+    }
+
+    /**
+     * Gets the approximated final length of the file
+     *
+     * @return the length in bytes
+     */
+    public long getLength() {
+        long calculated;
+<span class="nc bnc" id="L622" title="All 4 branches missed.">        if (psState == 1 || psState == 3) {</span>
+<span class="nc" id="L623">            calculated = length;</span>
+        } else {
+<span class="nc bnc" id="L625" title="All 2 branches missed.">            calculated = offsets[current &lt; offsets.length ? current : (offsets.length - 1)] + length;</span>
+        }
+
+<span class="nc" id="L628">        calculated -= offsets[0];// don't count reserved space</span>
+
+<span class="nc bnc" id="L630" title="All 2 branches missed.">        return calculated &gt; nearLength ? calculated : nearLength;</span>
+    }
+
+    /**
+     * set this mission state on the queue
+     *
+     * @param queue true to add to the queue, otherwise, false
+     */
+    public void setEnqueued(boolean queue) {
+<span class="nc" id="L639">        enqueued = queue;</span>
+<span class="nc" id="L640">        runAsync(-2, this::writeThisToFile);</span>
+<span class="nc" id="L641">    }</span>
+
+    /**
+     * Attempts to continue a blocked post-processing
+     *
+     * @param recover {@code true} to retry, otherwise, {@code false} to cancel
+     */
+    public void psContinue(boolean recover) {
+<span class="nc" id="L649">        psState = 1;</span>
+<span class="nc bnc" id="L650" title="All 2 branches missed.">        errCode = recover ? ERROR_NOTHING : ERROR_POSTPROCESSING;</span>
+<span class="nc" id="L651">        threads[0].interrupt();</span>
+<span class="nc" id="L652">    }</span>
+
+    /**
+     * Indicates whatever the backed storage is invalid
+     *
+     * @return {@code true}, if storage is invalid and cannot be used
+     */
+    public boolean hasInvalidStorage() {
+<span class="nc bnc" id="L660" title="All 8 branches missed.">        return errCode == ERROR_PROGRESS_LOST || storage == null || storage.isInvalid() || !storage.existsAsFile();</span>
+    }
+
+    /**
+     * Indicates whatever is possible to start the mission
+     *
+     * @return {@code true} is this mission its &quot;healthy&quot;, otherwise, {@code false}
+     */
+    public boolean isCorrupt() {
+<span class="nc bnc" id="L669" title="All 6 branches missed.">        return (isPsFailed() || errCode == ERROR_POSTPROCESSING_HOLD) || isFinished();</span>
+    }
+
+    private boolean doPostprocessing() {
+<span class="nc bnc" id="L673" title="All 4 branches missed.">        if (psAlgorithm == null || psState == 2) return true;</span>
+
+<span class="nc" id="L675">        errObject = null;</span>
+
+<span class="nc" id="L677">        notifyPostProcessing(1);</span>
+<span class="nc" id="L678">        notifyProgress(0);</span>
+
+<span class="nc bnc" id="L680" title="All 2 branches missed.">        if (DEBUG)</span>
+<span class="nc" id="L681">            Thread.currentThread().setName(&quot;[&quot; + TAG + &quot;]  ps = &quot; +</span>
+<span class="nc" id="L682">                    psAlgorithm.getClass().getSimpleName() +</span>
+<span class="nc" id="L683">                    &quot;  filename = &quot; + storage.getName()</span>
+            );
+
+<span class="nc" id="L686">        threads = new Thread[]{Thread.currentThread()};</span>
+
+<span class="nc" id="L688">        Exception exception = null;</span>
+
+        try {
+<span class="nc" id="L691">            psAlgorithm.run(this);</span>
+<span class="nc" id="L692">        } catch (Exception err) {</span>
+<span class="nc" id="L693">            Log.e(TAG, &quot;Post-processing failed. &quot; + psAlgorithm.toString(), err);</span>
+
+<span class="nc bnc" id="L695" title="All 2 branches missed.">            if (errCode == ERROR_NOTHING) errCode = ERROR_POSTPROCESSING;</span>
+
+<span class="nc" id="L697">            exception = err;</span>
+        } finally {
+<span class="nc bnc" id="L699" title="All 6 branches missed.">            notifyPostProcessing(errCode == ERROR_NOTHING ? 2 : 0);</span>
+<span class="nc" id="L700">        }</span>
+
+<span class="nc bnc" id="L702" title="All 2 branches missed.">        if (errCode != ERROR_NOTHING) {</span>
+<span class="nc bnc" id="L703" title="All 2 branches missed.">            if (exception == null) exception = errObject;</span>
+<span class="nc" id="L704">            notifyError(ERROR_POSTPROCESSING, exception);</span>
+
+<span class="nc" id="L706">            return false;</span>
+        }
+
+<span class="nc" id="L709">        return true;</span>
+    }
+
+    private boolean deleteThisFromFile() {
+<span class="nc" id="L713">        synchronized (LOCK) {</span>
+<span class="nc" id="L714">            return metadata.delete();</span>
+<span class="nc" id="L715">        }</span>
+    }
+
+    /**
+     * run a new thread
+     *
+     * @param id  id of new thread (used for debugging only)
+     * @param who the Runnable whose {@code run} method is invoked.
+     */
+    private void runAsync(int id, Runnable who) {
+<span class="nc" id="L725">        runAsync(id, new Thread(who));</span>
+<span class="nc" id="L726">    }</span>
+
+    /**
+     * run a new thread
+     *
+     * @param id  id of new thread (used for debugging only)
+     * @param who the Thread whose {@code run} method is invoked when this thread is started
+     * @return the passed thread
+     */
+    private Thread runAsync(int id, Thread who) {
+        // known thread ids:
+        //   -2:     state saving by  notifyProgress()  method
+        //   -1:     wait for saving the state by  pause()  method
+        //    0:     initializer
+        //  &gt;=1:     any download thread
+
+<span class="nc bnc" id="L742" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L743">            who.setName(String.format(&quot;%s[%s] %s&quot;, TAG, id, storage.getName()));</span>
+        }
+
+<span class="nc" id="L746">        who.start();</span>
+
+<span class="nc" id="L748">        return who;</span>
+    }
+
+    private void joinForThread(Thread thread) {
+<span class="nc bnc" id="L752" title="All 4 branches missed.">        if (thread == null || !thread.isAlive()) return;</span>
+<span class="nc bnc" id="L753" title="All 2 branches missed.">        if (thread == Thread.currentThread()) return;</span>
+
+<span class="nc bnc" id="L755" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L756">            Log.w(TAG, &quot;a thread is !still alive!: &quot; + thread.getName());</span>
+        }
+
+        // still alive, this should not happen.
+        // Possible reasons:
+        //      slow device
+        //      the user is spamming start/pause buttons
+        //      start() method called quickly after pause()
+
+        try {
+<span class="nc" id="L766">            thread.join(10000);</span>
+<span class="nc" id="L767">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L768">            Log.d(TAG, &quot;timeout on join : &quot; + thread.getName());</span>
+<span class="nc" id="L769">            throw new RuntimeException(&quot;A thread is still running:\n&quot; + thread.getName());</span>
+<span class="nc" id="L770">        }</span>
+<span class="nc" id="L771">    }</span>
+
+
+    static class HttpError extends Exception {
+        final int statusCode;
+
+<span class="nc" id="L777">        HttpError(int statusCode) {</span>
+<span class="nc" id="L778">            this.statusCode = statusCode;</span>
+<span class="nc" id="L779">        }</span>
+
+        @Override
+        public String getMessage() {
+<span class="nc" id="L783">            return &quot;HTTP &quot; + statusCode;</span>
+        }
+    }
+
+<span class="nc" id="L787">    static class Block {</span>
+        int position;
+        int done;
+    }
+
+<span class="nc" id="L792">    private static class Lock implements Serializable {</span>
+        // java.lang.Object cannot be used because is not serializable
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

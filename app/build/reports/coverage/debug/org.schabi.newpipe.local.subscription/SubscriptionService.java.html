@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SubscriptionService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.local.subscription</a> &gt; <span class="el_source">SubscriptionService.java</span></div><h1>SubscriptionService.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.local.subscription;
+
+import android.content.Context;
+import android.support.annotation.NonNull;
+import android.util.Log;
+
+import org.schabi.newpipe.MainActivity;
+import org.schabi.newpipe.NewPipeDatabase;
+import org.schabi.newpipe.database.AppDatabase;
+import org.schabi.newpipe.database.subscription.SubscriptionDAO;
+import org.schabi.newpipe.database.subscription.SubscriptionEntity;
+import org.schabi.newpipe.extractor.channel.ChannelInfo;
+import org.schabi.newpipe.util.ExtractorHelper;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+import io.reactivex.Completable;
+import io.reactivex.CompletableSource;
+import io.reactivex.Flowable;
+import io.reactivex.Maybe;
+import io.reactivex.Scheduler;
+import io.reactivex.functions.Function;
+import io.reactivex.schedulers.Schedulers;
+
+/**
+ * Subscription Service singleton:
+ * Provides a basis for channel Subscriptions.
+ * Provides access to subscription table in database as well as
+ * up-to-date observations on the subscribed channels
+ */
+public class SubscriptionService {
+
+    private static volatile SubscriptionService instance;
+
+    public static SubscriptionService getInstance(@NonNull Context context) {
+<span class="nc" id="L40">        SubscriptionService result = instance;</span>
+<span class="nc bnc" id="L41" title="All 2 branches missed.">        if (result == null) {</span>
+<span class="nc" id="L42">            synchronized (SubscriptionService.class) {</span>
+<span class="nc" id="L43">                result = instance;</span>
+<span class="nc bnc" id="L44" title="All 2 branches missed.">                if (result == null) {</span>
+<span class="nc" id="L45">                    instance = (result = new SubscriptionService(context));</span>
+                }
+<span class="nc" id="L47">            }</span>
+        }
+
+<span class="nc" id="L50">        return result;</span>
+    }
+
+<span class="nc" id="L53">    protected final String TAG = &quot;SubscriptionService@&quot; + Integer.toHexString(hashCode());</span>
+<span class="nc" id="L54">    protected static final boolean DEBUG = MainActivity.DEBUG;</span>
+    private static final int SUBSCRIPTION_DEBOUNCE_INTERVAL = 500;
+    private static final int SUBSCRIPTION_THREAD_POOL_SIZE = 4;
+
+    private final AppDatabase db;
+    private final Flowable&lt;List&lt;SubscriptionEntity&gt;&gt; subscription;
+
+    private final Scheduler subscriptionScheduler;
+
+<span class="nc" id="L63">    private SubscriptionService(Context context) {</span>
+<span class="nc" id="L64">        db = NewPipeDatabase.getInstance(context.getApplicationContext());</span>
+<span class="nc" id="L65">        subscription = getSubscriptionInfos();</span>
+
+<span class="nc" id="L67">        final Executor subscriptionExecutor = Executors.newFixedThreadPool(SUBSCRIPTION_THREAD_POOL_SIZE);</span>
+<span class="nc" id="L68">        subscriptionScheduler = Schedulers.from(subscriptionExecutor);</span>
+<span class="nc" id="L69">    }</span>
+
+    /**
+     * Part of subscription observation pipeline
+     *
+     * @see SubscriptionService#getSubscription()
+     */
+    private Flowable&lt;List&lt;SubscriptionEntity&gt;&gt; getSubscriptionInfos() {
+<span class="nc" id="L77">        return subscriptionTable().getAll()</span>
+                // Wait for a period of infrequent updates and return the latest update
+<span class="nc" id="L79">                .debounce(SUBSCRIPTION_DEBOUNCE_INTERVAL, TimeUnit.MILLISECONDS)</span>
+<span class="nc" id="L80">                .share()            // Share allows multiple subscribers on the same observable</span>
+<span class="nc" id="L81">                .replay(1)          // Replay synchronizes subscribers to the last emitted result</span>
+<span class="nc" id="L82">                .autoConnect();</span>
+    }
+
+    /**
+     * Provides an observer to the latest update to the subscription table.
+     * &lt;p&gt;
+     * This observer may be subscribed multiple times, where each subscriber obtains
+     * the latest synchronized changes available, effectively share the same data
+     * across all subscribers.
+     * &lt;p&gt;
+     * This observer has a debounce cooldown, meaning if multiple updates are observed
+     * in the cooldown interval, only the latest changes are emitted to the subscribers.
+     * This reduces the amount of observations caused by frequent updates to the database.
+     */
+    @android.support.annotation.NonNull
+    public Flowable&lt;List&lt;SubscriptionEntity&gt;&gt; getSubscription() {
+<span class="nc" id="L98">        return subscription;</span>
+    }
+
+    public Maybe&lt;ChannelInfo&gt; getChannelInfo(final SubscriptionEntity subscriptionEntity) {
+<span class="nc bnc" id="L102" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;getChannelInfo() called with: subscriptionEntity = [&quot; + subscriptionEntity + &quot;]&quot;);</span>
+
+<span class="nc" id="L104">        return Maybe.fromSingle(ExtractorHelper</span>
+<span class="nc" id="L105">                .getChannelInfo(subscriptionEntity.getServiceId(), subscriptionEntity.getUrl(), false))</span>
+<span class="nc" id="L106">                .subscribeOn(subscriptionScheduler);</span>
+    }
+
+    /**
+     * Returns the database access interface for subscription table.
+     */
+    public SubscriptionDAO subscriptionTable() {
+<span class="nc" id="L113">        return db.subscriptionDAO();</span>
+    }
+
+    public Completable updateChannelInfo(final ChannelInfo info) {
+<span class="nc" id="L117">        final Function&lt;List&lt;SubscriptionEntity&gt;, CompletableSource&gt; update = new Function&lt;List&lt;SubscriptionEntity&gt;, CompletableSource&gt;() {</span>
+            @Override
+            public CompletableSource apply(@NonNull List&lt;SubscriptionEntity&gt; subscriptionEntities) {
+<span class="nc bnc" id="L120" title="All 2 branches missed.">                if (DEBUG) Log.d(TAG, &quot;updateChannelInfo() called with: subscriptionEntities = [&quot; + subscriptionEntities + &quot;]&quot;);</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">                if (subscriptionEntities.size() == 1) {</span>
+<span class="nc" id="L122">                    SubscriptionEntity subscription = subscriptionEntities.get(0);</span>
+
+                    // Subscriber count changes very often, making this check almost unnecessary.
+                    // Consider removing it later.
+<span class="nc bnc" id="L126" title="All 2 branches missed.">                    if (!isSubscriptionUpToDate(info, subscription)) {</span>
+<span class="nc" id="L127">                        subscription.setData(info.getName(), info.getAvatarUrl(), info.getDescription(), info.getSubscriberCount());</span>
+
+<span class="nc" id="L129">                        return Completable.fromRunnable(() -&gt; subscriptionTable().update(subscription));</span>
+                    }
+                }
+
+<span class="nc" id="L133">                return Completable.complete();</span>
+            }
+        };
+
+<span class="nc" id="L137">        return subscriptionTable().getSubscription(info.getServiceId(), info.getUrl())</span>
+<span class="nc" id="L138">                .firstOrError()</span>
+<span class="nc" id="L139">                .flatMapCompletable(update);</span>
+    }
+
+    public List&lt;SubscriptionEntity&gt; upsertAll(final List&lt;ChannelInfo&gt; infoList) {
+<span class="nc" id="L143">        final List&lt;SubscriptionEntity&gt; entityList = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">        for (ChannelInfo info : infoList) entityList.add(SubscriptionEntity.from(info));</span>
+
+<span class="nc" id="L146">        return subscriptionTable().upsertAll(entityList);</span>
+    }
+
+    private boolean isSubscriptionUpToDate(final ChannelInfo info, final SubscriptionEntity entity) {
+<span class="nc bnc" id="L150" title="All 2 branches missed.">        return equalsAndNotNull(info.getUrl(), entity.getUrl()) &amp;&amp;</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">                info.getServiceId() == entity.getServiceId() &amp;&amp;</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">                info.getName().equals(entity.getName()) &amp;&amp;</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">                equalsAndNotNull(info.getAvatarUrl(), entity.getAvatarUrl()) &amp;&amp;</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">                equalsAndNotNull(info.getDescription(), entity.getDescription()) &amp;&amp;</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">                info.getSubscriberCount() == entity.getSubscriberCount();</span>
+    }
+
+    private boolean equalsAndNotNull(final Object o1, final Object o2) {
+<span class="nc bnc" id="L159" title="All 4 branches missed.">        return (o1 != null &amp;&amp; o2 != null)</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">                &amp;&amp; o1.equals(o2);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

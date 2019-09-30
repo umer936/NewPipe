@@ -1,0 +1,450 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PlaybackParameterDialog.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.player.helper</a> &gt; <span class="el_source">PlaybackParameterDialog.java</span></div><h1>PlaybackParameterDialog.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.player.helper;
+
+import android.app.Dialog;
+import android.content.Context;
+import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v4.app.DialogFragment;
+import android.support.v7.app.AlertDialog;
+import android.util.Log;
+import android.view.View;
+import android.widget.CheckBox;
+import android.widget.SeekBar;
+import android.widget.TextView;
+
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.util.SliderStrategy;
+
+import static org.schabi.newpipe.player.BasePlayer.DEBUG;
+
+<span class="nc" id="L21">public class PlaybackParameterDialog extends DialogFragment {</span>
+    @NonNull private static final String TAG = &quot;PlaybackParameterDialog&quot;;
+
+    // Minimum allowable range in ExoPlayer
+    public static final double MINIMUM_PLAYBACK_VALUE = 0.10f;
+    public static final double MAXIMUM_PLAYBACK_VALUE = 3.00f;
+
+    public static final char STEP_UP_SIGN = '+';
+    public static final char STEP_DOWN_SIGN = '-';
+
+    public static final double STEP_ONE_PERCENT_VALUE = 0.01f;
+    public static final double STEP_FIVE_PERCENT_VALUE = 0.05f;
+    public static final double STEP_TEN_PERCENT_VALUE = 0.10f;
+    public static final double STEP_TWENTY_FIVE_PERCENT_VALUE = 0.25f;
+    public static final double STEP_ONE_HUNDRED_PERCENT_VALUE = 1.00f;
+
+    public static final double DEFAULT_TEMPO = 1.00f;
+    public static final double DEFAULT_PITCH = 1.00f;
+    public static final double DEFAULT_STEP = STEP_TWENTY_FIVE_PERCENT_VALUE;
+    public static final boolean DEFAULT_SKIP_SILENCE = false;
+
+    @NonNull private static final String INITIAL_TEMPO_KEY = &quot;initial_tempo_key&quot;;
+    @NonNull private static final String INITIAL_PITCH_KEY = &quot;initial_pitch_key&quot;;
+
+    @NonNull private static final String TEMPO_KEY = &quot;tempo_key&quot;;
+    @NonNull private static final String PITCH_KEY = &quot;pitch_key&quot;;
+    @NonNull private static final String STEP_SIZE_KEY = &quot;step_size_key&quot;;
+
+    public interface Callback {
+        void onPlaybackParameterChanged(final float playbackTempo, final float playbackPitch,
+                                        final boolean playbackSkipSilence);
+    }
+
+    @Nullable private Callback callback;
+
+<span class="nc" id="L56">    @NonNull private final SliderStrategy strategy = new SliderStrategy.Quadratic(</span>
+            MINIMUM_PLAYBACK_VALUE, MAXIMUM_PLAYBACK_VALUE,
+            /*centerAt=*/1.00f, /*sliderGranularity=*/10000);
+
+<span class="nc" id="L60">    private double initialTempo = DEFAULT_TEMPO;</span>
+<span class="nc" id="L61">    private double initialPitch = DEFAULT_PITCH;</span>
+<span class="nc" id="L62">    private boolean initialSkipSilence = DEFAULT_SKIP_SILENCE;</span>
+
+<span class="nc" id="L64">    private double tempo = DEFAULT_TEMPO;</span>
+<span class="nc" id="L65">    private double pitch = DEFAULT_PITCH;</span>
+<span class="nc" id="L66">    private double stepSize = DEFAULT_STEP;</span>
+
+    @Nullable private SeekBar tempoSlider;
+    @Nullable private TextView tempoCurrentText;
+    @Nullable private TextView tempoStepDownText;
+    @Nullable private TextView tempoStepUpText;
+
+    @Nullable private SeekBar pitchSlider;
+    @Nullable private TextView pitchCurrentText;
+    @Nullable private TextView pitchStepDownText;
+    @Nullable private TextView pitchStepUpText;
+
+    @Nullable private CheckBox unhookingCheckbox;
+    @Nullable private CheckBox skipSilenceCheckbox;
+
+    public static PlaybackParameterDialog newInstance(final double playbackTempo,
+                                                      final double playbackPitch,
+                                                      final boolean playbackSkipSilence) {
+<span class="nc" id="L84">        PlaybackParameterDialog dialog = new PlaybackParameterDialog();</span>
+<span class="nc" id="L85">        dialog.initialTempo = playbackTempo;</span>
+<span class="nc" id="L86">        dialog.initialPitch = playbackPitch;</span>
+
+<span class="nc" id="L88">        dialog.tempo = playbackTempo;</span>
+<span class="nc" id="L89">        dialog.pitch = playbackPitch;</span>
+
+<span class="nc" id="L91">        dialog.initialSkipSilence = playbackSkipSilence;</span>
+<span class="nc" id="L92">        return dialog;</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Lifecycle
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onAttach(Context context) {
+<span class="nc" id="L101">        super.onAttach(context);</span>
+<span class="nc bnc" id="L102" title="All 4 branches missed.">        if (context != null &amp;&amp; context instanceof Callback) {</span>
+<span class="nc" id="L103">            callback = (Callback) context;</span>
+        } else {
+<span class="nc" id="L105">            dismiss();</span>
+        }
+<span class="nc" id="L107">    }</span>
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+<span class="nc" id="L111">        super.onCreate(savedInstanceState);</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        if (savedInstanceState != null) {</span>
+<span class="nc" id="L113">            initialTempo = savedInstanceState.getDouble(INITIAL_TEMPO_KEY, DEFAULT_TEMPO);</span>
+<span class="nc" id="L114">            initialPitch = savedInstanceState.getDouble(INITIAL_PITCH_KEY, DEFAULT_PITCH);</span>
+
+<span class="nc" id="L116">            tempo = savedInstanceState.getDouble(TEMPO_KEY, DEFAULT_TEMPO);</span>
+<span class="nc" id="L117">            pitch = savedInstanceState.getDouble(PITCH_KEY, DEFAULT_PITCH);</span>
+<span class="nc" id="L118">            stepSize = savedInstanceState.getDouble(STEP_SIZE_KEY, DEFAULT_STEP);</span>
+        }
+<span class="nc" id="L120">    }</span>
+
+    @Override
+    public void onSaveInstanceState(Bundle outState) {
+<span class="nc" id="L124">        super.onSaveInstanceState(outState);</span>
+<span class="nc" id="L125">        outState.putDouble(INITIAL_TEMPO_KEY, initialTempo);</span>
+<span class="nc" id="L126">        outState.putDouble(INITIAL_PITCH_KEY, initialPitch);</span>
+
+<span class="nc" id="L128">        outState.putDouble(TEMPO_KEY, getCurrentTempo());</span>
+<span class="nc" id="L129">        outState.putDouble(PITCH_KEY, getCurrentPitch());</span>
+<span class="nc" id="L130">        outState.putDouble(STEP_SIZE_KEY, getCurrentStepSize());</span>
+<span class="nc" id="L131">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Dialog
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @NonNull
+    @Override
+    public Dialog onCreateDialog(@Nullable Bundle savedInstanceState) {
+<span class="nc" id="L140">        final View view = View.inflate(getContext(), R.layout.dialog_playback_parameter, null);</span>
+<span class="nc" id="L141">        setupControlViews(view);</span>
+
+<span class="nc" id="L143">        final AlertDialog.Builder dialogBuilder = new AlertDialog.Builder(requireActivity())</span>
+<span class="nc" id="L144">                .setTitle(R.string.playback_speed_control)</span>
+<span class="nc" id="L145">                .setView(view)</span>
+<span class="nc" id="L146">                .setCancelable(true)</span>
+<span class="nc" id="L147">                .setNegativeButton(R.string.cancel, (dialogInterface, i) -&gt;</span>
+<span class="nc" id="L148">                        setPlaybackParameters(initialTempo, initialPitch, initialSkipSilence))</span>
+<span class="nc" id="L149">                .setNeutralButton(R.string.playback_reset, (dialogInterface, i) -&gt;</span>
+<span class="nc" id="L150">                        setPlaybackParameters(DEFAULT_TEMPO, DEFAULT_PITCH, DEFAULT_SKIP_SILENCE))</span>
+<span class="nc" id="L151">                .setPositiveButton(R.string.finish, (dialogInterface, i) -&gt;</span>
+<span class="nc" id="L152">                        setCurrentPlaybackParameters());</span>
+
+<span class="nc" id="L154">        return dialogBuilder.create();</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Control Views
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private void setupControlViews(@NonNull View rootView) {
+<span class="nc" id="L162">        setupHookingControl(rootView);</span>
+<span class="nc" id="L163">        setupSkipSilenceControl(rootView);</span>
+
+<span class="nc" id="L165">        setupTempoControl(rootView);</span>
+<span class="nc" id="L166">        setupPitchControl(rootView);</span>
+
+<span class="nc" id="L168">        changeStepSize(stepSize);</span>
+<span class="nc" id="L169">        setupStepSizeSelector(rootView);</span>
+<span class="nc" id="L170">    }</span>
+
+    private void setupTempoControl(@NonNull View rootView) {
+<span class="nc" id="L173">        tempoSlider = rootView.findViewById(R.id.tempoSeekbar);</span>
+<span class="nc" id="L174">        TextView tempoMinimumText = rootView.findViewById(R.id.tempoMinimumText);</span>
+<span class="nc" id="L175">        TextView tempoMaximumText = rootView.findViewById(R.id.tempoMaximumText);</span>
+<span class="nc" id="L176">        tempoCurrentText = rootView.findViewById(R.id.tempoCurrentText);</span>
+<span class="nc" id="L177">        tempoStepUpText = rootView.findViewById(R.id.tempoStepUp);</span>
+<span class="nc" id="L178">        tempoStepDownText = rootView.findViewById(R.id.tempoStepDown);</span>
+
+<span class="nc bnc" id="L180" title="All 2 branches missed.">        if (tempoCurrentText != null)</span>
+<span class="nc" id="L181">            tempoCurrentText.setText(PlayerHelper.formatSpeed(tempo));</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">        if (tempoMaximumText != null)</span>
+<span class="nc" id="L183">            tempoMaximumText.setText(PlayerHelper.formatSpeed(MAXIMUM_PLAYBACK_VALUE));</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">        if (tempoMinimumText != null)</span>
+<span class="nc" id="L185">            tempoMinimumText.setText(PlayerHelper.formatSpeed(MINIMUM_PLAYBACK_VALUE));</span>
+
+<span class="nc bnc" id="L187" title="All 2 branches missed.">        if (tempoSlider != null) {</span>
+<span class="nc" id="L188">            tempoSlider.setMax(strategy.progressOf(MAXIMUM_PLAYBACK_VALUE));</span>
+<span class="nc" id="L189">            tempoSlider.setProgress(strategy.progressOf(tempo));</span>
+<span class="nc" id="L190">            tempoSlider.setOnSeekBarChangeListener(getOnTempoChangedListener());</span>
+        }
+<span class="nc" id="L192">    }</span>
+
+    private void setupPitchControl(@NonNull View rootView) {
+<span class="nc" id="L195">        pitchSlider = rootView.findViewById(R.id.pitchSeekbar);</span>
+<span class="nc" id="L196">        TextView pitchMinimumText = rootView.findViewById(R.id.pitchMinimumText);</span>
+<span class="nc" id="L197">        TextView pitchMaximumText = rootView.findViewById(R.id.pitchMaximumText);</span>
+<span class="nc" id="L198">        pitchCurrentText = rootView.findViewById(R.id.pitchCurrentText);</span>
+<span class="nc" id="L199">        pitchStepDownText = rootView.findViewById(R.id.pitchStepDown);</span>
+<span class="nc" id="L200">        pitchStepUpText = rootView.findViewById(R.id.pitchStepUp);</span>
+
+<span class="nc bnc" id="L202" title="All 2 branches missed.">        if (pitchCurrentText != null)</span>
+<span class="nc" id="L203">            pitchCurrentText.setText(PlayerHelper.formatPitch(pitch));</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">        if (pitchMaximumText != null)</span>
+<span class="nc" id="L205">            pitchMaximumText.setText(PlayerHelper.formatPitch(MAXIMUM_PLAYBACK_VALUE));</span>
+<span class="nc bnc" id="L206" title="All 2 branches missed.">        if (pitchMinimumText != null)</span>
+<span class="nc" id="L207">            pitchMinimumText.setText(PlayerHelper.formatPitch(MINIMUM_PLAYBACK_VALUE));</span>
+
+<span class="nc bnc" id="L209" title="All 2 branches missed.">        if (pitchSlider != null) {</span>
+<span class="nc" id="L210">            pitchSlider.setMax(strategy.progressOf(MAXIMUM_PLAYBACK_VALUE));</span>
+<span class="nc" id="L211">            pitchSlider.setProgress(strategy.progressOf(pitch));</span>
+<span class="nc" id="L212">            pitchSlider.setOnSeekBarChangeListener(getOnPitchChangedListener());</span>
+        }
+<span class="nc" id="L214">    }</span>
+
+    private void setupHookingControl(@NonNull View rootView) {
+<span class="nc" id="L217">        unhookingCheckbox = rootView.findViewById(R.id.unhookCheckbox);</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">        if (unhookingCheckbox != null) {</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">            unhookingCheckbox.setChecked(pitch != tempo);</span>
+<span class="nc" id="L220">            unhookingCheckbox.setOnCheckedChangeListener((compoundButton, isChecked) -&gt; {</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">                if (isChecked) return;</span>
+                // When unchecked, slide back to the minimum of current tempo or pitch
+<span class="nc" id="L223">                final double minimum = Math.min(getCurrentPitch(), getCurrentTempo());</span>
+<span class="nc" id="L224">                setSliders(minimum);</span>
+<span class="nc" id="L225">                setCurrentPlaybackParameters();</span>
+<span class="nc" id="L226">            });</span>
+        }
+<span class="nc" id="L228">    }</span>
+
+    private void setupSkipSilenceControl(@NonNull View rootView) {
+<span class="nc" id="L231">        skipSilenceCheckbox = rootView.findViewById(R.id.skipSilenceCheckbox);</span>
+<span class="nc bnc" id="L232" title="All 2 branches missed.">        if (skipSilenceCheckbox != null) {</span>
+<span class="nc" id="L233">            skipSilenceCheckbox.setChecked(initialSkipSilence);</span>
+<span class="nc" id="L234">            skipSilenceCheckbox.setOnCheckedChangeListener((compoundButton, isChecked) -&gt;</span>
+<span class="nc" id="L235">                    setCurrentPlaybackParameters());</span>
+        }
+<span class="nc" id="L237">    }</span>
+
+    private void setupStepSizeSelector(@NonNull final View rootView) {
+<span class="nc" id="L240">        TextView stepSizeOnePercentText = rootView.findViewById(R.id.stepSizeOnePercent);</span>
+<span class="nc" id="L241">        TextView stepSizeFivePercentText = rootView.findViewById(R.id.stepSizeFivePercent);</span>
+<span class="nc" id="L242">        TextView stepSizeTenPercentText = rootView.findViewById(R.id.stepSizeTenPercent);</span>
+<span class="nc" id="L243">        TextView stepSizeTwentyFivePercentText = rootView.findViewById(R.id.stepSizeTwentyFivePercent);</span>
+<span class="nc" id="L244">        TextView stepSizeOneHundredPercentText = rootView.findViewById(R.id.stepSizeOneHundredPercent);</span>
+
+<span class="nc bnc" id="L246" title="All 2 branches missed.">        if (stepSizeOnePercentText != null) {</span>
+<span class="nc" id="L247">            stepSizeOnePercentText.setText(getPercentString(STEP_ONE_PERCENT_VALUE));</span>
+<span class="nc" id="L248">            stepSizeOnePercentText.setOnClickListener(view -&gt;</span>
+<span class="nc" id="L249">                    changeStepSize(STEP_ONE_PERCENT_VALUE));</span>
+        }
+
+<span class="nc bnc" id="L252" title="All 2 branches missed.">        if (stepSizeFivePercentText != null) {</span>
+<span class="nc" id="L253">            stepSizeFivePercentText.setText(getPercentString(STEP_FIVE_PERCENT_VALUE));</span>
+<span class="nc" id="L254">            stepSizeFivePercentText.setOnClickListener(view -&gt;</span>
+<span class="nc" id="L255">                    changeStepSize(STEP_FIVE_PERCENT_VALUE));</span>
+        }
+
+<span class="nc bnc" id="L258" title="All 2 branches missed.">        if (stepSizeTenPercentText != null) {</span>
+<span class="nc" id="L259">            stepSizeTenPercentText.setText(getPercentString(STEP_TEN_PERCENT_VALUE));</span>
+<span class="nc" id="L260">            stepSizeTenPercentText.setOnClickListener(view -&gt;</span>
+<span class="nc" id="L261">                    changeStepSize(STEP_TEN_PERCENT_VALUE));</span>
+        }
+
+<span class="nc bnc" id="L264" title="All 2 branches missed.">        if (stepSizeTwentyFivePercentText != null) {</span>
+<span class="nc" id="L265">            stepSizeTwentyFivePercentText.setText(getPercentString(STEP_TWENTY_FIVE_PERCENT_VALUE));</span>
+<span class="nc" id="L266">            stepSizeTwentyFivePercentText.setOnClickListener(view -&gt;</span>
+<span class="nc" id="L267">                    changeStepSize(STEP_TWENTY_FIVE_PERCENT_VALUE));</span>
+        }
+
+<span class="nc bnc" id="L270" title="All 2 branches missed.">        if (stepSizeOneHundredPercentText != null) {</span>
+<span class="nc" id="L271">            stepSizeOneHundredPercentText.setText(getPercentString(STEP_ONE_HUNDRED_PERCENT_VALUE));</span>
+<span class="nc" id="L272">            stepSizeOneHundredPercentText.setOnClickListener(view -&gt;</span>
+<span class="nc" id="L273">                    changeStepSize(STEP_ONE_HUNDRED_PERCENT_VALUE));</span>
+        }
+<span class="nc" id="L275">    }</span>
+
+    private void changeStepSize(final double stepSize) {
+<span class="nc" id="L278">        this.stepSize = stepSize;</span>
+
+<span class="nc bnc" id="L280" title="All 2 branches missed.">        if (tempoStepUpText != null) {</span>
+<span class="nc" id="L281">            tempoStepUpText.setText(getStepUpPercentString(stepSize));</span>
+<span class="nc" id="L282">            tempoStepUpText.setOnClickListener(view -&gt; {</span>
+<span class="nc" id="L283">                onTempoSliderUpdated(getCurrentTempo() + stepSize);</span>
+<span class="nc" id="L284">                setCurrentPlaybackParameters();</span>
+<span class="nc" id="L285">            });</span>
+        }
+
+<span class="nc bnc" id="L288" title="All 2 branches missed.">        if (tempoStepDownText != null) {</span>
+<span class="nc" id="L289">            tempoStepDownText.setText(getStepDownPercentString(stepSize));</span>
+<span class="nc" id="L290">            tempoStepDownText.setOnClickListener(view -&gt; {</span>
+<span class="nc" id="L291">                onTempoSliderUpdated(getCurrentTempo() - stepSize);</span>
+<span class="nc" id="L292">                setCurrentPlaybackParameters();</span>
+<span class="nc" id="L293">            });</span>
+        }
+
+<span class="nc bnc" id="L296" title="All 2 branches missed.">        if (pitchStepUpText != null) {</span>
+<span class="nc" id="L297">            pitchStepUpText.setText(getStepUpPercentString(stepSize));</span>
+<span class="nc" id="L298">            pitchStepUpText.setOnClickListener(view -&gt; {</span>
+<span class="nc" id="L299">                onPitchSliderUpdated(getCurrentPitch() + stepSize);</span>
+<span class="nc" id="L300">                setCurrentPlaybackParameters();</span>
+<span class="nc" id="L301">            });</span>
+        }
+
+<span class="nc bnc" id="L304" title="All 2 branches missed.">        if (pitchStepDownText != null) {</span>
+<span class="nc" id="L305">            pitchStepDownText.setText(getStepDownPercentString(stepSize));</span>
+<span class="nc" id="L306">            pitchStepDownText.setOnClickListener(view -&gt; {</span>
+<span class="nc" id="L307">                onPitchSliderUpdated(getCurrentPitch() - stepSize);</span>
+<span class="nc" id="L308">                setCurrentPlaybackParameters();</span>
+<span class="nc" id="L309">            });</span>
+        }
+<span class="nc" id="L311">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Sliders
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private SeekBar.OnSeekBarChangeListener getOnTempoChangedListener() {
+<span class="nc" id="L318">        return new SeekBar.OnSeekBarChangeListener() {</span>
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+<span class="nc" id="L321">                final double currentTempo = strategy.valueOf(progress);</span>
+<span class="nc bnc" id="L322" title="All 2 branches missed.">                if (fromUser) {</span>
+<span class="nc" id="L323">                    onTempoSliderUpdated(currentTempo);</span>
+<span class="nc" id="L324">                    setCurrentPlaybackParameters();</span>
+                }
+<span class="nc" id="L326">            }</span>
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+                // Do Nothing.
+<span class="nc" id="L331">            }</span>
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                // Do Nothing.
+<span class="nc" id="L336">            }</span>
+        };
+    }
+
+    private SeekBar.OnSeekBarChangeListener getOnPitchChangedListener() {
+<span class="nc" id="L341">        return new SeekBar.OnSeekBarChangeListener() {</span>
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+<span class="nc" id="L344">                final double currentPitch = strategy.valueOf(progress);</span>
+<span class="nc bnc" id="L345" title="All 2 branches missed.">                if (fromUser) { // this change is first in chain</span>
+<span class="nc" id="L346">                    onPitchSliderUpdated(currentPitch);</span>
+<span class="nc" id="L347">                    setCurrentPlaybackParameters();</span>
+                }
+<span class="nc" id="L349">            }</span>
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+                // Do Nothing.
+<span class="nc" id="L354">            }</span>
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                // Do Nothing.
+<span class="nc" id="L359">            }</span>
+        };
+    }
+
+    private void onTempoSliderUpdated(final double newTempo) {
+<span class="nc bnc" id="L364" title="All 2 branches missed.">        if (unhookingCheckbox == null) return;</span>
+<span class="nc bnc" id="L365" title="All 2 branches missed.">        if (!unhookingCheckbox.isChecked()) {</span>
+<span class="nc" id="L366">            setSliders(newTempo);</span>
+        } else {
+<span class="nc" id="L368">            setTempoSlider(newTempo);</span>
+        }
+<span class="nc" id="L370">    }</span>
+
+    private void onPitchSliderUpdated(final double newPitch) {
+<span class="nc bnc" id="L373" title="All 2 branches missed.">        if (unhookingCheckbox == null) return;</span>
+<span class="nc bnc" id="L374" title="All 2 branches missed.">        if (!unhookingCheckbox.isChecked()) {</span>
+<span class="nc" id="L375">            setSliders(newPitch);</span>
+        } else {
+<span class="nc" id="L377">            setPitchSlider(newPitch);</span>
+        }
+<span class="nc" id="L379">    }</span>
+
+    private void setSliders(final double newValue) {
+<span class="nc" id="L382">        setTempoSlider(newValue);</span>
+<span class="nc" id="L383">        setPitchSlider(newValue);</span>
+<span class="nc" id="L384">    }</span>
+
+    private void setTempoSlider(final double newTempo) {
+<span class="nc bnc" id="L387" title="All 2 branches missed.">        if (tempoSlider == null) return;</span>
+<span class="nc" id="L388">        tempoSlider.setProgress(strategy.progressOf(newTempo));</span>
+<span class="nc" id="L389">    }</span>
+
+    private void setPitchSlider(final double newPitch) {
+<span class="nc bnc" id="L392" title="All 2 branches missed.">        if (pitchSlider == null) return;</span>
+<span class="nc" id="L393">        pitchSlider.setProgress(strategy.progressOf(newPitch));</span>
+<span class="nc" id="L394">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Helper
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private void setCurrentPlaybackParameters() {
+<span class="nc" id="L401">        setPlaybackParameters(getCurrentTempo(), getCurrentPitch(), getCurrentSkipSilence());</span>
+<span class="nc" id="L402">    }</span>
+
+    private void setPlaybackParameters(final double tempo, final double pitch,
+                                       final boolean skipSilence) {
+<span class="nc bnc" id="L406" title="All 6 branches missed.">        if (callback != null &amp;&amp; tempoCurrentText != null &amp;&amp; pitchCurrentText != null) {</span>
+<span class="nc bnc" id="L407" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;Setting playback parameters to &quot; +</span>
+                    &quot;tempo=[&quot; + tempo + &quot;], &quot; +
+                    &quot;pitch=[&quot; + pitch + &quot;]&quot;);
+
+<span class="nc" id="L411">            tempoCurrentText.setText(PlayerHelper.formatSpeed(tempo));</span>
+<span class="nc" id="L412">            pitchCurrentText.setText(PlayerHelper.formatPitch(pitch));</span>
+<span class="nc" id="L413">            callback.onPlaybackParameterChanged((float) tempo, (float) pitch, skipSilence);</span>
+        }
+<span class="nc" id="L415">    }</span>
+
+    private double getCurrentTempo() {
+<span class="nc bnc" id="L418" title="All 2 branches missed.">        return tempoSlider == null ? tempo : strategy.valueOf(</span>
+<span class="nc" id="L419">                tempoSlider.getProgress());</span>
+    }
+
+    private double getCurrentPitch() {
+<span class="nc bnc" id="L423" title="All 2 branches missed.">        return pitchSlider == null ? pitch : strategy.valueOf(</span>
+<span class="nc" id="L424">                pitchSlider.getProgress());</span>
+    }
+
+    private double getCurrentStepSize() {
+<span class="nc" id="L428">        return stepSize;</span>
+    }
+
+    private boolean getCurrentSkipSilence() {
+<span class="nc bnc" id="L432" title="All 4 branches missed.">        return skipSilenceCheckbox != null &amp;&amp; skipSilenceCheckbox.isChecked();</span>
+    }
+
+    @NonNull
+    private static String getStepUpPercentString(final double percent) {
+<span class="nc" id="L437">        return STEP_UP_SIGN + getPercentString(percent);</span>
+    }
+
+    @NonNull
+    private static String getStepDownPercentString(final double percent) {
+<span class="nc" id="L442">        return STEP_DOWN_SIGN + getPercentString(percent);</span>
+    }
+
+    @NonNull
+    private static String getPercentString(final double percent) {
+<span class="nc" id="L447">        return PlayerHelper.formatPitch(percent);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

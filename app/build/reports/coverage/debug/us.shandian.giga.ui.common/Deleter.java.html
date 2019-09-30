@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Deleter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">us.shandian.giga.ui.common</a> &gt; <span class="el_source">Deleter.java</span></div><h1>Deleter.java</h1><pre class="source lang-java linenums">package us.shandian.giga.ui.common;
+
+import android.content.Context;
+import android.content.Intent;
+import android.graphics.Color;
+import android.os.Handler;
+import android.support.design.widget.Snackbar;
+import android.view.View;
+
+import org.schabi.newpipe.R;
+
+import java.util.ArrayList;
+
+import us.shandian.giga.get.FinishedMission;
+import us.shandian.giga.get.Mission;
+import us.shandian.giga.service.DownloadManager;
+import us.shandian.giga.service.DownloadManager.MissionIterator;
+import us.shandian.giga.ui.adapter.MissionAdapter;
+
+public class Deleter {
+    private static final int TIMEOUT = 5000;// ms
+    private static final int DELAY = 350;// ms
+    private static final int DELAY_RESUME = 400;// ms
+
+    private Snackbar snackbar;
+    private ArrayList&lt;Mission&gt; items;
+<span class="nc" id="L27">    private boolean running = true;</span>
+
+    private Context mContext;
+    private MissionAdapter mAdapter;
+    private DownloadManager mDownloadManager;
+    private MissionIterator mIterator;
+    private Handler mHandler;
+    private View mView;
+
+    private final Runnable rShow;
+    private final Runnable rNext;
+    private final Runnable rCommit;
+
+<span class="nc" id="L40">    public Deleter(View v, Context c, MissionAdapter a, DownloadManager d, MissionIterator i, Handler h) {</span>
+<span class="nc" id="L41">        mView = v;</span>
+<span class="nc" id="L42">        mContext = c;</span>
+<span class="nc" id="L43">        mAdapter = a;</span>
+<span class="nc" id="L44">        mDownloadManager = d;</span>
+<span class="nc" id="L45">        mIterator = i;</span>
+<span class="nc" id="L46">        mHandler = h;</span>
+
+        // use variables to know the reference of the lambdas
+<span class="nc" id="L49">        rShow = this::show;</span>
+<span class="nc" id="L50">        rNext = this::next;</span>
+<span class="nc" id="L51">        rCommit = this::commit;</span>
+
+<span class="nc" id="L53">        items = new ArrayList&lt;&gt;(2);</span>
+<span class="nc" id="L54">    }</span>
+
+    public void append(Mission item) {
+<span class="nc" id="L57">        mIterator.hide(item);</span>
+<span class="nc" id="L58">        items.add(0, item);</span>
+
+<span class="nc" id="L60">        show();</span>
+<span class="nc" id="L61">    }</span>
+
+    private void forget() {
+<span class="nc" id="L64">        mIterator.unHide(items.remove(0));</span>
+<span class="nc" id="L65">        mAdapter.applyChanges();</span>
+
+<span class="nc" id="L67">        show();</span>
+<span class="nc" id="L68">    }</span>
+
+    private void show() {
+<span class="nc bnc" id="L71" title="All 2 branches missed.">        if (items.size() &lt; 1) return;</span>
+
+<span class="nc" id="L73">        pause();</span>
+<span class="nc" id="L74">        running = true;</span>
+
+<span class="nc" id="L76">        mHandler.postDelayed(rNext, DELAY);</span>
+<span class="nc" id="L77">    }</span>
+
+    private void next() {
+<span class="nc bnc" id="L80" title="All 2 branches missed.">        if (items.size() &lt; 1) return;</span>
+
+<span class="nc" id="L82">        String msg = mContext.getString(R.string.file_deleted).concat(&quot;:\n&quot;).concat(items.get(0).storage.getName());</span>
+
+<span class="nc" id="L84">        snackbar = Snackbar.make(mView, msg, Snackbar.LENGTH_INDEFINITE);</span>
+<span class="nc" id="L85">        snackbar.setAction(R.string.undo, s -&gt; forget());</span>
+<span class="nc" id="L86">        snackbar.setActionTextColor(Color.YELLOW);</span>
+<span class="nc" id="L87">        snackbar.show();</span>
+
+<span class="nc" id="L89">        mHandler.postDelayed(rCommit, TIMEOUT);</span>
+<span class="nc" id="L90">    }</span>
+
+    private void commit() {
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        if (items.size() &lt; 1) return;</span>
+
+<span class="nc bnc" id="L95" title="All 2 branches missed.">        while (items.size() &gt; 0) {</span>
+<span class="nc" id="L96">            Mission mission = items.remove(0);</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">            if (mission.deleted) continue;</span>
+
+<span class="nc" id="L99">            mIterator.unHide(mission);</span>
+<span class="nc" id="L100">            mDownloadManager.deleteMission(mission);</span>
+
+<span class="nc bnc" id="L102" title="All 2 branches missed.">            if (mission instanceof FinishedMission) {</span>
+<span class="nc" id="L103">                mContext.sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, mission.storage.getUri()));</span>
+            }
+            break;
+        }
+
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        if (items.size() &lt; 1) {</span>
+<span class="nc" id="L109">            pause();</span>
+<span class="nc" id="L110">            return;</span>
+        }
+
+<span class="nc" id="L113">        show();</span>
+<span class="nc" id="L114">    }</span>
+
+    private void pause() {
+<span class="nc" id="L117">        running = false;</span>
+<span class="nc" id="L118">        mHandler.removeCallbacks(rNext);</span>
+<span class="nc" id="L119">        mHandler.removeCallbacks(rShow);</span>
+<span class="nc" id="L120">        mHandler.removeCallbacks(rCommit);</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        if (snackbar != null) snackbar.dismiss();</span>
+<span class="nc" id="L122">    }</span>
+
+    public void resume() {
+<span class="nc bnc" id="L125" title="All 2 branches missed.">        if (running) return;</span>
+<span class="nc" id="L126">        mHandler.postDelayed(rShow, DELAY_RESUME);</span>
+<span class="nc" id="L127">    }</span>
+
+    public void dispose(boolean commitChanges) {
+<span class="nc bnc" id="L130" title="All 2 branches missed.">        if (items.size() &lt; 1) return;</span>
+
+<span class="nc" id="L132">        pause();</span>
+
+<span class="nc bnc" id="L134" title="All 2 branches missed.">        if (!commitChanges) return;</span>
+
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        for (Mission mission : items) mDownloadManager.deleteMission(mission);</span>
+<span class="nc" id="L137">        items = null;</span>
+<span class="nc" id="L138">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

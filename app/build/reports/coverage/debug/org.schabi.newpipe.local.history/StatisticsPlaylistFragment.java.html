@@ -1,0 +1,447 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StatisticsPlaylistFragment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.local.history</a> &gt; <span class="el_source">StatisticsPlaylistFragment.java</span></div><h1>StatisticsPlaylistFragment.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.local.history;
+
+import android.app.Activity;
+import android.content.Context;
+import android.os.Bundle;
+import android.os.Parcelable;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.design.widget.Snackbar;
+import android.support.v7.app.AlertDialog;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ImageView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import org.reactivestreams.Subscriber;
+import org.reactivestreams.Subscription;
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.database.LocalItem;
+import org.schabi.newpipe.database.playlist.PlaylistStreamEntry;
+import org.schabi.newpipe.database.stream.StreamStatisticsEntry;
+import org.schabi.newpipe.extractor.stream.StreamInfoItem;
+import org.schabi.newpipe.extractor.stream.StreamType;
+import org.schabi.newpipe.info_list.InfoItemDialog;
+import org.schabi.newpipe.local.BaseLocalListFragment;
+import org.schabi.newpipe.player.playqueue.PlayQueue;
+import org.schabi.newpipe.player.playqueue.SinglePlayQueue;
+import org.schabi.newpipe.report.ErrorActivity;
+import org.schabi.newpipe.report.UserAction;
+import org.schabi.newpipe.settings.SettingsActivity;
+import org.schabi.newpipe.util.NavigationHelper;
+import org.schabi.newpipe.util.OnClickGesture;
+import org.schabi.newpipe.util.StreamDialogEntry;
+import org.schabi.newpipe.util.ThemeHelper;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+import icepick.State;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.disposables.Disposable;
+
+<span class="nc" id="L50">public class StatisticsPlaylistFragment</span>
+        extends BaseLocalListFragment&lt;List&lt;StreamStatisticsEntry&gt;, Void&gt; {
+
+    private View headerPlayAllButton;
+    private View headerPopupButton;
+    private View headerBackgroundButton;
+    private View playlistCtrl;
+    private View sortButton;
+    private ImageView sortButtonIcon;
+    private TextView sortButtonText;
+
+    @State
+    protected Parcelable itemsListState;
+
+    /* Used for independent events */
+    private Subscription databaseSubscription;
+    private HistoryRecordManager recordManager;
+<span class="nc" id="L67">    private final CompositeDisposable disposables = new CompositeDisposable();</span>
+
+<span class="nc" id="L69">    private enum StatisticSortMode {</span>
+<span class="nc" id="L70">        LAST_PLAYED,</span>
+<span class="nc" id="L71">        MOST_PLAYED,</span>
+    }
+
+<span class="nc" id="L74">    StatisticSortMode sortMode = StatisticSortMode.LAST_PLAYED;</span>
+
+    protected List&lt;StreamStatisticsEntry&gt; processResult(final List&lt;StreamStatisticsEntry&gt; results) {
+<span class="nc bnc" id="L77" title="All 3 branches missed.">        switch (sortMode) {</span>
+            case LAST_PLAYED:
+<span class="nc" id="L79">                Collections.sort(results, (left, right) -&gt;</span>
+<span class="nc" id="L80">                    right.latestAccessDate.compareTo(left.latestAccessDate));</span>
+<span class="nc" id="L81">                return results;</span>
+            case MOST_PLAYED:
+<span class="nc" id="L83">                Collections.sort(results, (left, right) -&gt;</span>
+<span class="nc" id="L84">                        Long.compare(right.watchCount, left.watchCount));</span>
+<span class="nc" id="L85">                return results;</span>
+<span class="nc" id="L86">            default: return null;</span>
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Fragment LifeCycle - Creation
+    ///////////////////////////////////////////////////////////////////////////
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+<span class="nc" id="L96">        super.onCreate(savedInstanceState);</span>
+<span class="nc" id="L97">        recordManager = new HistoryRecordManager(getContext());</span>
+<span class="nc" id="L98">    }</span>
+
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater,
+                             @Nullable ViewGroup container,
+                             @Nullable Bundle savedInstanceState) {
+<span class="nc" id="L104">        return inflater.inflate(R.layout.fragment_playlist, container, false);</span>
+    }
+
+    @Override
+    public void setUserVisibleHint(boolean isVisibleToUser) {
+<span class="nc" id="L109">        super.setUserVisibleHint(isVisibleToUser);</span>
+<span class="nc bnc" id="L110" title="All 4 branches missed.">        if (activity != null &amp;&amp; isVisibleToUser) {</span>
+<span class="nc" id="L111">            setTitle(activity.getString(R.string.title_activity_history));</span>
+        }
+<span class="nc" id="L113">    }</span>
+
+    @Override
+    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+<span class="nc" id="L117">        super.onCreateOptionsMenu(menu, inflater);</span>
+<span class="nc" id="L118">        inflater.inflate(R.menu.menu_history, menu);</span>
+<span class="nc" id="L119">    }</span>
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Fragment LifeCycle - Views
+    ///////////////////////////////////////////////////////////////////////////
+
+    @Override
+    protected void initViews(View rootView, Bundle savedInstanceState) {
+<span class="nc" id="L127">        super.initViews(rootView, savedInstanceState);</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        if(!useAsFrontPage) {</span>
+<span class="nc" id="L129">            setTitle(getString(R.string.title_last_played));</span>
+        }
+<span class="nc" id="L131">    }</span>
+
+    @Override
+    protected View getListHeader() {
+<span class="nc" id="L135">        final View headerRootLayout = activity.getLayoutInflater().inflate(R.layout.statistic_playlist_control,</span>
+                itemsList, false);
+<span class="nc" id="L137">        playlistCtrl = headerRootLayout.findViewById(R.id.playlist_control);</span>
+<span class="nc" id="L138">        headerPlayAllButton = headerRootLayout.findViewById(R.id.playlist_ctrl_play_all_button);</span>
+<span class="nc" id="L139">        headerPopupButton = headerRootLayout.findViewById(R.id.playlist_ctrl_play_popup_button);</span>
+<span class="nc" id="L140">        headerBackgroundButton = headerRootLayout.findViewById(R.id.playlist_ctrl_play_bg_button);</span>
+<span class="nc" id="L141">        sortButton = headerRootLayout.findViewById(R.id.sortButton);</span>
+<span class="nc" id="L142">        sortButtonIcon = headerRootLayout.findViewById(R.id.sortButtonIcon);</span>
+<span class="nc" id="L143">        sortButtonText = headerRootLayout.findViewById(R.id.sortButtonText);</span>
+<span class="nc" id="L144">        return headerRootLayout;</span>
+    }
+
+    @Override
+    protected void initListeners() {
+<span class="nc" id="L149">        super.initListeners();</span>
+
+<span class="nc" id="L151">        itemListAdapter.setSelectedListener(new OnClickGesture&lt;LocalItem&gt;() {</span>
+            @Override
+            public void selected(LocalItem selectedItem) {
+<span class="nc bnc" id="L154" title="All 2 branches missed.">                if (selectedItem instanceof StreamStatisticsEntry) {</span>
+<span class="nc" id="L155">                    final StreamStatisticsEntry item = (StreamStatisticsEntry) selectedItem;</span>
+<span class="nc" id="L156">                    NavigationHelper.openVideoDetailFragment(getFM(),</span>
+                            item.serviceId,
+                            item.url,
+                            item.title);
+                }
+<span class="nc" id="L161">            }</span>
+
+            @Override
+            public void held(LocalItem selectedItem) {
+<span class="nc bnc" id="L165" title="All 2 branches missed.">                if (selectedItem instanceof StreamStatisticsEntry) {</span>
+<span class="nc" id="L166">                    showStreamDialog((StreamStatisticsEntry) selectedItem);</span>
+                }
+<span class="nc" id="L168">            }</span>
+        });
+<span class="nc" id="L170">    }</span>
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+<span class="nc bnc" id="L174" title="All 2 branches missed.">        switch (item.getItemId()) {</span>
+            case R.id.action_history_clear:
+<span class="nc" id="L176">                new AlertDialog.Builder(activity)</span>
+<span class="nc" id="L177">                        .setTitle(R.string.delete_view_history_alert)</span>
+<span class="nc" id="L178">                        .setNegativeButton(R.string.cancel, ((dialog, which) -&gt; dialog.dismiss()))</span>
+<span class="nc" id="L179">                        .setPositiveButton(R.string.delete, ((dialog, which) -&gt; {</span>
+<span class="nc" id="L180">                            final Disposable onDelete = recordManager.deleteWholeStreamHistory()</span>
+<span class="nc" id="L181">                                    .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L182">                                    .subscribe(</span>
+<span class="nc" id="L183">                                            howManyDeleted -&gt; Toast.makeText(getContext(),</span>
+                                                    R.string.watch_history_deleted,
+<span class="nc" id="L185">                                                    Toast.LENGTH_SHORT).show(),</span>
+<span class="nc" id="L186">                                            throwable -&gt; ErrorActivity.reportError(getContext(),</span>
+                                                    throwable,
+                                                    SettingsActivity.class, null,
+<span class="nc" id="L189">                                                    ErrorActivity.ErrorInfo.make(</span>
+                                                            UserAction.DELETE_FROM_HISTORY,
+                                                            &quot;none&quot;,
+                                                            &quot;Delete view history&quot;,
+                                                            R.string.general_error)));
+
+<span class="nc" id="L195">                            final Disposable onClearOrphans = recordManager.removeOrphanedRecords()</span>
+<span class="nc" id="L196">                                    .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L197">                                    .subscribe(</span>
+<span class="nc" id="L198">                                            howManyDeleted -&gt; {},</span>
+<span class="nc" id="L199">                                            throwable -&gt; ErrorActivity.reportError(getContext(),</span>
+                                                    throwable,
+                                                    SettingsActivity.class, null,
+<span class="nc" id="L202">                                                    ErrorActivity.ErrorInfo.make(</span>
+                                                            UserAction.DELETE_FROM_HISTORY,
+                                                            &quot;none&quot;,
+                                                            &quot;Delete search history&quot;,
+                                                            R.string.general_error)));
+<span class="nc" id="L207">                            disposables.add(onClearOrphans);</span>
+<span class="nc" id="L208">                            disposables.add(onDelete);</span>
+<span class="nc" id="L209">                        }))</span>
+<span class="nc" id="L210">                        .create()</span>
+<span class="nc" id="L211">                        .show();</span>
+<span class="nc" id="L212">                break;</span>
+            default:
+<span class="nc" id="L214">                return super.onOptionsItemSelected(item);</span>
+        }
+<span class="nc" id="L216">        return true;</span>
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Fragment LifeCycle - Loading
+    ///////////////////////////////////////////////////////////////////////////
+
+    @Override
+    public void startLoading(boolean forceLoad) {
+<span class="nc" id="L225">        super.startLoading(forceLoad);</span>
+<span class="nc" id="L226">        recordManager.getStreamStatistics()</span>
+<span class="nc" id="L227">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L228">                .subscribe(getHistoryObserver());</span>
+<span class="nc" id="L229">    }</span>
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Fragment LifeCycle - Destruction
+    ///////////////////////////////////////////////////////////////////////////
+
+    @Override
+    public void onPause() {
+<span class="nc" id="L237">        super.onPause();</span>
+<span class="nc" id="L238">        itemsListState = itemsList.getLayoutManager().onSaveInstanceState();</span>
+<span class="nc" id="L239">    }</span>
+
+    @Override
+    public void onDestroyView() {
+<span class="nc" id="L243">        super.onDestroyView();</span>
+
+<span class="nc bnc" id="L245" title="All 2 branches missed.">        if (itemListAdapter != null) itemListAdapter.unsetSelectedListener();</span>
+<span class="nc bnc" id="L246" title="All 2 branches missed.">        if (headerBackgroundButton != null) headerBackgroundButton.setOnClickListener(null);</span>
+<span class="nc bnc" id="L247" title="All 2 branches missed.">        if (headerPlayAllButton != null) headerPlayAllButton.setOnClickListener(null);</span>
+<span class="nc bnc" id="L248" title="All 2 branches missed.">        if (headerPopupButton != null) headerPopupButton.setOnClickListener(null);</span>
+
+<span class="nc bnc" id="L250" title="All 2 branches missed.">        if (databaseSubscription != null) databaseSubscription.cancel();</span>
+<span class="nc" id="L251">        databaseSubscription = null;</span>
+<span class="nc" id="L252">    }</span>
+
+    @Override
+    public void onDestroy() {
+<span class="nc" id="L256">        super.onDestroy();</span>
+<span class="nc" id="L257">        recordManager = null;</span>
+<span class="nc" id="L258">        itemsListState = null;</span>
+<span class="nc" id="L259">    }</span>
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Statistics Loader
+    ///////////////////////////////////////////////////////////////////////////
+
+    private Subscriber&lt;List&lt;StreamStatisticsEntry&gt;&gt; getHistoryObserver() {
+<span class="nc" id="L266">        return new Subscriber&lt;List&lt;StreamStatisticsEntry&gt;&gt;() {</span>
+            @Override
+            public void onSubscribe(Subscription s) {
+<span class="nc" id="L269">                showLoading();</span>
+
+<span class="nc bnc" id="L271" title="All 2 branches missed.">                if (databaseSubscription != null) databaseSubscription.cancel();</span>
+<span class="nc" id="L272">                databaseSubscription = s;</span>
+<span class="nc" id="L273">                databaseSubscription.request(1);</span>
+<span class="nc" id="L274">            }</span>
+
+            @Override
+            public void onNext(List&lt;StreamStatisticsEntry&gt; streams) {
+<span class="nc" id="L278">                handleResult(streams);</span>
+<span class="nc bnc" id="L279" title="All 2 branches missed.">                if (databaseSubscription != null) databaseSubscription.request(1);</span>
+<span class="nc" id="L280">            }</span>
+
+            @Override
+            public void onError(Throwable exception) {
+<span class="nc" id="L284">                StatisticsPlaylistFragment.this.onError(exception);</span>
+<span class="nc" id="L285">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L289">            }</span>
+        };
+    }
+
+    @Override
+    public void handleResult(@NonNull List&lt;StreamStatisticsEntry&gt; result) {
+<span class="nc" id="L295">        super.handleResult(result);</span>
+<span class="nc bnc" id="L296" title="All 2 branches missed.">        if (itemListAdapter == null) return;</span>
+
+<span class="nc" id="L298">        playlistCtrl.setVisibility(View.VISIBLE);</span>
+
+<span class="nc" id="L300">        itemListAdapter.clearStreamItemList();</span>
+
+<span class="nc bnc" id="L302" title="All 2 branches missed.">        if (result.isEmpty()) {</span>
+<span class="nc" id="L303">            showEmptyState();</span>
+<span class="nc" id="L304">            return;</span>
+        }
+
+<span class="nc" id="L307">        itemListAdapter.addItems(processResult(result));</span>
+<span class="nc bnc" id="L308" title="All 2 branches missed.">        if (itemsListState != null) {</span>
+<span class="nc" id="L309">            itemsList.getLayoutManager().onRestoreInstanceState(itemsListState);</span>
+<span class="nc" id="L310">            itemsListState = null;</span>
+        }
+
+<span class="nc" id="L313">        headerPlayAllButton.setOnClickListener(view -&gt;</span>
+<span class="nc" id="L314">                NavigationHelper.playOnMainPlayer(activity, getPlayQueue(), false));</span>
+<span class="nc" id="L315">        headerPopupButton.setOnClickListener(view -&gt;</span>
+<span class="nc" id="L316">                NavigationHelper.playOnPopupPlayer(activity, getPlayQueue(), false));</span>
+<span class="nc" id="L317">        headerBackgroundButton.setOnClickListener(view -&gt;</span>
+<span class="nc" id="L318">                NavigationHelper.playOnBackgroundPlayer(activity, getPlayQueue(), false));</span>
+<span class="nc" id="L319">        sortButton.setOnClickListener(view -&gt; toggleSortMode());</span>
+
+<span class="nc" id="L321">        hideLoading();</span>
+<span class="nc" id="L322">    }</span>
+    ///////////////////////////////////////////////////////////////////////////
+    // Fragment Error Handling
+    ///////////////////////////////////////////////////////////////////////////
+
+    @Override
+    protected void resetFragment() {
+<span class="nc" id="L329">        super.resetFragment();</span>
+<span class="nc bnc" id="L330" title="All 2 branches missed.">        if (databaseSubscription != null) databaseSubscription.cancel();</span>
+<span class="nc" id="L331">    }</span>
+
+    @Override
+    protected boolean onError(Throwable exception) {
+<span class="nc bnc" id="L335" title="All 2 branches missed.">        if (super.onError(exception)) return true;</span>
+
+<span class="nc" id="L337">        onUnrecoverableError(exception, UserAction.SOMETHING_ELSE,</span>
+                &quot;none&quot;, &quot;History Statistics&quot;, R.string.general_error);
+<span class="nc" id="L339">        return true;</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Utils
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private void toggleSortMode() {
+<span class="nc bnc" id="L347" title="All 2 branches missed.">        if(sortMode == StatisticSortMode.LAST_PLAYED) {</span>
+<span class="nc" id="L348">            sortMode = StatisticSortMode.MOST_PLAYED;</span>
+<span class="nc" id="L349">            setTitle(getString(R.string.title_most_played));</span>
+<span class="nc" id="L350">            sortButtonIcon.setImageResource(ThemeHelper.getIconByAttr(R.attr.history, getContext()));</span>
+<span class="nc" id="L351">            sortButtonText.setText(R.string.title_last_played);</span>
+        } else {
+<span class="nc" id="L353">            sortMode = StatisticSortMode.LAST_PLAYED;</span>
+<span class="nc" id="L354">            setTitle(getString(R.string.title_last_played));</span>
+<span class="nc" id="L355">            sortButtonIcon.setImageResource(ThemeHelper.getIconByAttr(R.attr.filter, getContext()));</span>
+<span class="nc" id="L356">            sortButtonText.setText(R.string.title_most_played);</span>
+        }
+<span class="nc" id="L358">        startLoading(true);</span>
+<span class="nc" id="L359">    }</span>
+
+    private PlayQueue getPlayQueueStartingAt(StreamStatisticsEntry infoItem) {
+<span class="nc" id="L362">        return getPlayQueue(Math.max(itemListAdapter.getItemsList().indexOf(infoItem), 0));</span>
+    }
+
+    private void showStreamDialog(final StreamStatisticsEntry item) {
+<span class="nc" id="L366">        final Context context = getContext();</span>
+<span class="nc" id="L367">        final Activity activity = getActivity();</span>
+<span class="nc bnc" id="L368" title="All 6 branches missed.">        if (context == null || context.getResources() == null || activity == null) return;</span>
+<span class="nc" id="L369">        final StreamInfoItem infoItem = item.toStreamInfoItem();</span>
+
+<span class="nc bnc" id="L371" title="All 2 branches missed.">        if (infoItem.getStreamType() == StreamType.AUDIO_STREAM) {</span>
+<span class="nc" id="L372">            StreamDialogEntry.setEnabledEntries(</span>
+                    StreamDialogEntry.enqueue_on_background,
+                    StreamDialogEntry.start_here_on_background,
+                    StreamDialogEntry.delete,
+                    StreamDialogEntry.append_playlist,
+                    StreamDialogEntry.share);
+        } else {
+<span class="nc" id="L379">            StreamDialogEntry.setEnabledEntries(</span>
+                    StreamDialogEntry.enqueue_on_background,
+                    StreamDialogEntry.enqueue_on_popup,
+                    StreamDialogEntry.start_here_on_background,
+                    StreamDialogEntry.start_here_on_popup,
+                    StreamDialogEntry.delete,
+                    StreamDialogEntry.append_playlist,
+                    StreamDialogEntry.share);
+
+<span class="nc" id="L388">            StreamDialogEntry.start_here_on_popup.setCustomAction(</span>
+<span class="nc" id="L389">                    (fragment, infoItemDuplicate) -&gt; NavigationHelper.playOnPopupPlayer(context, getPlayQueueStartingAt(item), true));</span>
+        }
+
+<span class="nc" id="L392">        StreamDialogEntry.start_here_on_background.setCustomAction(</span>
+<span class="nc" id="L393">                (fragment, infoItemDuplicate) -&gt; NavigationHelper.playOnBackgroundPlayer(context, getPlayQueueStartingAt(item), true));</span>
+<span class="nc" id="L394">        StreamDialogEntry.delete.setCustomAction((fragment, infoItemDuplicate) -&gt;</span>
+<span class="nc" id="L395">            deleteEntry(Math.max(itemListAdapter.getItemsList().indexOf(item), 0)));</span>
+
+<span class="nc" id="L397">        new InfoItemDialog(activity, infoItem, StreamDialogEntry.getCommands(context), (dialog, which) -&gt;</span>
+<span class="nc" id="L398">                StreamDialogEntry.clickOn(which, this, infoItem)).show();</span>
+<span class="nc" id="L399">    }</span>
+
+    private void deleteEntry(final int index) {
+<span class="nc" id="L402">        final LocalItem infoItem = itemListAdapter.getItemsList()</span>
+<span class="nc" id="L403">                .get(index);</span>
+<span class="nc bnc" id="L404" title="All 2 branches missed.">        if(infoItem instanceof StreamStatisticsEntry) {</span>
+<span class="nc" id="L405">            final StreamStatisticsEntry entry = (StreamStatisticsEntry) infoItem;</span>
+<span class="nc" id="L406">            final Disposable onDelete = recordManager.deleteStreamHistory(entry.streamId)</span>
+<span class="nc" id="L407">                    .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L408">                    .subscribe(</span>
+                            howManyDeleted -&gt; {
+<span class="nc bnc" id="L410" title="All 2 branches missed.">                                if(getView() != null) {</span>
+<span class="nc" id="L411">                                    Snackbar.make(getView(), R.string.one_item_deleted,</span>
+<span class="nc" id="L412">                                            Snackbar.LENGTH_SHORT).show();</span>
+                                } else {
+<span class="nc" id="L414">                                    Toast.makeText(getContext(),</span>
+                                            R.string.one_item_deleted,
+<span class="nc" id="L416">                                            Toast.LENGTH_SHORT).show();</span>
+                                }
+<span class="nc" id="L418">                            },</span>
+<span class="nc" id="L419">                            throwable -&gt; showSnackBarError(throwable,</span>
+                                    UserAction.DELETE_FROM_HISTORY, &quot;none&quot;,
+                                    &quot;Deleting item failed&quot;, R.string.general_error));
+
+<span class="nc" id="L423">            disposables.add(onDelete);</span>
+        }
+<span class="nc" id="L425">    }</span>
+
+    private PlayQueue getPlayQueue() {
+<span class="nc" id="L428">        return getPlayQueue(0);</span>
+    }
+
+    private PlayQueue getPlayQueue(final int index) {
+<span class="nc bnc" id="L432" title="All 2 branches missed.">        if (itemListAdapter == null) {</span>
+<span class="nc" id="L433">            return new SinglePlayQueue(Collections.emptyList(), 0);</span>
+        }
+
+<span class="nc" id="L436">        final List&lt;LocalItem&gt; infoItems = itemListAdapter.getItemsList();</span>
+<span class="nc" id="L437">        List&lt;StreamInfoItem&gt; streamInfoItems = new ArrayList&lt;&gt;(infoItems.size());</span>
+<span class="nc bnc" id="L438" title="All 2 branches missed.">        for (final LocalItem item : infoItems) {</span>
+<span class="nc bnc" id="L439" title="All 2 branches missed.">            if (item instanceof StreamStatisticsEntry) {</span>
+<span class="nc" id="L440">                streamInfoItems.add(((StreamStatisticsEntry) item).toStreamInfoItem());</span>
+            }
+<span class="nc" id="L442">        }</span>
+<span class="nc" id="L443">        return new SinglePlayQueue(streamInfoItems, index);</span>
+    }
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

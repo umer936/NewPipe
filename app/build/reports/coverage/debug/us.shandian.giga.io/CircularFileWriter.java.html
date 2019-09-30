@@ -1,0 +1,498 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CircularFileWriter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">us.shandian.giga.io</a> &gt; <span class="el_source">CircularFileWriter.java</span></div><h1>CircularFileWriter.java</h1><pre class="source lang-java linenums">package us.shandian.giga.io;
+
+import android.support.annotation.NonNull;
+
+import org.schabi.newpipe.streams.io.SharpStream;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+
+public class CircularFileWriter extends SharpStream {
+
+    private final static int QUEUE_BUFFER_SIZE = 8 * 1024;// 8 KiB
+    private final static int COPY_BUFFER_SIZE = 128 * 1024; // 128 KiB
+    private final static int NOTIFY_BYTES_INTERVAL = 64 * 1024;// 64 KiB
+    private final static int THRESHOLD_AUX_LENGTH = 15 * 1024 * 1024;// 15 MiB
+
+    private OffsetChecker callback;
+
+    public ProgressReport onProgress;
+    public WriteErrorHandle onWriteError;
+
+    private long reportPosition;
+<span class="nc" id="L24">    private long maxLengthKnown = -1;</span>
+
+    private BufferedFile out;
+    private BufferedFile aux;
+
+<span class="nc" id="L29">    public CircularFileWriter(SharpStream target, File temp, OffsetChecker checker) throws IOException {</span>
+<span class="nc bnc" id="L30" title="All 2 branches missed.">        if (checker == null) {</span>
+<span class="nc" id="L31">            throw new NullPointerException(&quot;checker is null&quot;);</span>
+        }
+
+<span class="nc bnc" id="L34" title="All 2 branches missed.">        if (!temp.exists()) {</span>
+<span class="nc bnc" id="L35" title="All 2 branches missed.">            if (!temp.createNewFile()) {</span>
+<span class="nc" id="L36">                throw new IOException(&quot;Cannot create a temporal file&quot;);</span>
+            }
+        }
+
+<span class="nc" id="L40">        aux = new BufferedFile(temp);</span>
+<span class="nc" id="L41">        out = new BufferedFile(target);</span>
+
+<span class="nc" id="L43">        callback = checker;</span>
+
+<span class="nc" id="L45">        reportPosition = NOTIFY_BYTES_INTERVAL;</span>
+<span class="nc" id="L46">    }</span>
+
+    private void flushAuxiliar(long amount) throws IOException {
+<span class="nc bnc" id="L49" title="All 2 branches missed.">        if (aux.length &lt; 1) {</span>
+<span class="nc" id="L50">            return;</span>
+        }
+
+<span class="nc" id="L53">        out.flush();</span>
+<span class="nc" id="L54">        aux.flush();</span>
+
+<span class="nc bnc" id="L56" title="All 4 branches missed.">        boolean underflow = aux.offset &lt; aux.length || out.offset &lt; out.length;</span>
+<span class="nc" id="L57">        byte[] buffer = new byte[COPY_BUFFER_SIZE];</span>
+
+<span class="nc" id="L59">        aux.target.seek(0);</span>
+<span class="nc" id="L60">        out.target.seek(out.length);</span>
+
+<span class="nc" id="L62">        long length = amount;</span>
+<span class="nc bnc" id="L63" title="All 2 branches missed.">        while (length &gt; 0) {</span>
+<span class="nc" id="L64">            int read = (int) Math.min(length, Integer.MAX_VALUE);</span>
+<span class="nc" id="L65">            read = aux.target.read(buffer, 0, Math.min(read, buffer.length));</span>
+
+<span class="nc bnc" id="L67" title="All 2 branches missed.">            if (read &lt; 1) {</span>
+<span class="nc" id="L68">                amount -= length;</span>
+<span class="nc" id="L69">                break;</span>
+            }
+
+<span class="nc" id="L72">            out.writeProof(buffer, read);</span>
+<span class="nc" id="L73">            length -= read;</span>
+<span class="nc" id="L74">        }</span>
+
+<span class="nc bnc" id="L76" title="All 2 branches missed.">        if (underflow) {</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">            if (out.offset &gt;= out.length) {</span>
+                // calculate the aux underflow pointer
+<span class="nc bnc" id="L79" title="All 2 branches missed.">                if (aux.offset &lt; amount) {</span>
+<span class="nc" id="L80">                    out.offset += aux.offset;</span>
+<span class="nc" id="L81">                    aux.offset = 0;</span>
+<span class="nc" id="L82">                    out.target.seek(out.offset);</span>
+                } else {
+<span class="nc" id="L84">                    aux.offset -= amount;</span>
+<span class="nc" id="L85">                    out.offset = out.length + amount;</span>
+                }
+            } else {
+<span class="nc" id="L88">                aux.offset = 0;</span>
+            }
+        } else {
+<span class="nc" id="L91">            out.offset += amount;</span>
+<span class="nc" id="L92">            aux.offset -= amount;</span>
+        }
+
+<span class="nc" id="L95">        out.length += amount;</span>
+
+<span class="nc bnc" id="L97" title="All 2 branches missed.">        if (out.length &gt; maxLengthKnown) {</span>
+<span class="nc" id="L98">            maxLengthKnown = out.length;</span>
+        }
+
+<span class="nc bnc" id="L101" title="All 2 branches missed.">        if (amount &lt; aux.length) {</span>
+            // move the excess data to the beginning of the file
+<span class="nc" id="L103">            long readOffset = amount;</span>
+<span class="nc" id="L104">            long writeOffset = 0;</span>
+
+<span class="nc" id="L106">            aux.length -= amount;</span>
+<span class="nc" id="L107">            length = aux.length;</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">            while (length &gt; 0) {</span>
+<span class="nc" id="L109">                int read = (int) Math.min(length, Integer.MAX_VALUE);</span>
+<span class="nc" id="L110">                read = aux.target.read(buffer, 0, Math.min(read, buffer.length));</span>
+
+<span class="nc" id="L112">                aux.target.seek(writeOffset);</span>
+<span class="nc" id="L113">                aux.writeProof(buffer, read);</span>
+
+<span class="nc" id="L115">                writeOffset += read;</span>
+<span class="nc" id="L116">                readOffset += read;</span>
+<span class="nc" id="L117">                length -= read;</span>
+
+<span class="nc" id="L119">                aux.target.seek(readOffset);</span>
+<span class="nc" id="L120">            }</span>
+
+<span class="nc" id="L122">            aux.target.setLength(aux.length);</span>
+<span class="nc" id="L123">            return;</span>
+        }
+
+<span class="nc bnc" id="L126" title="All 2 branches missed.">        if (aux.length &gt; THRESHOLD_AUX_LENGTH) {</span>
+<span class="nc" id="L127">            aux.target.setLength(THRESHOLD_AUX_LENGTH);// or setLength(0);</span>
+        }
+
+<span class="nc" id="L130">        aux.reset();</span>
+<span class="nc" id="L131">    }</span>
+
+    /**
+     * Flush any buffer and close the output file. Use this method if the
+     * operation is successful
+     *
+     * @return the final length of the file
+     * @throws IOException if an I/O error occurs
+     */
+    public long finalizeFile() throws IOException {
+<span class="nc" id="L141">        flushAuxiliar(aux.length);</span>
+
+<span class="nc" id="L143">        out.flush();</span>
+
+        // change file length (if required)
+<span class="nc" id="L146">        long length = Math.max(maxLengthKnown, out.length);</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">        if (length != out.target.length()) {</span>
+<span class="nc" id="L148">            out.target.setLength(length);</span>
+        }
+
+<span class="nc" id="L151">        close();</span>
+
+<span class="nc" id="L153">        return length;</span>
+    }
+
+    /**
+     * Close the file without flushing any buffer
+     */
+    @Override
+    public void close() {
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        if (out != null) {</span>
+<span class="nc" id="L162">            out.close();</span>
+<span class="nc" id="L163">            out = null;</span>
+        }
+<span class="nc bnc" id="L165" title="All 2 branches missed.">        if (aux != null) {</span>
+<span class="nc" id="L166">            aux.close();</span>
+<span class="nc" id="L167">            aux = null;</span>
+        }
+<span class="nc" id="L169">    }</span>
+
+    @Override
+    public void write(byte b) throws IOException {
+<span class="nc" id="L173">        write(new byte[]{b}, 0, 1);</span>
+<span class="nc" id="L174">    }</span>
+
+    @Override
+    public void write(byte b[]) throws IOException {
+<span class="nc" id="L178">        write(b, 0, b.length);</span>
+<span class="nc" id="L179">    }</span>
+
+    @Override
+    public void write(byte b[], int off, int len) throws IOException {
+<span class="nc bnc" id="L183" title="All 2 branches missed.">        if (len == 0) {</span>
+<span class="nc" id="L184">            return;</span>
+        }
+
+        long available;
+<span class="nc" id="L188">        long offsetOut = out.getOffset();</span>
+<span class="nc" id="L189">        long offsetAux = aux.getOffset();</span>
+<span class="nc" id="L190">        long end = callback.check();</span>
+
+<span class="nc bnc" id="L192" title="All 2 branches missed.">        if (end == -1) {</span>
+<span class="nc" id="L193">            available = Integer.MAX_VALUE;</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">        } else if (end &lt; offsetOut) {</span>
+<span class="nc" id="L195">            throw new IOException(&quot;The reported offset is invalid: &quot; + end + &quot;&lt;&quot; + offsetOut);</span>
+        } else {
+<span class="nc" id="L197">            available = end - offsetOut;</span>
+        }
+
+<span class="nc bnc" id="L200" title="All 4 branches missed.">        boolean usingAux = aux.length &gt; 0 &amp;&amp; offsetOut &gt;= out.length;</span>
+<span class="nc bnc" id="L201" title="All 4 branches missed.">        boolean underflow = offsetAux &lt; aux.length || offsetOut &lt; out.length;</span>
+
+<span class="nc bnc" id="L203" title="All 2 branches missed.">        if (usingAux) {</span>
+            // before continue calculate the final length of aux
+<span class="nc" id="L205">            long length = offsetAux + len;</span>
+<span class="nc bnc" id="L206" title="All 2 branches missed.">            if (underflow) {</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">                if (aux.length &gt; length) {</span>
+<span class="nc" id="L208">                    length = aux.length;// the length is not changed</span>
+                }
+            } else {
+<span class="nc" id="L211">                length = aux.length + len;</span>
+            }
+
+<span class="nc" id="L214">            aux.write(b, off, len);</span>
+
+<span class="nc bnc" id="L216" title="All 4 branches missed.">            if (length &gt;= THRESHOLD_AUX_LENGTH &amp;&amp; length &lt;= available) {</span>
+<span class="nc" id="L217">                flushAuxiliar(available);</span>
+            }
+<span class="nc" id="L219">        } else {</span>
+<span class="nc bnc" id="L220" title="All 2 branches missed.">            if (underflow) {</span>
+<span class="nc" id="L221">                available = out.length - offsetOut;</span>
+            }
+
+<span class="nc" id="L224">            int length = Math.min(len, (int) available);</span>
+<span class="nc" id="L225">            out.write(b, off, length);</span>
+
+<span class="nc" id="L227">            len -= length;</span>
+<span class="nc" id="L228">            off += length;</span>
+
+<span class="nc bnc" id="L230" title="All 2 branches missed.">            if (len &gt; 0) {</span>
+<span class="nc" id="L231">                aux.write(b, off, len);</span>
+            }
+        }
+
+<span class="nc bnc" id="L235" title="All 2 branches missed.">        if (onProgress != null) {</span>
+<span class="nc" id="L236">            long absoluteOffset = out.getOffset() + aux.getOffset();</span>
+<span class="nc bnc" id="L237" title="All 2 branches missed.">            if (absoluteOffset &gt; reportPosition) {</span>
+<span class="nc" id="L238">                reportPosition = absoluteOffset + NOTIFY_BYTES_INTERVAL;</span>
+<span class="nc" id="L239">                onProgress.report(absoluteOffset);</span>
+            }
+        }
+<span class="nc" id="L242">    }</span>
+
+    @Override
+    public void flush() throws IOException {
+<span class="nc" id="L246">        aux.flush();</span>
+<span class="nc" id="L247">        out.flush();</span>
+
+<span class="nc" id="L249">        long total = out.length + aux.length;</span>
+<span class="nc bnc" id="L250" title="All 2 branches missed.">        if (total &gt; maxLengthKnown) {</span>
+<span class="nc" id="L251">            maxLengthKnown = total;// save the current file length in case the method {@code rewind()} is called</span>
+        }
+<span class="nc" id="L253">    }</span>
+
+    @Override
+    public long skip(long amount) throws IOException {
+<span class="nc" id="L257">        seek(out.getOffset() + aux.getOffset() + amount);</span>
+<span class="nc" id="L258">        return amount;</span>
+    }
+
+    @Override
+    public void rewind() throws IOException {
+<span class="nc bnc" id="L263" title="All 2 branches missed.">        if (onProgress != null) {</span>
+<span class="nc" id="L264">            onProgress.report(-out.length - aux.length);// rollback the whole progress</span>
+        }
+
+<span class="nc" id="L267">        seek(0);</span>
+
+<span class="nc" id="L269">        reportPosition = NOTIFY_BYTES_INTERVAL;</span>
+<span class="nc" id="L270">    }</span>
+
+    @Override
+    public void seek(long offset) throws IOException {
+<span class="nc" id="L274">        long total = out.length + aux.length;</span>
+
+<span class="nc bnc" id="L276" title="All 2 branches missed.">        if (offset == total) {</span>
+            // do not ignore the seek offset if a underflow exists
+<span class="nc" id="L278">            long relativeOffset = out.getOffset() + aux.getOffset();</span>
+<span class="nc bnc" id="L279" title="All 2 branches missed.">            if (relativeOffset == total) {</span>
+<span class="nc" id="L280">                return;</span>
+            }
+        }
+
+        // flush everything, avoid any underflow
+<span class="nc" id="L285">        flush();</span>
+
+<span class="nc bnc" id="L287" title="All 4 branches missed.">        if (offset &lt; 0 || offset &gt; total) {</span>
+<span class="nc" id="L288">            throw new IOException(&quot;desired offset is outside of range=0-&quot; + total + &quot; offset=&quot; + offset);</span>
+        }
+
+<span class="nc bnc" id="L291" title="All 2 branches missed.">        if (offset &gt; out.length) {</span>
+<span class="nc" id="L292">            out.seek(out.length);</span>
+<span class="nc" id="L293">            aux.seek(offset - out.length);</span>
+        } else {
+<span class="nc" id="L295">            out.seek(offset);</span>
+<span class="nc" id="L296">            aux.seek(0);</span>
+        }
+<span class="nc" id="L298">    }</span>
+
+    @Override
+    public boolean isClosed() {
+<span class="nc bnc" id="L302" title="All 2 branches missed.">        return out == null;</span>
+    }
+
+    @Override
+    public boolean canRewind() {
+<span class="nc" id="L307">        return true;</span>
+    }
+
+    @Override
+    public boolean canWrite() {
+<span class="nc" id="L312">        return true;</span>
+    }
+
+    @Override
+    public boolean canSeek() {
+<span class="nc" id="L317">        return true;</span>
+    }
+
+    // &lt;editor-fold defaultstate=&quot;collapsed&quot; desc=&quot;stub read methods&quot;&gt;
+    @Override
+    public boolean canRead() {
+<span class="nc" id="L323">        return false;</span>
+    }
+
+    @Override
+    public int read() {
+<span class="nc" id="L328">        throw new UnsupportedOperationException(&quot;write-only&quot;);</span>
+    }
+
+    @Override
+    public int read(byte[] buffer
+    ) {
+<span class="nc" id="L334">        throw new UnsupportedOperationException(&quot;write-only&quot;);</span>
+    }
+
+    @Override
+    public int read(byte[] buffer, int offset, int count
+    ) {
+<span class="nc" id="L340">        throw new UnsupportedOperationException(&quot;write-only&quot;);</span>
+    }
+
+    @Override
+    public long available() {
+<span class="nc" id="L345">        throw new UnsupportedOperationException(&quot;write-only&quot;);</span>
+    }
+    //&lt;/editor-fold&gt;
+
+    public interface OffsetChecker {
+
+        /**
+         * Checks the amount of available space ahead
+         *
+         * @return absolute offset in the file where no more data SHOULD NOT be
+         * written. If the value is -1 the whole file will be used
+         */
+        long check();
+    }
+
+    public interface ProgressReport {
+
+        /**
+         * Report the size of the new file
+         *
+         * @param progress the new size
+         */
+        void report(long progress);
+    }
+
+    public interface WriteErrorHandle {
+
+        /**
+         * Attempts to handle a I/O exception
+         *
+         * @param err the cause
+         * @return {@code true} to retry and continue, otherwise, {@code false}
+         * and throw the exception
+         */
+        boolean handle(Exception err);
+    }
+
+    class BufferedFile {
+
+        protected final SharpStream target;
+
+        private long offset;
+        protected long length;
+
+<span class="nc" id="L389">        private byte[] queue = new byte[QUEUE_BUFFER_SIZE];</span>
+        private int queueSize;
+
+<span class="nc" id="L392">        BufferedFile(File file) throws FileNotFoundException {</span>
+<span class="nc" id="L393">            this.target = new FileStream(file);</span>
+<span class="nc" id="L394">        }</span>
+
+<span class="nc" id="L396">        BufferedFile(SharpStream target) {</span>
+<span class="nc" id="L397">            this.target = target;</span>
+<span class="nc" id="L398">        }</span>
+
+        protected long getOffset() {
+<span class="nc" id="L401">            return offset + queueSize;// absolute offset in the file</span>
+        }
+
+        protected void close() {
+<span class="nc" id="L405">            queue = null;</span>
+<span class="nc" id="L406">            target.close();</span>
+<span class="nc" id="L407">        }</span>
+
+        protected void write(byte b[], int off, int len) throws IOException {
+<span class="nc bnc" id="L410" title="All 2 branches missed.">            while (len &gt; 0) {</span>
+                // if the queue is full, the method available() will flush the queue
+<span class="nc" id="L412">                int read = Math.min(available(), len);</span>
+
+                // enqueue incoming buffer
+<span class="nc" id="L415">                System.arraycopy(b, off, queue, queueSize, read);</span>
+<span class="nc" id="L416">                queueSize += read;</span>
+
+<span class="nc" id="L418">                len -= read;</span>
+<span class="nc" id="L419">                off += read;</span>
+<span class="nc" id="L420">            }</span>
+
+<span class="nc" id="L422">            long total = offset + queueSize;</span>
+<span class="nc bnc" id="L423" title="All 2 branches missed.">            if (total &gt; length) {</span>
+<span class="nc" id="L424">                length = total;// save length</span>
+            }
+<span class="nc" id="L426">        }</span>
+
+        void flush() throws IOException {
+<span class="nc" id="L429">            writeProof(queue, queueSize);</span>
+<span class="nc" id="L430">            offset += queueSize;</span>
+<span class="nc" id="L431">            queueSize = 0;</span>
+<span class="nc" id="L432">        }</span>
+
+        protected void rewind() throws IOException {
+<span class="nc" id="L435">            offset = 0;</span>
+<span class="nc" id="L436">            target.seek(0);</span>
+<span class="nc" id="L437">        }</span>
+
+        protected int available() throws IOException {
+<span class="nc bnc" id="L440" title="All 2 branches missed.">            if (queueSize &gt;= queue.length) {</span>
+<span class="nc" id="L441">                flush();</span>
+<span class="nc" id="L442">                return queue.length;</span>
+            }
+
+<span class="nc" id="L445">            return queue.length - queueSize;</span>
+        }
+
+        void reset() throws IOException {
+<span class="nc" id="L449">            offset = 0;</span>
+<span class="nc" id="L450">            length = 0;</span>
+<span class="nc" id="L451">            target.seek(0);</span>
+<span class="nc" id="L452">        }</span>
+
+        protected void seek(long absoluteOffset) throws IOException {
+<span class="nc bnc" id="L455" title="All 2 branches missed.">            if (absoluteOffset == offset) {</span>
+<span class="nc" id="L456">                return;// nothing to do</span>
+            }
+<span class="nc" id="L458">            offset = absoluteOffset;</span>
+<span class="nc" id="L459">            target.seek(absoluteOffset);</span>
+<span class="nc" id="L460">        }</span>
+
+        void writeProof(byte[] buffer, int length) throws IOException {
+<span class="nc bnc" id="L463" title="All 2 branches missed.">            if (onWriteError == null) {</span>
+<span class="nc" id="L464">                target.write(buffer, 0, length);</span>
+<span class="nc" id="L465">                return;</span>
+            }
+
+            while (true) {
+                try {
+<span class="nc" id="L470">                    target.write(buffer, 0, length);</span>
+<span class="nc" id="L471">                    return;</span>
+<span class="nc" id="L472">                } catch (Exception e) {</span>
+<span class="nc bnc" id="L473" title="All 2 branches missed.">                    if (!onWriteError.handle(e)) {</span>
+<span class="nc" id="L474">                        throw e;// give up</span>
+                    }
+<span class="nc" id="L476">                }</span>
+            }
+        }
+
+        @NonNull
+        @Override
+        public String toString() {
+            String absLength;
+
+            try {
+<span class="nc" id="L486">                absLength = Long.toString(target.length());</span>
+<span class="nc" id="L487">            } catch (IOException e) {</span>
+<span class="nc" id="L488">                absLength = &quot;[&quot; + e.getLocalizedMessage() + &quot;]&quot;;</span>
+<span class="nc" id="L489">            }</span>
+
+<span class="nc" id="L491">            return String.format(</span>
+                    &quot;offset=%s  length=%s  queue=%s  absLength=%s&quot;,
+<span class="nc" id="L493">                    offset, length, queueSize, absLength</span>
+            );
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

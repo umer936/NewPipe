@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BaseImportExportService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.local.subscription.services</a> &gt; <span class="el_source">BaseImportExportService.java</span></div><h1>BaseImportExportService.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2018 Mauricio Colli &lt;mauriciocolli@outlook.com&gt;
+ * BaseImportExportService.java is part of NewPipe
+ *
+ * License: GPL-3.0+
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package org.schabi.newpipe.local.subscription.services;
+
+import android.app.Service;
+import android.content.Intent;
+import android.os.Build;
+import android.os.IBinder;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.annotation.StringRes;
+import android.support.v4.app.NotificationCompat;
+import android.support.v4.app.NotificationManagerCompat;
+import android.text.TextUtils;
+import android.widget.Toast;
+
+import org.reactivestreams.Publisher;
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.extractor.subscription.SubscriptionExtractor;
+import org.schabi.newpipe.report.ErrorActivity;
+import org.schabi.newpipe.report.UserAction;
+import org.schabi.newpipe.local.subscription.ImportExportEventListener;
+import org.schabi.newpipe.local.subscription.SubscriptionService;
+
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.util.Collections;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import io.reactivex.Flowable;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.functions.Function;
+import io.reactivex.processors.PublishProcessor;
+
+<span class="nc" id="L54">public abstract class BaseImportExportService extends Service {</span>
+<span class="nc" id="L55">    protected final String TAG = this.getClass().getSimpleName();</span>
+
+    protected NotificationManagerCompat notificationManager;
+    protected NotificationCompat.Builder notificationBuilder;
+
+    protected SubscriptionService subscriptionService;
+<span class="nc" id="L61">    protected final CompositeDisposable disposables = new CompositeDisposable();</span>
+<span class="nc" id="L62">    protected final PublishProcessor&lt;String&gt; notificationUpdater = PublishProcessor.create();</span>
+
+    @Nullable
+    @Override
+    public IBinder onBind(Intent intent) {
+<span class="nc" id="L67">        return null;</span>
+    }
+
+    @Override
+    public void onCreate() {
+<span class="nc" id="L72">        super.onCreate();</span>
+<span class="nc" id="L73">        subscriptionService = SubscriptionService.getInstance(this);</span>
+<span class="nc" id="L74">        setupNotification();</span>
+<span class="nc" id="L75">    }</span>
+
+    @Override
+    public void onDestroy() {
+<span class="nc" id="L79">        super.onDestroy();</span>
+<span class="nc" id="L80">        disposeAll();</span>
+<span class="nc" id="L81">    }</span>
+
+    protected void disposeAll() {
+<span class="nc" id="L84">        disposables.clear();</span>
+<span class="nc" id="L85">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Notification Impl
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private static final int NOTIFICATION_SAMPLING_PERIOD = 2500;
+
+<span class="nc" id="L93">    protected final AtomicInteger currentProgress = new AtomicInteger(-1);</span>
+<span class="nc" id="L94">    protected final AtomicInteger maxProgress = new AtomicInteger(-1);</span>
+<span class="nc" id="L95">    protected final ImportExportEventListener eventListener = new ImportExportEventListener() {</span>
+        @Override
+        public void onSizeReceived(int size) {
+<span class="nc" id="L98">            maxProgress.set(size);</span>
+<span class="nc" id="L99">            currentProgress.set(0);</span>
+<span class="nc" id="L100">        }</span>
+
+        @Override
+        public void onItemCompleted(String itemName) {
+<span class="nc" id="L104">            currentProgress.incrementAndGet();</span>
+<span class="nc" id="L105">            notificationUpdater.onNext(itemName);</span>
+<span class="nc" id="L106">        }</span>
+    };
+
+    protected abstract int getNotificationId();
+    @StringRes
+    public abstract int getTitle();
+
+    protected void setupNotification() {
+<span class="nc" id="L114">        notificationManager = NotificationManagerCompat.from(this);</span>
+<span class="nc" id="L115">        notificationBuilder = createNotification();</span>
+<span class="nc" id="L116">        startForeground(getNotificationId(), notificationBuilder.build());</span>
+
+<span class="nc" id="L118">        final Function&lt;Flowable&lt;String&gt;, Publisher&lt;String&gt;&gt; throttleAfterFirstEmission = flow -&gt; flow.limit(1)</span>
+<span class="nc" id="L119">                .concatWith(flow.skip(1).throttleLast(NOTIFICATION_SAMPLING_PERIOD, TimeUnit.MILLISECONDS));</span>
+
+<span class="nc" id="L121">        disposables.add(notificationUpdater</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">                .filter(s -&gt; !s.isEmpty())</span>
+<span class="nc" id="L123">                .publish(throttleAfterFirstEmission)</span>
+<span class="nc" id="L124">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L125">                .subscribe(this::updateNotification));</span>
+<span class="nc" id="L126">    }</span>
+
+    protected void updateNotification(String text) {
+<span class="nc bnc" id="L129" title="All 2 branches missed.">        notificationBuilder.setProgress(maxProgress.get(), currentProgress.get(), maxProgress.get() == -1);</span>
+
+<span class="nc" id="L131">        final String progressText = currentProgress + &quot;/&quot; + maxProgress;</span>
+<span class="nc bnc" id="L132" title="All 2 branches missed.">        if (Build.VERSION.SDK_INT &gt;= Build.VERSION_CODES.N) {</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">            if (!TextUtils.isEmpty(text)) text = text + &quot;  (&quot; + progressText + &quot;)&quot;;</span>
+        } else {
+<span class="nc" id="L135">            notificationBuilder.setContentInfo(progressText);</span>
+        }
+
+<span class="nc bnc" id="L138" title="All 2 branches missed.">        if (!TextUtils.isEmpty(text)) notificationBuilder.setContentText(text);</span>
+<span class="nc" id="L139">        notificationManager.notify(getNotificationId(), notificationBuilder.build());</span>
+<span class="nc" id="L140">    }</span>
+
+    protected void stopService() {
+<span class="nc" id="L143">        postErrorResult(null, null);</span>
+<span class="nc" id="L144">    }</span>
+
+    protected void stopAndReportError(@Nullable Throwable error, String request) {
+<span class="nc" id="L147">        stopService();</span>
+
+<span class="nc" id="L149">        final ErrorActivity.ErrorInfo errorInfo = ErrorActivity.ErrorInfo.make(UserAction.SUBSCRIPTION, &quot;unknown&quot;,</span>
+                request, R.string.general_error);
+<span class="nc bnc" id="L151" title="All 2 branches missed.">        ErrorActivity.reportError(this, error != null ? Collections.singletonList(error) : Collections.emptyList(),</span>
+                null, null, errorInfo);
+<span class="nc" id="L153">    }</span>
+
+    protected void postErrorResult(String title, String text) {
+<span class="nc" id="L156">        disposeAll();</span>
+<span class="nc" id="L157">        stopForeground(true);</span>
+<span class="nc" id="L158">        stopSelf();</span>
+
+<span class="nc bnc" id="L160" title="All 2 branches missed.">        if (title == null) {</span>
+<span class="nc" id="L161">            return;</span>
+        }
+
+<span class="nc bnc" id="L164" title="All 2 branches missed.">        text = text == null ? &quot;&quot; : text;</span>
+<span class="nc" id="L165">        notificationBuilder = new NotificationCompat.Builder(this, getString(R.string.notification_channel_id))</span>
+<span class="nc" id="L166">                .setSmallIcon(R.drawable.ic_newpipe_triangle_white)</span>
+<span class="nc" id="L167">                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)</span>
+<span class="nc" id="L168">                .setContentTitle(title)</span>
+<span class="nc" id="L169">                .setStyle(new NotificationCompat.BigTextStyle().bigText(text))</span>
+<span class="nc" id="L170">                .setContentText(text);</span>
+<span class="nc" id="L171">        notificationManager.notify(getNotificationId(), notificationBuilder.build());</span>
+<span class="nc" id="L172">    }</span>
+
+    protected NotificationCompat.Builder createNotification() {
+<span class="nc" id="L175">        return new NotificationCompat.Builder(this, getString(R.string.notification_channel_id))</span>
+<span class="nc" id="L176">                .setOngoing(true)</span>
+<span class="nc" id="L177">                .setProgress(-1, -1, true)</span>
+<span class="nc" id="L178">                .setSmallIcon(R.drawable.ic_newpipe_triangle_white)</span>
+<span class="nc" id="L179">                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)</span>
+<span class="nc" id="L180">                .setContentTitle(getString(getTitle()));</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Toast
+    //////////////////////////////////////////////////////////////////////////*/
+
+    protected Toast toast;
+
+    protected void showToast(@StringRes int message) {
+<span class="nc" id="L190">        showToast(getString(message));</span>
+<span class="nc" id="L191">    }</span>
+
+    protected void showToast(String message) {
+<span class="nc bnc" id="L194" title="All 2 branches missed.">        if (toast != null) toast.cancel();</span>
+
+<span class="nc" id="L196">        toast = Toast.makeText(this, message, Toast.LENGTH_SHORT);</span>
+<span class="nc" id="L197">        toast.show();</span>
+<span class="nc" id="L198">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Error handling
+    //////////////////////////////////////////////////////////////////////////*/
+
+    protected void handleError(@StringRes int errorTitle, @NonNull Throwable error) {
+<span class="nc" id="L205">        String message = getErrorMessage(error);</span>
+
+<span class="nc bnc" id="L207" title="All 2 branches missed.">        if (TextUtils.isEmpty(message)) {</span>
+<span class="nc" id="L208">            final String errorClassName = error.getClass().getName();</span>
+<span class="nc" id="L209">            message = getString(R.string.error_occurred_detail, errorClassName);</span>
+        }
+
+<span class="nc" id="L212">        showToast(errorTitle);</span>
+<span class="nc" id="L213">        postErrorResult(getString(errorTitle), message);</span>
+<span class="nc" id="L214">    }</span>
+
+    protected String getErrorMessage(Throwable error) {
+<span class="nc" id="L217">        String message = null;</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">        if (error instanceof SubscriptionExtractor.InvalidSourceException) {</span>
+<span class="nc" id="L219">            message = getString(R.string.invalid_source);</span>
+<span class="nc bnc" id="L220" title="All 2 branches missed.">        } else if (error instanceof FileNotFoundException) {</span>
+<span class="nc" id="L221">            message = getString(R.string.invalid_file);</span>
+<span class="nc bnc" id="L222" title="All 2 branches missed.">        } else if (error instanceof IOException) {</span>
+<span class="nc" id="L223">            message = getString(R.string.network_error);</span>
+        }
+<span class="nc" id="L225">        return message;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

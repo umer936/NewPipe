@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PlayerDataSource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.player.helper</a> &gt; <span class="el_source">PlayerDataSource.java</span></div><h1>PlayerDataSource.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.player.helper;
+
+import android.content.Context;
+import android.support.annotation.NonNull;
+
+import com.google.android.exoplayer2.source.ExtractorMediaSource;
+import com.google.android.exoplayer2.source.SingleSampleMediaSource;
+import com.google.android.exoplayer2.source.dash.DashMediaSource;
+import com.google.android.exoplayer2.source.dash.DefaultDashChunkSource;
+import com.google.android.exoplayer2.source.hls.HlsMediaSource;
+import com.google.android.exoplayer2.source.smoothstreaming.DefaultSsChunkSource;
+import com.google.android.exoplayer2.source.smoothstreaming.SsMediaSource;
+import com.google.android.exoplayer2.upstream.DataSource;
+import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
+import com.google.android.exoplayer2.upstream.DefaultLoadErrorHandlingPolicy;
+import com.google.android.exoplayer2.upstream.TransferListener;
+
+public class PlayerDataSource {
+    private static final int MANIFEST_MINIMUM_RETRY = 5;
+    private static final int EXTRACTOR_MINIMUM_RETRY = Integer.MAX_VALUE;
+    private static final int LIVE_STREAM_EDGE_GAP_MILLIS = 10000;
+
+    private final DataSource.Factory cacheDataSourceFactory;
+    private final DataSource.Factory cachelessDataSourceFactory;
+
+    public PlayerDataSource(@NonNull final Context context,
+                            @NonNull final String userAgent,
+<span class="nc" id="L28">                            @NonNull final TransferListener transferListener) {</span>
+<span class="nc" id="L29">        cacheDataSourceFactory = new CacheFactory(context, userAgent, transferListener);</span>
+<span class="nc" id="L30">        cachelessDataSourceFactory = new DefaultDataSourceFactory(context, userAgent, transferListener);</span>
+<span class="nc" id="L31">    }</span>
+
+    public SsMediaSource.Factory getLiveSsMediaSourceFactory() {
+<span class="nc" id="L34">        return new SsMediaSource.Factory(new DefaultSsChunkSource.Factory(</span>
+                cachelessDataSourceFactory), cachelessDataSourceFactory)
+<span class="nc" id="L36">                .setLoadErrorHandlingPolicy(new DefaultLoadErrorHandlingPolicy(MANIFEST_MINIMUM_RETRY))</span>
+<span class="nc" id="L37">                .setLivePresentationDelayMs(LIVE_STREAM_EDGE_GAP_MILLIS);</span>
+    }
+
+    public HlsMediaSource.Factory getLiveHlsMediaSourceFactory() {
+<span class="nc" id="L41">        return new HlsMediaSource.Factory(cachelessDataSourceFactory)</span>
+<span class="nc" id="L42">                .setAllowChunklessPreparation(true)</span>
+<span class="nc" id="L43">                .setLoadErrorHandlingPolicy(new DefaultLoadErrorHandlingPolicy(MANIFEST_MINIMUM_RETRY));</span>
+    }
+
+    public DashMediaSource.Factory getLiveDashMediaSourceFactory() {
+<span class="nc" id="L47">        return new DashMediaSource.Factory(new DefaultDashChunkSource.Factory(</span>
+                cachelessDataSourceFactory), cachelessDataSourceFactory)
+<span class="nc" id="L49">                .setLoadErrorHandlingPolicy(new DefaultLoadErrorHandlingPolicy(MANIFEST_MINIMUM_RETRY))</span>
+<span class="nc" id="L50">                .setLivePresentationDelayMs(LIVE_STREAM_EDGE_GAP_MILLIS, true);</span>
+    }
+
+    public SsMediaSource.Factory getSsMediaSourceFactory() {
+<span class="nc" id="L54">        return new SsMediaSource.Factory(new DefaultSsChunkSource.Factory(</span>
+                cacheDataSourceFactory), cacheDataSourceFactory);
+    }
+
+    public HlsMediaSource.Factory getHlsMediaSourceFactory() {
+<span class="nc" id="L59">        return new HlsMediaSource.Factory(cacheDataSourceFactory);</span>
+    }
+
+    public DashMediaSource.Factory getDashMediaSourceFactory() {
+<span class="nc" id="L63">        return new DashMediaSource.Factory(new DefaultDashChunkSource.Factory(</span>
+                cacheDataSourceFactory), cacheDataSourceFactory);
+    }
+
+    public ExtractorMediaSource.Factory getExtractorMediaSourceFactory() {
+<span class="nc" id="L68">        return new ExtractorMediaSource.Factory(cacheDataSourceFactory)</span>
+<span class="nc" id="L69">                .setLoadErrorHandlingPolicy(new DefaultLoadErrorHandlingPolicy(EXTRACTOR_MINIMUM_RETRY));</span>
+    }
+
+    public ExtractorMediaSource.Factory getExtractorMediaSourceFactory(@NonNull final String key) {
+<span class="nc" id="L73">        return getExtractorMediaSourceFactory().setCustomCacheKey(key);</span>
+    }
+
+    public SingleSampleMediaSource.Factory getSampleMediaSourceFactory() {
+<span class="nc" id="L77">        return new SingleSampleMediaSource.Factory(cacheDataSourceFactory);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

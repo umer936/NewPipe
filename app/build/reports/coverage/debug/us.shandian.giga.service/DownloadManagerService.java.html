@@ -1,0 +1,625 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DownloadManagerService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">us.shandian.giga.service</a> &gt; <span class="el_source">DownloadManagerService.java</span></div><h1>DownloadManagerService.java</h1><pre class="source lang-java linenums">package us.shandian.giga.service;
+
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
+import android.content.SharedPreferences.OnSharedPreferenceChangeListener;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkInfo;
+import android.net.NetworkRequest;
+import android.net.Uri;
+import android.os.Binder;
+import android.os.Build;
+import android.os.Handler;
+import android.os.Handler.Callback;
+import android.os.IBinder;
+import android.os.Looper;
+import android.os.Message;
+import android.preference.PreferenceManager;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.annotation.StringRes;
+import android.support.v4.app.NotificationCompat;
+import android.support.v4.app.NotificationCompat.Builder;
+import android.util.Log;
+import android.util.SparseArray;
+import android.widget.Toast;
+
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.download.DownloadActivity;
+import org.schabi.newpipe.player.helper.LockManager;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+
+import us.shandian.giga.get.DownloadMission;
+import us.shandian.giga.io.StoredDirectoryHelper;
+import us.shandian.giga.io.StoredFileHelper;
+import us.shandian.giga.postprocessing.Postprocessing;
+import us.shandian.giga.service.DownloadManager.NetworkState;
+
+import static org.schabi.newpipe.BuildConfig.APPLICATION_ID;
+import static org.schabi.newpipe.BuildConfig.DEBUG;
+
+<span class="nc" id="L54">public class DownloadManagerService extends Service {</span>
+
+    private static final String TAG = &quot;DownloadManagerService&quot;;
+
+    public static final int MESSAGE_PAUSED = 1;
+    public static final int MESSAGE_FINISHED = 2;
+    public static final int MESSAGE_PROGRESS = 3;
+    public static final int MESSAGE_ERROR = 4;
+    public static final int MESSAGE_DELETED = 5;
+
+    private static final int FOREGROUND_NOTIFICATION_ID = 1000;
+    private static final int DOWNLOADS_NOTIFICATION_ID = 1001;
+
+    private static final String EXTRA_URLS = &quot;DownloadManagerService.extra.urls&quot;;
+    private static final String EXTRA_KIND = &quot;DownloadManagerService.extra.kind&quot;;
+    private static final String EXTRA_THREADS = &quot;DownloadManagerService.extra.threads&quot;;
+    private static final String EXTRA_POSTPROCESSING_NAME = &quot;DownloadManagerService.extra.postprocessingName&quot;;
+    private static final String EXTRA_POSTPROCESSING_ARGS = &quot;DownloadManagerService.extra.postprocessingArgs&quot;;
+    private static final String EXTRA_SOURCE = &quot;DownloadManagerService.extra.source&quot;;
+    private static final String EXTRA_NEAR_LENGTH = &quot;DownloadManagerService.extra.nearLength&quot;;
+    private static final String EXTRA_PATH = &quot;DownloadManagerService.extra.storagePath&quot;;
+    private static final String EXTRA_PARENT_PATH = &quot;DownloadManagerService.extra.storageParentPath&quot;;
+    private static final String EXTRA_STORAGE_TAG = &quot;DownloadManagerService.extra.storageTag&quot;;
+
+    private static final String ACTION_RESET_DOWNLOAD_FINISHED = APPLICATION_ID + &quot;.reset_download_finished&quot;;
+    private static final String ACTION_OPEN_DOWNLOADS_FINISHED = APPLICATION_ID + &quot;.open_downloads_finished&quot;;
+
+    private DownloadManagerBinder mBinder;
+    private DownloadManager mManager;
+    private Notification mNotification;
+    private Handler mHandler;
+<span class="nc" id="L85">    private boolean mForeground = false;</span>
+<span class="nc" id="L86">    private NotificationManager mNotificationManager = null;</span>
+<span class="nc" id="L87">    private boolean mDownloadNotificationEnable = true;</span>
+
+<span class="nc" id="L89">    private int downloadDoneCount = 0;</span>
+<span class="nc" id="L90">    private Builder downloadDoneNotification = null;</span>
+<span class="nc" id="L91">    private StringBuilder downloadDoneList = null;</span>
+
+<span class="nc" id="L93">    private final ArrayList&lt;Callback&gt; mEchoObservers = new ArrayList&lt;&gt;(1);</span>
+
+    private ConnectivityManager mConnectivityManager;
+<span class="nc" id="L96">    private BroadcastReceiver mNetworkStateListener = null;</span>
+<span class="nc" id="L97">    private ConnectivityManager.NetworkCallback mNetworkStateListenerL = null;</span>
+
+<span class="nc" id="L99">    private SharedPreferences mPrefs = null;</span>
+<span class="nc" id="L100">    private final OnSharedPreferenceChangeListener mPrefChangeListener = this::handlePreferenceChange;</span>
+
+<span class="nc" id="L102">    private boolean mLockAcquired = false;</span>
+<span class="nc" id="L103">    private LockManager mLock = null;</span>
+
+<span class="nc" id="L105">    private int downloadFailedNotificationID = DOWNLOADS_NOTIFICATION_ID + 1;</span>
+<span class="nc" id="L106">    private Builder downloadFailedNotification = null;</span>
+<span class="nc" id="L107">    private SparseArray&lt;DownloadMission&gt; mFailedDownloads = new SparseArray&lt;&gt;(5);</span>
+
+    private Bitmap icLauncher;
+    private Bitmap icDownloadDone;
+    private Bitmap icDownloadFailed;
+
+    private PendingIntent mOpenDownloadList;
+
+    /**
+     * notify media scanner on downloaded media file ...
+     *
+     * @param file the downloaded file uri
+     */
+    private void notifyMediaScanner(Uri file) {
+<span class="nc" id="L121">        sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, file));</span>
+<span class="nc" id="L122">    }</span>
+
+    @Override
+    public void onCreate() {
+<span class="nc" id="L126">        super.onCreate();</span>
+
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L129">            Log.d(TAG, &quot;onCreate&quot;);</span>
+        }
+
+<span class="nc" id="L132">        mBinder = new DownloadManagerBinder();</span>
+<span class="nc" id="L133">        mHandler = new Handler(this::handleMessage);</span>
+
+<span class="nc" id="L135">        mPrefs = PreferenceManager.getDefaultSharedPreferences(this);</span>
+
+<span class="nc" id="L137">        mManager = new DownloadManager(this, mHandler, loadMainVideoStorage(), loadMainAudioStorage());</span>
+
+<span class="nc" id="L139">        Intent openDownloadListIntent = new Intent(this, DownloadActivity.class)</span>
+<span class="nc" id="L140">                .setAction(Intent.ACTION_MAIN);</span>
+
+<span class="nc" id="L142">        mOpenDownloadList = PendingIntent.getActivity(this, 0,</span>
+                openDownloadListIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT);
+
+<span class="nc" id="L146">        icLauncher = BitmapFactory.decodeResource(this.getResources(), R.mipmap.ic_launcher);</span>
+
+<span class="nc" id="L148">        Builder builder = new Builder(this, getString(R.string.notification_channel_id))</span>
+<span class="nc" id="L149">                .setContentIntent(mOpenDownloadList)</span>
+<span class="nc" id="L150">                .setSmallIcon(android.R.drawable.stat_sys_download)</span>
+<span class="nc" id="L151">                .setLargeIcon(icLauncher)</span>
+<span class="nc" id="L152">                .setContentTitle(getString(R.string.msg_running))</span>
+<span class="nc" id="L153">                .setContentText(getString(R.string.msg_running_detail));</span>
+
+<span class="nc" id="L155">        mNotification = builder.build();</span>
+
+<span class="nc" id="L157">        mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);</span>
+<span class="nc" id="L158">        mConnectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);</span>
+
+<span class="nc bnc" id="L160" title="All 2 branches missed.">        if (android.os.Build.VERSION.SDK_INT &gt;= Build.VERSION_CODES.LOLLIPOP) {</span>
+<span class="nc" id="L161">            mNetworkStateListenerL = new ConnectivityManager.NetworkCallback() {</span>
+                @Override
+                public void onAvailable(Network network) {
+<span class="nc" id="L164">                    handleConnectivityState(false);</span>
+<span class="nc" id="L165">                }</span>
+
+                @Override
+                public void onLost(Network network) {
+<span class="nc" id="L169">                    handleConnectivityState(false);</span>
+<span class="nc" id="L170">                }</span>
+            };
+<span class="nc" id="L172">            mConnectivityManager.registerNetworkCallback(new NetworkRequest.Builder().build(), mNetworkStateListenerL);</span>
+        } else {
+<span class="nc" id="L174">            mNetworkStateListener = new BroadcastReceiver() {</span>
+                @Override
+                public void onReceive(Context context, Intent intent) {
+<span class="nc" id="L177">                    handleConnectivityState(false);</span>
+<span class="nc" id="L178">                }</span>
+            };
+<span class="nc" id="L180">            registerReceiver(mNetworkStateListener, new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));</span>
+        }
+
+<span class="nc" id="L183">        mPrefs.registerOnSharedPreferenceChangeListener(mPrefChangeListener);</span>
+
+<span class="nc" id="L185">        handlePreferenceChange(mPrefs, getString(R.string.downloads_cross_network));</span>
+<span class="nc" id="L186">        handlePreferenceChange(mPrefs, getString(R.string.downloads_maximum_retry));</span>
+<span class="nc" id="L187">        handlePreferenceChange(mPrefs, getString(R.string.downloads_queue_limit));</span>
+
+<span class="nc" id="L189">        mLock = new LockManager(this);</span>
+<span class="nc" id="L190">    }</span>
+
+    @Override
+    public int onStartCommand(final Intent intent, int flags, int startId) {
+<span class="nc bnc" id="L194" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">            Log.d(TAG, intent == null ? &quot;Restarting&quot; : &quot;Starting&quot;);</span>
+        }
+
+<span class="nc bnc" id="L198" title="All 2 branches missed.">        if (intent == null) return START_NOT_STICKY;</span>
+
+<span class="nc" id="L200">        Log.i(TAG, &quot;Got intent: &quot; + intent);</span>
+<span class="nc" id="L201">        String action = intent.getAction();</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">        if (action != null) {</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">            if (action.equals(Intent.ACTION_RUN)) {</span>
+<span class="nc" id="L204">                mHandler.post(() -&gt; startMission(intent));</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">            } else if (downloadDoneNotification != null) {</span>
+<span class="nc bnc" id="L206" title="All 4 branches missed.">                if (action.equals(ACTION_RESET_DOWNLOAD_FINISHED) || action.equals(ACTION_OPEN_DOWNLOADS_FINISHED)) {</span>
+<span class="nc" id="L207">                    downloadDoneCount = 0;</span>
+<span class="nc" id="L208">                    downloadDoneList.setLength(0);</span>
+                }
+<span class="nc bnc" id="L210" title="All 2 branches missed.">                if (action.equals(ACTION_OPEN_DOWNLOADS_FINISHED)) {</span>
+<span class="nc" id="L211">                    startActivity(new Intent(this, DownloadActivity.class)</span>
+<span class="nc" id="L212">                            .setAction(Intent.ACTION_MAIN)</span>
+<span class="nc" id="L213">                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)</span>
+                    );
+                }
+            }
+        }
+<span class="nc" id="L218">        return START_NOT_STICKY;</span>
+    }
+
+    @Override
+    public void onDestroy() {
+<span class="nc" id="L223">        super.onDestroy();</span>
+
+<span class="nc bnc" id="L225" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L226">            Log.d(TAG, &quot;Destroying&quot;);</span>
+        }
+
+<span class="nc" id="L229">        stopForeground(true);</span>
+
+<span class="nc bnc" id="L231" title="All 4 branches missed.">        if (mNotificationManager != null &amp;&amp; downloadDoneNotification != null) {</span>
+<span class="nc" id="L232">            downloadDoneNotification.setDeleteIntent(null);// prevent NewPipe running when is killed, cleared from recent, etc</span>
+<span class="nc" id="L233">            mNotificationManager.notify(DOWNLOADS_NOTIFICATION_ID, downloadDoneNotification.build());</span>
+        }
+
+<span class="nc" id="L236">        manageLock(false);</span>
+
+<span class="nc bnc" id="L238" title="All 2 branches missed.">        if (android.os.Build.VERSION.SDK_INT &gt;= Build.VERSION_CODES.LOLLIPOP)</span>
+<span class="nc" id="L239">            mConnectivityManager.unregisterNetworkCallback(mNetworkStateListenerL);</span>
+        else
+<span class="nc" id="L241">            unregisterReceiver(mNetworkStateListener);</span>
+
+<span class="nc" id="L243">        mPrefs.unregisterOnSharedPreferenceChangeListener(mPrefChangeListener);</span>
+
+<span class="nc bnc" id="L245" title="All 2 branches missed.">        if (icDownloadDone != null) icDownloadDone.recycle();</span>
+<span class="nc bnc" id="L246" title="All 2 branches missed.">        if (icDownloadFailed != null) icDownloadFailed.recycle();</span>
+<span class="nc bnc" id="L247" title="All 2 branches missed.">        if (icLauncher != null) icLauncher.recycle();</span>
+
+<span class="nc" id="L249">        mManager.pauseAllMissions(true);</span>
+<span class="nc" id="L250">    }</span>
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        /*
+        int permissionCheck;
+        if (android.os.Build.VERSION.SDK_INT &gt;= android.os.Build.VERSION_CODES.JELLY_BEAN) {
+            permissionCheck = PermissionChecker.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE);
+            if (permissionCheck == PermissionChecker.PERMISSION_DENIED) {
+                Toast.makeText(this, &quot;Permission denied (read)&quot;, Toast.LENGTH_SHORT).show();
+            }
+        }
+
+        permissionCheck = PermissionChecker.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE);
+        if (permissionCheck == PermissionChecker.PERMISSION_DENIED) {
+            Toast.makeText(this, &quot;Permission denied (write)&quot;, Toast.LENGTH_SHORT).show();
+        }
+        */
+
+<span class="nc" id="L269">        return mBinder;</span>
+    }
+
+    private boolean handleMessage(@NonNull Message msg) {
+<span class="nc" id="L273">        DownloadMission mission = (DownloadMission) msg.obj;</span>
+
+<span class="nc bnc" id="L275" title="All 5 branches missed.">        switch (msg.what) {</span>
+            case MESSAGE_FINISHED:
+<span class="nc" id="L277">                notifyMediaScanner(mission.storage.getUri());</span>
+<span class="nc" id="L278">                notifyFinishedDownload(mission.storage.getName());</span>
+<span class="nc" id="L279">                mManager.setFinished(mission);</span>
+<span class="nc" id="L280">                handleConnectivityState(false);</span>
+<span class="nc" id="L281">                updateForegroundState(mManager.runMissions());</span>
+<span class="nc" id="L282">                break;</span>
+            case MESSAGE_PROGRESS:
+<span class="nc" id="L284">                updateForegroundState(true);</span>
+<span class="nc" id="L285">                break;</span>
+            case MESSAGE_ERROR:
+<span class="nc" id="L287">                notifyFailedDownload(mission);</span>
+<span class="nc" id="L288">                handleConnectivityState(false);</span>
+<span class="nc" id="L289">                updateForegroundState(mManager.runMissions());</span>
+<span class="nc" id="L290">                break;</span>
+            case MESSAGE_PAUSED:
+<span class="nc bnc" id="L292" title="All 2 branches missed.">                updateForegroundState(mManager.getRunningMissionsCount() &gt; 0);</span>
+                break;
+        }
+
+<span class="nc bnc" id="L296" title="All 2 branches missed.">        if (msg.what != MESSAGE_ERROR)</span>
+<span class="nc" id="L297">            mFailedDownloads.delete(mFailedDownloads.indexOfValue(mission));</span>
+
+<span class="nc" id="L299">        synchronized (mEchoObservers) {</span>
+<span class="nc bnc" id="L300" title="All 2 branches missed.">            for (Callback observer : mEchoObservers) {</span>
+<span class="nc" id="L301">                observer.handleMessage(msg);</span>
+<span class="nc" id="L302">            }</span>
+<span class="nc" id="L303">        }</span>
+
+<span class="nc" id="L305">        return true;</span>
+    }
+
+    private void handleConnectivityState(boolean updateOnly) {
+<span class="nc" id="L309">        NetworkInfo info = mConnectivityManager.getActiveNetworkInfo();</span>
+        NetworkState status;
+
+<span class="nc bnc" id="L312" title="All 2 branches missed.">        if (info == null) {</span>
+<span class="nc" id="L313">            status = NetworkState.Unavailable;</span>
+<span class="nc" id="L314">            Log.i(TAG, &quot;Active network [connectivity is unavailable]&quot;);</span>
+        } else {
+<span class="nc" id="L316">            boolean connected = info.isConnected();</span>
+<span class="nc" id="L317">            boolean metered = mConnectivityManager.isActiveNetworkMetered();</span>
+
+<span class="nc bnc" id="L319" title="All 2 branches missed.">            if (connected)</span>
+<span class="nc bnc" id="L320" title="All 2 branches missed.">                status = metered ? NetworkState.MeteredOperating : NetworkState.Operating;</span>
+            else
+<span class="nc" id="L322">                status = NetworkState.Unavailable;</span>
+
+<span class="nc" id="L324">            Log.i(TAG, &quot;Active network [connected=&quot; + connected + &quot; metered=&quot; + metered + &quot;] &quot; + info.toString());</span>
+        }
+
+<span class="nc bnc" id="L327" title="All 2 branches missed.">        if (mManager == null) return;// avoid race-conditions while the service is starting</span>
+<span class="nc" id="L328">        mManager.handleConnectivityState(status, updateOnly);</span>
+<span class="nc" id="L329">    }</span>
+
+    private void handlePreferenceChange(SharedPreferences prefs, @NonNull String key) {
+<span class="nc bnc" id="L332" title="All 2 branches missed.">        if (key.equals(getString(R.string.downloads_maximum_retry))) {</span>
+            try {
+<span class="nc" id="L334">                String value = prefs.getString(key, getString(R.string.downloads_maximum_retry_default));</span>
+<span class="nc bnc" id="L335" title="All 2 branches missed.">                mManager.mPrefMaxRetry = value == null ? 0 : Integer.parseInt(value);</span>
+<span class="nc" id="L336">            } catch (Exception e) {</span>
+<span class="nc" id="L337">                mManager.mPrefMaxRetry = 0;</span>
+<span class="nc" id="L338">            }</span>
+<span class="nc" id="L339">            mManager.updateMaximumAttempts();</span>
+<span class="nc bnc" id="L340" title="All 2 branches missed.">        } else if (key.equals(getString(R.string.downloads_cross_network))) {</span>
+<span class="nc" id="L341">            mManager.mPrefMeteredDownloads = prefs.getBoolean(key, false);</span>
+<span class="nc bnc" id="L342" title="All 2 branches missed.">        } else if (key.equals(getString(R.string.downloads_queue_limit))) {</span>
+<span class="nc" id="L343">            mManager.mPrefQueueLimit = prefs.getBoolean(key, true);</span>
+<span class="nc bnc" id="L344" title="All 2 branches missed.">        } else if (key.equals(getString(R.string.download_path_video_key))) {</span>
+<span class="nc" id="L345">            mManager.mMainStorageVideo = loadMainVideoStorage();</span>
+<span class="nc bnc" id="L346" title="All 2 branches missed.">        } else if (key.equals(getString(R.string.download_path_audio_key))) {</span>
+<span class="nc" id="L347">            mManager.mMainStorageAudio = loadMainAudioStorage();</span>
+        }
+<span class="nc" id="L349">    }</span>
+
+    public void updateForegroundState(boolean state) {
+<span class="nc bnc" id="L352" title="All 2 branches missed.">        if (state == mForeground) return;</span>
+
+<span class="nc bnc" id="L354" title="All 2 branches missed.">        if (state) {</span>
+<span class="nc" id="L355">            startForeground(FOREGROUND_NOTIFICATION_ID, mNotification);</span>
+        } else {
+<span class="nc" id="L357">            stopForeground(true);</span>
+        }
+
+<span class="nc" id="L360">        manageLock(state);</span>
+
+<span class="nc" id="L362">        mForeground = state;</span>
+<span class="nc" id="L363">    }</span>
+
+    /**
+     * Start a new download mission
+     *
+     * @param context    the activity context
+     * @param urls       the list of urls to download
+     * @param storage    where the file is saved
+     * @param kind       type of file (a: audio  v: video  s: subtitle ?: file-extension defined)
+     * @param threads    the number of threads maximal used to download chunks of the file.
+     * @param psName     the name of the required post-processing algorithm, or {@code null} to ignore.
+     * @param source     source url of the resource
+     * @param psArgs     the arguments for the post-processing algorithm.
+     * @param nearLength the approximated final length of the file
+     */
+    public static void startMission(Context context, String[] urls, StoredFileHelper storage, char kind,
+                                    int threads, String source, String psName, String[] psArgs, long nearLength) {
+<span class="nc" id="L380">        Intent intent = new Intent(context, DownloadManagerService.class);</span>
+<span class="nc" id="L381">        intent.setAction(Intent.ACTION_RUN);</span>
+<span class="nc" id="L382">        intent.putExtra(EXTRA_URLS, urls);</span>
+<span class="nc" id="L383">        intent.putExtra(EXTRA_KIND, kind);</span>
+<span class="nc" id="L384">        intent.putExtra(EXTRA_THREADS, threads);</span>
+<span class="nc" id="L385">        intent.putExtra(EXTRA_SOURCE, source);</span>
+<span class="nc" id="L386">        intent.putExtra(EXTRA_POSTPROCESSING_NAME, psName);</span>
+<span class="nc" id="L387">        intent.putExtra(EXTRA_POSTPROCESSING_ARGS, psArgs);</span>
+<span class="nc" id="L388">        intent.putExtra(EXTRA_NEAR_LENGTH, nearLength);</span>
+
+<span class="nc" id="L390">        intent.putExtra(EXTRA_PARENT_PATH, storage.getParentUri());</span>
+<span class="nc" id="L391">        intent.putExtra(EXTRA_PATH, storage.getUri());</span>
+<span class="nc" id="L392">        intent.putExtra(EXTRA_STORAGE_TAG, storage.getTag());</span>
+
+<span class="nc" id="L394">        context.startService(intent);</span>
+<span class="nc" id="L395">    }</span>
+
+    private void startMission(Intent intent) {
+<span class="nc" id="L398">        String[] urls = intent.getStringArrayExtra(EXTRA_URLS);</span>
+<span class="nc" id="L399">        Uri path = intent.getParcelableExtra(EXTRA_PATH);</span>
+<span class="nc" id="L400">        Uri parentPath = intent.getParcelableExtra(EXTRA_PARENT_PATH);</span>
+<span class="nc" id="L401">        int threads = intent.getIntExtra(EXTRA_THREADS, 1);</span>
+<span class="nc" id="L402">        char kind = intent.getCharExtra(EXTRA_KIND, '?');</span>
+<span class="nc" id="L403">        String psName = intent.getStringExtra(EXTRA_POSTPROCESSING_NAME);</span>
+<span class="nc" id="L404">        String[] psArgs = intent.getStringArrayExtra(EXTRA_POSTPROCESSING_ARGS);</span>
+<span class="nc" id="L405">        String source = intent.getStringExtra(EXTRA_SOURCE);</span>
+<span class="nc" id="L406">        long nearLength = intent.getLongExtra(EXTRA_NEAR_LENGTH, 0);</span>
+<span class="nc" id="L407">        String tag = intent.getStringExtra(EXTRA_STORAGE_TAG);</span>
+
+        StoredFileHelper storage;
+        try {
+<span class="nc" id="L411">            storage = new StoredFileHelper(this, parentPath, path, tag);</span>
+<span class="nc" id="L412">        } catch (IOException e) {</span>
+<span class="nc" id="L413">            throw new RuntimeException(e);// this never should happen</span>
+<span class="nc" id="L414">        }</span>
+
+        Postprocessing ps;
+<span class="nc bnc" id="L417" title="All 2 branches missed.">        if (psName == null)</span>
+<span class="nc" id="L418">            ps = null;</span>
+        else
+<span class="nc" id="L420">            ps = Postprocessing.getAlgorithm(psName, psArgs);</span>
+
+<span class="nc" id="L422">        final DownloadMission mission = new DownloadMission(urls, storage, kind, ps);</span>
+<span class="nc" id="L423">        mission.threadCount = threads;</span>
+<span class="nc" id="L424">        mission.source = source;</span>
+<span class="nc" id="L425">        mission.nearLength = nearLength;</span>
+
+<span class="nc bnc" id="L427" title="All 2 branches missed.">        if (ps != null)</span>
+<span class="nc" id="L428">            ps.setTemporalDir(DownloadManager.pickAvailableTemporalDir(this));</span>
+
+<span class="nc" id="L430">        handleConnectivityState(true);// first check the actual network status</span>
+
+<span class="nc" id="L432">        mManager.startMission(mission);</span>
+<span class="nc" id="L433">    }</span>
+
+    public void notifyFinishedDownload(String name) {
+<span class="nc bnc" id="L436" title="All 4 branches missed.">        if (!mDownloadNotificationEnable || mNotificationManager == null) {</span>
+<span class="nc" id="L437">            return;</span>
+        }
+
+<span class="nc bnc" id="L440" title="All 2 branches missed.">        if (downloadDoneNotification == null) {</span>
+<span class="nc" id="L441">            downloadDoneList = new StringBuilder(name.length());</span>
+
+<span class="nc" id="L443">            icDownloadDone = BitmapFactory.decodeResource(this.getResources(), android.R.drawable.stat_sys_download_done);</span>
+<span class="nc" id="L444">            downloadDoneNotification = new Builder(this, getString(R.string.notification_channel_id))</span>
+<span class="nc" id="L445">                    .setAutoCancel(true)</span>
+<span class="nc" id="L446">                    .setLargeIcon(icDownloadDone)</span>
+<span class="nc" id="L447">                    .setSmallIcon(android.R.drawable.stat_sys_download_done)</span>
+<span class="nc" id="L448">                    .setDeleteIntent(makePendingIntent(ACTION_RESET_DOWNLOAD_FINISHED))</span>
+<span class="nc" id="L449">                    .setContentIntent(makePendingIntent(ACTION_OPEN_DOWNLOADS_FINISHED));</span>
+        }
+
+<span class="nc bnc" id="L452" title="All 2 branches missed.">        if (downloadDoneCount &lt; 1) {</span>
+<span class="nc" id="L453">            downloadDoneList.append(name);</span>
+
+<span class="nc bnc" id="L455" title="All 2 branches missed.">            if (android.os.Build.VERSION.SDK_INT &lt; Build.VERSION_CODES.LOLLIPOP) {</span>
+<span class="nc" id="L456">                downloadDoneNotification.setContentTitle(getString(R.string.app_name));</span>
+            } else {
+<span class="nc" id="L458">                downloadDoneNotification.setContentTitle(null);</span>
+            }
+
+<span class="nc" id="L461">            downloadDoneNotification.setContentText(getString(R.string.download_finished));</span>
+<span class="nc" id="L462">            downloadDoneNotification.setStyle(new NotificationCompat.BigTextStyle()</span>
+<span class="nc" id="L463">                    .setBigContentTitle(getString(R.string.download_finished))</span>
+<span class="nc" id="L464">                    .bigText(name)</span>
+            );
+        } else {
+<span class="nc" id="L467">            downloadDoneList.append('\n');</span>
+<span class="nc" id="L468">            downloadDoneList.append(name);</span>
+
+<span class="nc" id="L470">            downloadDoneNotification.setStyle(new NotificationCompat.BigTextStyle().bigText(downloadDoneList));</span>
+<span class="nc" id="L471">            downloadDoneNotification.setContentTitle(getString(R.string.download_finished_more, String.valueOf(downloadDoneCount + 1)));</span>
+<span class="nc" id="L472">            downloadDoneNotification.setContentText(downloadDoneList);</span>
+        }
+
+<span class="nc" id="L475">        mNotificationManager.notify(DOWNLOADS_NOTIFICATION_ID, downloadDoneNotification.build());</span>
+<span class="nc" id="L476">        downloadDoneCount++;</span>
+<span class="nc" id="L477">    }</span>
+
+    public void notifyFailedDownload(DownloadMission mission) {
+<span class="nc bnc" id="L480" title="All 4 branches missed.">        if (!mDownloadNotificationEnable || mFailedDownloads.indexOfValue(mission) &gt;= 0) return;</span>
+
+<span class="nc" id="L482">        int id = downloadFailedNotificationID++;</span>
+<span class="nc" id="L483">        mFailedDownloads.put(id, mission);</span>
+
+<span class="nc bnc" id="L485" title="All 2 branches missed.">        if (downloadFailedNotification == null) {</span>
+<span class="nc" id="L486">            icDownloadFailed = BitmapFactory.decodeResource(this.getResources(), android.R.drawable.stat_sys_warning);</span>
+<span class="nc" id="L487">            downloadFailedNotification = new Builder(this, getString(R.string.notification_channel_id))</span>
+<span class="nc" id="L488">                    .setAutoCancel(true)</span>
+<span class="nc" id="L489">                    .setLargeIcon(icDownloadFailed)</span>
+<span class="nc" id="L490">                    .setSmallIcon(android.R.drawable.stat_sys_warning)</span>
+<span class="nc" id="L491">                    .setContentIntent(mOpenDownloadList);</span>
+        }
+
+<span class="nc bnc" id="L494" title="All 2 branches missed.">        if (android.os.Build.VERSION.SDK_INT &lt; Build.VERSION_CODES.LOLLIPOP) {</span>
+<span class="nc" id="L495">            downloadFailedNotification.setContentTitle(getString(R.string.app_name));</span>
+<span class="nc" id="L496">            downloadFailedNotification.setStyle(new NotificationCompat.BigTextStyle()</span>
+<span class="nc" id="L497">                    .bigText(getString(R.string.download_failed).concat(&quot;: &quot;).concat(mission.storage.getName())));</span>
+        } else {
+<span class="nc" id="L499">            downloadFailedNotification.setContentTitle(getString(R.string.download_failed));</span>
+<span class="nc" id="L500">            downloadFailedNotification.setContentText(mission.storage.getName());</span>
+<span class="nc" id="L501">            downloadFailedNotification.setStyle(new NotificationCompat.BigTextStyle()</span>
+<span class="nc" id="L502">                    .bigText(mission.storage.getName()));</span>
+        }
+
+<span class="nc" id="L505">        mNotificationManager.notify(id, downloadFailedNotification.build());</span>
+<span class="nc" id="L506">    }</span>
+
+    private PendingIntent makePendingIntent(String action) {
+<span class="nc" id="L509">        Intent intent = new Intent(this, DownloadManagerService.class).setAction(action);</span>
+<span class="nc" id="L510">        return PendingIntent.getService(this, intent.hashCode(), intent, PendingIntent.FLAG_UPDATE_CURRENT);</span>
+    }
+
+    private void manageObservers(Callback handler, boolean add) {
+<span class="nc" id="L514">        synchronized (mEchoObservers) {</span>
+<span class="nc bnc" id="L515" title="All 2 branches missed.">            if (add) {</span>
+<span class="nc" id="L516">                mEchoObservers.add(handler);</span>
+            } else {
+<span class="nc" id="L518">                mEchoObservers.remove(handler);</span>
+            }
+<span class="nc" id="L520">        }</span>
+<span class="nc" id="L521">    }</span>
+
+    private void manageLock(boolean acquire) {
+<span class="nc bnc" id="L524" title="All 2 branches missed.">        if (acquire == mLockAcquired) return;</span>
+
+<span class="nc bnc" id="L526" title="All 2 branches missed.">        if (acquire)</span>
+<span class="nc" id="L527">            mLock.acquireWifiAndCpu();</span>
+        else
+<span class="nc" id="L529">            mLock.releaseWifiAndCpu();</span>
+
+<span class="nc" id="L531">        mLockAcquired = acquire;</span>
+<span class="nc" id="L532">    }</span>
+
+    private StoredDirectoryHelper loadMainVideoStorage() {
+<span class="nc" id="L535">        return loadMainStorage(R.string.download_path_video_key, DownloadManager.TAG_VIDEO);</span>
+    }
+
+    private StoredDirectoryHelper loadMainAudioStorage() {
+<span class="nc" id="L539">        return loadMainStorage(R.string.download_path_audio_key, DownloadManager.TAG_AUDIO);</span>
+    }
+
+    private StoredDirectoryHelper loadMainStorage(@StringRes int prefKey, String tag) {
+<span class="nc" id="L543">        String path = mPrefs.getString(getString(prefKey), null);</span>
+
+<span class="nc bnc" id="L545" title="All 4 branches missed.">        if (path == null || path.isEmpty()) return null;</span>
+
+<span class="nc bnc" id="L547" title="All 2 branches missed.">        if (path.charAt(0) == File.separatorChar) {</span>
+<span class="nc" id="L548">            Log.i(TAG, &quot;Old save path style present: &quot; + path);</span>
+
+<span class="nc bnc" id="L550" title="All 2 branches missed.">            if (Build.VERSION.SDK_INT &lt; Build.VERSION_CODES.LOLLIPOP)</span>
+<span class="nc" id="L551">                path = Uri.fromFile(new File(path)).toString();</span>
+            else
+<span class="nc" id="L553">                path = &quot;&quot;;</span>
+
+<span class="nc" id="L555">            mPrefs.edit().putString(getString(prefKey), &quot;&quot;).apply();</span>
+        }
+
+        try {
+<span class="nc" id="L559">            return new StoredDirectoryHelper(this, Uri.parse(path), tag);</span>
+<span class="nc" id="L560">        } catch (Exception e) {</span>
+<span class="nc" id="L561">            Log.e(TAG, &quot;Failed to load the storage of &quot; + tag + &quot; from &quot; + path, e);</span>
+<span class="nc" id="L562">            Toast.makeText(this, R.string.no_available_dir, Toast.LENGTH_LONG).show();</span>
+        }
+
+<span class="nc" id="L565">        return null;</span>
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // Wrappers for DownloadManager
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+<span class="nc" id="L572">    public class DownloadManagerBinder extends Binder {</span>
+        public DownloadManager getDownloadManager() {
+<span class="nc" id="L574">            return mManager;</span>
+        }
+
+        @Nullable
+        public StoredDirectoryHelper getMainStorageVideo() {
+<span class="nc" id="L579">            return mManager.mMainStorageVideo;</span>
+        }
+
+        @Nullable
+        public StoredDirectoryHelper getMainStorageAudio() {
+<span class="nc" id="L584">            return mManager.mMainStorageAudio;</span>
+        }
+
+        public boolean askForSavePath() {
+<span class="nc" id="L588">            return DownloadManagerService.this.mPrefs.getBoolean(</span>
+<span class="nc" id="L589">                    DownloadManagerService.this.getString(R.string.downloads_storage_ask),</span>
+                    false
+            );
+        }
+
+        public void addMissionEventListener(Callback handler) {
+<span class="nc" id="L595">            manageObservers(handler, true);</span>
+<span class="nc" id="L596">        }</span>
+
+        public void removeMissionEventListener(Callback handler) {
+<span class="nc" id="L599">            manageObservers(handler, false);</span>
+<span class="nc" id="L600">        }</span>
+
+        public void clearDownloadNotifications() {
+<span class="nc bnc" id="L603" title="All 2 branches missed.">            if (mNotificationManager == null) return;</span>
+<span class="nc bnc" id="L604" title="All 2 branches missed.">            if (downloadDoneNotification != null) {</span>
+<span class="nc" id="L605">                mNotificationManager.cancel(DOWNLOADS_NOTIFICATION_ID);</span>
+<span class="nc" id="L606">                downloadDoneList.setLength(0);</span>
+<span class="nc" id="L607">                downloadDoneCount = 0;</span>
+            }
+<span class="nc bnc" id="L609" title="All 2 branches missed.">            if (downloadFailedNotification != null) {</span>
+<span class="nc bnc" id="L610" title="All 2 branches missed.">                for (; downloadFailedNotificationID &gt; DOWNLOADS_NOTIFICATION_ID; downloadFailedNotificationID--) {</span>
+<span class="nc" id="L611">                    mNotificationManager.cancel(downloadFailedNotificationID);</span>
+                }
+<span class="nc" id="L613">                mFailedDownloads.clear();</span>
+<span class="nc" id="L614">                downloadFailedNotificationID++;</span>
+            }
+<span class="nc" id="L616">        }</span>
+
+        public void enableNotifications(boolean enable) {
+<span class="nc" id="L619">            mDownloadNotificationEnable = enable;</span>
+<span class="nc" id="L620">        }</span>
+
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

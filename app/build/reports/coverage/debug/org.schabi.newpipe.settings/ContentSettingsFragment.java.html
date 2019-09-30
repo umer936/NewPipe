@@ -1,0 +1,308 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ContentSettingsFragment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.settings</a> &gt; <span class="el_source">ContentSettingsFragment.java</span></div><h1>ContentSettingsFragment.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.settings;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.os.Bundle;
+import android.preference.PreferenceManager;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v7.preference.Preference;
+import android.util.Log;
+import android.widget.Toast;
+
+import com.nononsenseapps.filepicker.Utils;
+import com.nostra13.universalimageloader.core.ImageLoader;
+
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.extractor.NewPipe;
+import org.schabi.newpipe.extractor.utils.Localization;
+import org.schabi.newpipe.report.ErrorActivity;
+import org.schabi.newpipe.report.UserAction;
+import org.schabi.newpipe.util.FilePickerActivityHelper;
+import org.schabi.newpipe.util.ZipHelper;
+
+import java.io.BufferedOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+import java.util.Map;
+import java.util.zip.ZipFile;
+import java.util.zip.ZipOutputStream;
+
+<span class="nc" id="L42">public class ContentSettingsFragment extends BasePreferenceFragment {</span>
+
+    private static final int REQUEST_IMPORT_PATH = 8945;
+    private static final int REQUEST_EXPORT_PATH = 30945;
+
+    private File databasesDir;
+    private File newpipe_db;
+    private File newpipe_db_journal;
+    private File newpipe_db_shm;
+    private File newpipe_db_wal;
+    private File newpipe_settings;
+
+    private String thumbnailLoadToggleKey;
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+<span class="nc" id="L58">        super.onCreate(savedInstanceState);</span>
+<span class="nc" id="L59">        thumbnailLoadToggleKey = getString(R.string.download_thumbnail_key);</span>
+<span class="nc" id="L60">    }</span>
+
+    @Override
+    public boolean onPreferenceTreeClick(Preference preference) {
+<span class="nc bnc" id="L64" title="All 2 branches missed.">        if (preference.getKey().equals(thumbnailLoadToggleKey)) {</span>
+<span class="nc" id="L65">            final ImageLoader imageLoader = ImageLoader.getInstance();</span>
+<span class="nc" id="L66">            imageLoader.stop();</span>
+<span class="nc" id="L67">            imageLoader.clearDiskCache();</span>
+<span class="nc" id="L68">            imageLoader.clearMemoryCache();</span>
+<span class="nc" id="L69">            imageLoader.resume();</span>
+<span class="nc" id="L70">            Toast.makeText(preference.getContext(), R.string.thumbnail_cache_wipe_complete_notice,</span>
+<span class="nc" id="L71">                    Toast.LENGTH_SHORT).show();</span>
+        }
+
+<span class="nc" id="L74">        return super.onPreferenceTreeClick(preference);</span>
+    }
+
+    @Override
+    public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
+
+<span class="nc" id="L80">        String homeDir = getActivity().getApplicationInfo().dataDir;</span>
+<span class="nc" id="L81">        databasesDir = new File(homeDir + &quot;/databases&quot;);</span>
+<span class="nc" id="L82">        newpipe_db = new File(homeDir + &quot;/databases/newpipe.db&quot;);</span>
+<span class="nc" id="L83">        newpipe_db_journal = new File(homeDir + &quot;/databases/newpipe.db-journal&quot;);</span>
+<span class="nc" id="L84">        newpipe_db_shm = new File(homeDir + &quot;/databases/newpipe.db-shm&quot;);</span>
+<span class="nc" id="L85">        newpipe_db_wal = new File(homeDir + &quot;/databases/newpipe.db-wal&quot;);</span>
+
+<span class="nc" id="L87">        newpipe_settings = new File(homeDir + &quot;/databases/newpipe.settings&quot;);</span>
+<span class="nc" id="L88">        newpipe_settings.delete();</span>
+
+<span class="nc" id="L90">        addPreferencesFromResource(R.xml.content_settings);</span>
+
+<span class="nc" id="L92">        Preference importDataPreference = findPreference(getString(R.string.import_data));</span>
+<span class="nc" id="L93">        importDataPreference.setOnPreferenceClickListener((Preference p) -&gt; {</span>
+<span class="nc" id="L94">            Intent i = new Intent(getActivity(), FilePickerActivityHelper.class)</span>
+<span class="nc" id="L95">                    .putExtra(FilePickerActivityHelper.EXTRA_ALLOW_MULTIPLE, false)</span>
+<span class="nc" id="L96">                    .putExtra(FilePickerActivityHelper.EXTRA_ALLOW_CREATE_DIR, false)</span>
+<span class="nc" id="L97">                    .putExtra(FilePickerActivityHelper.EXTRA_MODE, FilePickerActivityHelper.MODE_FILE);</span>
+<span class="nc" id="L98">            startActivityForResult(i, REQUEST_IMPORT_PATH);</span>
+<span class="nc" id="L99">            return true;</span>
+        });
+
+<span class="nc" id="L102">        Preference exportDataPreference = findPreference(getString(R.string.export_data));</span>
+<span class="nc" id="L103">        exportDataPreference.setOnPreferenceClickListener((Preference p) -&gt; {</span>
+<span class="nc" id="L104">            Intent i = new Intent(getActivity(), FilePickerActivityHelper.class)</span>
+<span class="nc" id="L105">                    .putExtra(FilePickerActivityHelper.EXTRA_ALLOW_MULTIPLE, false)</span>
+<span class="nc" id="L106">                    .putExtra(FilePickerActivityHelper.EXTRA_ALLOW_CREATE_DIR, true)</span>
+<span class="nc" id="L107">                    .putExtra(FilePickerActivityHelper.EXTRA_MODE, FilePickerActivityHelper.MODE_DIR);</span>
+<span class="nc" id="L108">            startActivityForResult(i, REQUEST_EXPORT_PATH);</span>
+<span class="nc" id="L109">            return true;</span>
+        });
+
+<span class="nc" id="L112">        Preference setPreferredLanguage = findPreference(getString(R.string.content_language_key));</span>
+<span class="nc" id="L113">        setPreferredLanguage.setOnPreferenceChangeListener((Preference p, Object newLanguage) -&gt; {</span>
+<span class="nc" id="L114">            Localization oldLocal = org.schabi.newpipe.util.Localization.getPreferredExtractorLocal(getActivity());</span>
+<span class="nc" id="L115">            NewPipe.setLocalization(new Localization(oldLocal.getCountry(), (String) newLanguage));</span>
+<span class="nc" id="L116">            return true;</span>
+        });
+
+<span class="nc" id="L119">        Preference setPreferredCountry = findPreference(getString(R.string.content_country_key));</span>
+<span class="nc" id="L120">        setPreferredCountry.setOnPreferenceChangeListener((Preference p, Object newCountry) -&gt; {</span>
+<span class="nc" id="L121">            Localization oldLocal = org.schabi.newpipe.util.Localization.getPreferredExtractorLocal(getActivity());</span>
+<span class="nc" id="L122">            NewPipe.setLocalization(new Localization((String) newCountry, oldLocal.getLanguage()));</span>
+<span class="nc" id="L123">            return true;</span>
+        });
+<span class="nc" id="L125">    }</span>
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, @NonNull Intent data) {
+<span class="nc" id="L129">        super.onActivityResult(requestCode, resultCode, data);</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L131">            Log.d(TAG, &quot;onActivityResult() called with: requestCode = [&quot; + requestCode + &quot;], resultCode = [&quot; + resultCode + &quot;], data = [&quot; + data + &quot;]&quot;);</span>
+        }
+
+<span class="nc bnc" id="L134" title="All 6 branches missed.">        if ((requestCode == REQUEST_IMPORT_PATH || requestCode == REQUEST_EXPORT_PATH)</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">                &amp;&amp; resultCode == Activity.RESULT_OK &amp;&amp; data.getData() != null) {</span>
+<span class="nc" id="L136">            String path = Utils.getFileForUri(data.getData()).getAbsolutePath();</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">            if (requestCode == REQUEST_EXPORT_PATH) {</span>
+<span class="nc" id="L138">                SimpleDateFormat sdf = new SimpleDateFormat(&quot;yyyyMMdd_HHmmss&quot;, Locale.US);</span>
+<span class="nc" id="L139">                exportDatabase(path + &quot;/NewPipeData-&quot; + sdf.format(new Date()) + &quot;.zip&quot;);</span>
+<span class="nc" id="L140">            } else {</span>
+<span class="nc" id="L141">                AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());</span>
+<span class="nc" id="L142">                builder.setMessage(R.string.override_current_data)</span>
+<span class="nc" id="L143">                        .setPositiveButton(android.R.string.ok,</span>
+<span class="nc" id="L144">                                (DialogInterface d, int id) -&gt; importDatabase(path))</span>
+<span class="nc" id="L145">                        .setNegativeButton(android.R.string.cancel,</span>
+<span class="nc" id="L146">                                (DialogInterface d, int id) -&gt; d.cancel());</span>
+<span class="nc" id="L147">                builder.create().show();</span>
+            }
+        }
+<span class="nc" id="L150">    }</span>
+
+    private void exportDatabase(String path) {
+        try {
+<span class="nc" id="L154">            ZipOutputStream outZip = new ZipOutputStream(</span>
+                    new BufferedOutputStream(
+                            new FileOutputStream(path)));
+<span class="nc" id="L157">            ZipHelper.addFileToZip(outZip, newpipe_db.getPath(), &quot;newpipe.db&quot;);</span>
+
+<span class="nc" id="L159">            saveSharedPreferencesToFile(newpipe_settings);</span>
+<span class="nc" id="L160">            ZipHelper.addFileToZip(outZip, newpipe_settings.getPath(), &quot;newpipe.settings&quot;);</span>
+
+<span class="nc" id="L162">            outZip.close();</span>
+
+<span class="nc" id="L164">            Toast.makeText(getContext(), R.string.export_complete_toast, Toast.LENGTH_SHORT)</span>
+<span class="nc" id="L165">                    .show();</span>
+<span class="nc" id="L166">        } catch (Exception e) {</span>
+<span class="nc" id="L167">            onError(e);</span>
+<span class="nc" id="L168">        }</span>
+<span class="nc" id="L169">    }</span>
+
+    private void saveSharedPreferencesToFile(File dst) {
+<span class="nc" id="L172">        ObjectOutputStream output = null;</span>
+        try {
+<span class="nc" id="L174">            output = new ObjectOutputStream(new FileOutputStream(dst));</span>
+<span class="nc" id="L175">            SharedPreferences pref = PreferenceManager.getDefaultSharedPreferences(getContext());</span>
+<span class="nc" id="L176">            output.writeObject(pref.getAll());</span>
+
+<span class="nc" id="L178">        } catch (FileNotFoundException e) {</span>
+<span class="nc" id="L179">            e.printStackTrace();</span>
+<span class="nc" id="L180">        } catch (IOException e) {</span>
+<span class="nc" id="L181">            e.printStackTrace();</span>
+        }finally {
+<span class="nc" id="L183">            try {</span>
+<span class="nc bnc" id="L184" title="All 8 branches missed.">                if (output != null) {</span>
+<span class="nc" id="L185">                    output.flush();</span>
+<span class="nc" id="L186">                    output.close();</span>
+                }
+<span class="nc" id="L188">            } catch (IOException ex) {</span>
+<span class="nc" id="L189">                ex.printStackTrace();</span>
+<span class="nc" id="L190">            }</span>
+<span class="nc" id="L191">        }</span>
+<span class="nc" id="L192">    }</span>
+
+    private void importDatabase(String filePath) {
+        // check if file is supported
+<span class="nc" id="L196">        ZipFile zipFile = null;</span>
+        try {
+<span class="nc" id="L198">            zipFile = new ZipFile(filePath);</span>
+<span class="nc" id="L199">        } catch (IOException ioe) {</span>
+<span class="nc" id="L200">            Toast.makeText(getContext(), R.string.no_valid_zip_file, Toast.LENGTH_SHORT)</span>
+<span class="nc" id="L201">                    .show();</span>
+<span class="nc" id="L202">            return;</span>
+        } finally {
+<span class="nc" id="L204">            try {</span>
+<span class="nc" id="L205">                zipFile.close();</span>
+<span class="nc" id="L206">            } catch (Exception ignored){}</span>
+<span class="nc" id="L207">        }</span>
+
+        try {
+<span class="nc bnc" id="L210" title="All 4 branches missed.">            if (!databasesDir.exists() &amp;&amp; !databasesDir.mkdir()) {</span>
+<span class="nc" id="L211">                throw new Exception(&quot;Could not create databases dir&quot;);</span>
+            }
+
+<span class="nc" id="L214">            final boolean isDbFileExtracted = ZipHelper.extractFileFromZip(filePath,</span>
+<span class="nc" id="L215">                    newpipe_db.getPath(), &quot;newpipe.db&quot;);</span>
+
+<span class="nc bnc" id="L217" title="All 2 branches missed.">            if (isDbFileExtracted) {</span>
+<span class="nc" id="L218">                newpipe_db_journal.delete();</span>
+<span class="nc" id="L219">                newpipe_db_wal.delete();</span>
+<span class="nc" id="L220">                newpipe_db_shm.delete();</span>
+
+            } else {
+
+<span class="nc" id="L224">                Toast.makeText(getContext(), R.string.could_not_import_all_files, Toast.LENGTH_LONG)</span>
+<span class="nc" id="L225">                        .show();</span>
+            }
+
+            //If settings file exist, ask if it should be imported.
+<span class="nc bnc" id="L229" title="All 2 branches missed.">            if(ZipHelper.extractFileFromZip(filePath, newpipe_settings.getPath(), &quot;newpipe.settings&quot;)) {</span>
+<span class="nc" id="L230">                AlertDialog.Builder alert = new AlertDialog.Builder(getContext());</span>
+<span class="nc" id="L231">                alert.setTitle(R.string.import_settings);</span>
+
+<span class="nc" id="L233">                alert.setNegativeButton(android.R.string.no, (dialog, which) -&gt; {</span>
+<span class="nc" id="L234">                    dialog.dismiss();</span>
+                    // restart app to properly load db
+<span class="nc" id="L236">                    System.exit(0);</span>
+<span class="nc" id="L237">                });</span>
+<span class="nc" id="L238">                alert.setPositiveButton(android.R.string.yes, (dialog, which) -&gt; {</span>
+<span class="nc" id="L239">                    dialog.dismiss();</span>
+<span class="nc" id="L240">                    loadSharedPreferences(newpipe_settings);</span>
+                    // restart app to properly load db
+<span class="nc" id="L242">                    System.exit(0);</span>
+<span class="nc" id="L243">                });</span>
+<span class="nc" id="L244">                alert.show();</span>
+<span class="nc" id="L245">            } else {</span>
+                // restart app to properly load db
+<span class="nc" id="L247">                System.exit(0);</span>
+            }
+
+<span class="nc" id="L250">        } catch (Exception e) {</span>
+<span class="nc" id="L251">            onError(e);</span>
+<span class="nc" id="L252">        }</span>
+<span class="nc" id="L253">    }</span>
+
+    private void loadSharedPreferences(File src) {
+<span class="nc" id="L256">        ObjectInputStream input = null;</span>
+        try {
+<span class="nc" id="L258">            input = new ObjectInputStream(new FileInputStream(src));</span>
+<span class="nc" id="L259">            SharedPreferences.Editor prefEdit = PreferenceManager.getDefaultSharedPreferences(getContext()).edit();</span>
+<span class="nc" id="L260">            prefEdit.clear();</span>
+<span class="nc" id="L261">            Map&lt;String, ?&gt; entries = (Map&lt;String, ?&gt;) input.readObject();</span>
+<span class="nc bnc" id="L262" title="All 2 branches missed.">            for (Map.Entry&lt;String, ?&gt; entry : entries.entrySet()) {</span>
+<span class="nc" id="L263">                Object v = entry.getValue();</span>
+<span class="nc" id="L264">                String key = entry.getKey();</span>
+
+<span class="nc bnc" id="L266" title="All 2 branches missed.">                if (v instanceof Boolean)</span>
+<span class="nc" id="L267">                    prefEdit.putBoolean(key, (Boolean) v);</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">                else if (v instanceof Float)</span>
+<span class="nc" id="L269">                    prefEdit.putFloat(key, (Float) v);</span>
+<span class="nc bnc" id="L270" title="All 2 branches missed.">                else if (v instanceof Integer)</span>
+<span class="nc" id="L271">                    prefEdit.putInt(key, (Integer) v);</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">                else if (v instanceof Long)</span>
+<span class="nc" id="L273">                    prefEdit.putLong(key, (Long) v);</span>
+<span class="nc bnc" id="L274" title="All 2 branches missed.">                else if (v instanceof String)</span>
+<span class="nc" id="L275">                    prefEdit.putString(key, ((String) v));</span>
+<span class="nc" id="L276">            }</span>
+<span class="nc" id="L277">            prefEdit.commit();</span>
+<span class="nc" id="L278">        } catch (FileNotFoundException e) {</span>
+<span class="nc" id="L279">            e.printStackTrace();</span>
+<span class="nc" id="L280">        } catch (IOException e) {</span>
+<span class="nc" id="L281">            e.printStackTrace();</span>
+<span class="nc" id="L282">        } catch (ClassNotFoundException e) {</span>
+<span class="nc" id="L283">            e.printStackTrace();</span>
+        }finally {
+<span class="nc" id="L285">            try {</span>
+<span class="nc bnc" id="L286" title="All 10 branches missed.">                if (input != null) {</span>
+<span class="nc" id="L287">                    input.close();</span>
+                }
+<span class="nc" id="L289">            } catch (IOException ex) {</span>
+<span class="nc" id="L290">                ex.printStackTrace();</span>
+<span class="nc" id="L291">            }</span>
+<span class="nc" id="L292">        }</span>
+<span class="nc" id="L293">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Error
+    //////////////////////////////////////////////////////////////////////////*/
+
+    protected void onError(Throwable e) {
+<span class="nc" id="L300">        final Activity activity = getActivity();</span>
+<span class="nc" id="L301">        ErrorActivity.reportError(activity, e,</span>
+<span class="nc" id="L302">                activity.getClass(),</span>
+                null,
+<span class="nc" id="L304">                ErrorActivity.ErrorInfo.make(UserAction.UI_ERROR,</span>
+                        &quot;none&quot;, &quot;&quot;, R.string.app_ui_crash));
+<span class="nc" id="L306">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

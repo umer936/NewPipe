@@ -1,0 +1,454 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ChannelFragment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.fragments.list.channel</a> &gt; <span class="el_source">ChannelFragment.java</span></div><h1>ChannelFragment.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.fragments.list.channel;
+
+import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v4.content.ContextCompat;
+import android.support.v7.app.ActionBar;
+import android.text.TextUtils;
+import android.util.Log;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
+import com.jakewharton.rxbinding2.view.RxView;
+
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.database.subscription.SubscriptionEntity;
+import org.schabi.newpipe.extractor.InfoItem;
+import org.schabi.newpipe.extractor.ListExtractor;
+import org.schabi.newpipe.extractor.NewPipe;
+import org.schabi.newpipe.extractor.channel.ChannelInfo;
+import org.schabi.newpipe.extractor.exceptions.ExtractionException;
+import org.schabi.newpipe.extractor.stream.StreamInfoItem;
+import org.schabi.newpipe.fragments.list.BaseListInfoFragment;
+import org.schabi.newpipe.local.subscription.SubscriptionService;
+import org.schabi.newpipe.player.playqueue.ChannelPlayQueue;
+import org.schabi.newpipe.player.playqueue.PlayQueue;
+import org.schabi.newpipe.report.UserAction;
+import org.schabi.newpipe.util.AnimationUtils;
+import org.schabi.newpipe.util.ExtractorHelper;
+import org.schabi.newpipe.util.ImageDisplayConstants;
+import org.schabi.newpipe.util.Localization;
+import org.schabi.newpipe.util.NavigationHelper;
+import org.schabi.newpipe.util.ShareUtils;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+
+import io.reactivex.Observable;
+import io.reactivex.Single;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.functions.Action;
+import io.reactivex.functions.Consumer;
+import io.reactivex.functions.Function;
+import io.reactivex.schedulers.Schedulers;
+
+import static org.schabi.newpipe.util.AnimationUtils.animateBackgroundColor;
+import static org.schabi.newpipe.util.AnimationUtils.animateTextColor;
+import static org.schabi.newpipe.util.AnimationUtils.animateView;
+
+<span class="nc" id="L64">public class ChannelFragment extends BaseListInfoFragment&lt;ChannelInfo&gt; {</span>
+
+<span class="nc" id="L66">    private final CompositeDisposable disposables = new CompositeDisposable();</span>
+    private Disposable subscribeButtonMonitor;
+    private SubscriptionService subscriptionService;
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Views
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private View headerRootLayout;
+    private ImageView headerChannelBanner;
+    private ImageView headerAvatarView;
+    private TextView headerTitleView;
+    private TextView headerSubscribersTextView;
+    private Button headerSubscribeButton;
+    private View playlistCtrl;
+
+    private LinearLayout headerPlayAllButton;
+    private LinearLayout headerPopupButton;
+    private LinearLayout headerBackgroundButton;
+
+    private MenuItem menuRssButton;
+
+    public static ChannelFragment getInstance(int serviceId, String url, String name) {
+<span class="nc" id="L89">        ChannelFragment instance = new ChannelFragment();</span>
+<span class="nc" id="L90">        instance.setInitialData(serviceId, url, name);</span>
+<span class="nc" id="L91">        return instance;</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // LifeCycle
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void setUserVisibleHint(boolean isVisibleToUser) {
+<span class="nc" id="L100">        super.setUserVisibleHint(isVisibleToUser);</span>
+<span class="nc bnc" id="L101" title="All 6 branches missed.">        if(activity != null</span>
+                &amp;&amp; useAsFrontPage
+                &amp;&amp; isVisibleToUser) {
+<span class="nc bnc" id="L104" title="All 2 branches missed.">            setTitle(currentInfo != null ? currentInfo.getName() : name);</span>
+        }
+<span class="nc" id="L106">    }</span>
+
+    @Override
+    public void onAttach(Context context) {
+<span class="nc" id="L110">        super.onAttach(context);</span>
+<span class="nc" id="L111">        subscriptionService = SubscriptionService.getInstance(activity);</span>
+<span class="nc" id="L112">    }</span>
+
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+<span class="nc" id="L116">        return inflater.inflate(R.layout.fragment_channel, container, false);</span>
+    }
+
+    @Override
+    public void onDestroy() {
+<span class="nc" id="L121">        super.onDestroy();</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">        if (disposables != null) disposables.clear();</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">        if (subscribeButtonMonitor != null) subscribeButtonMonitor.dispose();</span>
+<span class="nc" id="L124">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Init
+    //////////////////////////////////////////////////////////////////////////*/
+
+    protected View getListHeader() {
+<span class="nc" id="L131">        headerRootLayout = activity.getLayoutInflater().inflate(R.layout.channel_header, itemsList, false);</span>
+<span class="nc" id="L132">        headerChannelBanner = headerRootLayout.findViewById(R.id.channel_banner_image);</span>
+<span class="nc" id="L133">        headerAvatarView = headerRootLayout.findViewById(R.id.channel_avatar_view);</span>
+<span class="nc" id="L134">        headerTitleView = headerRootLayout.findViewById(R.id.channel_title_view);</span>
+<span class="nc" id="L135">        headerSubscribersTextView = headerRootLayout.findViewById(R.id.channel_subscriber_view);</span>
+<span class="nc" id="L136">        headerSubscribeButton = headerRootLayout.findViewById(R.id.channel_subscribe_button);</span>
+<span class="nc" id="L137">        playlistCtrl = headerRootLayout.findViewById(R.id.playlist_control);</span>
+
+
+<span class="nc" id="L140">        headerPlayAllButton = headerRootLayout.findViewById(R.id.playlist_ctrl_play_all_button);</span>
+<span class="nc" id="L141">        headerPopupButton = headerRootLayout.findViewById(R.id.playlist_ctrl_play_popup_button);</span>
+<span class="nc" id="L142">        headerBackgroundButton = headerRootLayout.findViewById(R.id.playlist_ctrl_play_bg_button);</span>
+
+<span class="nc" id="L144">        return headerRootLayout;</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Menu
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+<span class="nc" id="L153">        super.onCreateOptionsMenu(menu, inflater);</span>
+<span class="nc" id="L154">        ActionBar supportActionBar = activity.getSupportActionBar();</span>
+<span class="nc bnc" id="L155" title="All 4 branches missed.">        if(useAsFrontPage &amp;&amp; supportActionBar != null) {</span>
+<span class="nc" id="L156">            supportActionBar.setDisplayHomeAsUpEnabled(false);</span>
+        } else {
+<span class="nc" id="L158">            inflater.inflate(R.menu.menu_channel, menu);</span>
+
+<span class="nc bnc" id="L160" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;onCreateOptionsMenu() called with: menu = [&quot; + menu +</span>
+                    &quot;], inflater = [&quot; + inflater + &quot;]&quot;);
+<span class="nc" id="L162">            menuRssButton = menu.findItem(R.id.menu_item_rss);</span>
+        }
+<span class="nc" id="L164">    }</span>
+
+    private void openRssFeed() {
+<span class="nc" id="L167">        final ChannelInfo info = currentInfo;</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">        if(info != null) {</span>
+<span class="nc" id="L169">            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(info.getFeedUrl()));</span>
+<span class="nc" id="L170">            startActivity(intent);</span>
+        }
+<span class="nc" id="L172">    }</span>
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+<span class="nc bnc" id="L176" title="All 4 branches missed.">        switch (item.getItemId()) {</span>
+            case R.id.menu_item_rss:
+<span class="nc" id="L178">                openRssFeed();</span>
+<span class="nc" id="L179">                break;</span>
+            case R.id.menu_item_openInBrowser:
+<span class="nc" id="L181">                ShareUtils.openUrlInBrowser(this.getContext(), currentInfo.getOriginalUrl());</span>
+<span class="nc" id="L182">                break;</span>
+            case R.id.menu_item_share:
+<span class="nc" id="L184">                ShareUtils.shareUrl(this.getContext(), name, currentInfo.getOriginalUrl());</span>
+<span class="nc" id="L185">                break;</span>
+            default:
+<span class="nc" id="L187">                return super.onOptionsItemSelected(item);</span>
+        }
+<span class="nc" id="L189">        return true;</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Channel Subscription
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private static final int BUTTON_DEBOUNCE_INTERVAL = 100;
+
+    private void monitorSubscription(final ChannelInfo info) {
+<span class="nc" id="L199">        final Consumer&lt;Throwable&gt; onError = (Throwable throwable) -&gt; {</span>
+<span class="nc" id="L200">                animateView(headerSubscribeButton, false, 100);</span>
+<span class="nc" id="L201">                showSnackBarError(throwable, UserAction.SUBSCRIPTION,</span>
+<span class="nc" id="L202">                        NewPipe.getNameOfService(currentInfo.getServiceId()),</span>
+                        &quot;Get subscription status&quot;,
+                        0);
+<span class="nc" id="L205">        };</span>
+
+<span class="nc" id="L207">        final Observable&lt;List&lt;SubscriptionEntity&gt;&gt; observable = subscriptionService.subscriptionTable()</span>
+<span class="nc" id="L208">                .getSubscription(info.getServiceId(), info.getUrl())</span>
+<span class="nc" id="L209">                .toObservable();</span>
+
+<span class="nc" id="L211">        disposables.add(observable</span>
+<span class="nc" id="L212">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L213">                .subscribe(getSubscribeUpdateMonitor(info), onError));</span>
+
+<span class="nc" id="L215">        disposables.add(observable</span>
+                // Some updates are very rapid (when calling the updateSubscription(info), for example)
+                // so only update the UI for the latest emission (&quot;sync&quot; the subscribe button's state)
+<span class="nc" id="L218">                .debounce(100, TimeUnit.MILLISECONDS)</span>
+<span class="nc" id="L219">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L220">                .subscribe((List&lt;SubscriptionEntity&gt; subscriptionEntities) -&gt;</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">                        updateSubscribeButton(!subscriptionEntities.isEmpty())</span>
+                        , onError));
+
+<span class="nc" id="L224">    }</span>
+
+    private Function&lt;Object, Object&gt; mapOnSubscribe(final SubscriptionEntity subscription) {
+<span class="nc" id="L227">        return (@NonNull Object o) -&gt; {</span>
+<span class="nc" id="L228">            subscriptionService.subscriptionTable().insert(subscription);</span>
+<span class="nc" id="L229">            return o;</span>
+        };
+    }
+
+    private Function&lt;Object, Object&gt; mapOnUnsubscribe(final SubscriptionEntity subscription) {
+<span class="nc" id="L234">        return (@NonNull Object o) -&gt; {</span>
+<span class="nc" id="L235">            subscriptionService.subscriptionTable().delete(subscription);</span>
+<span class="nc" id="L236">            return o;</span>
+        };
+    }
+
+    private void updateSubscription(final ChannelInfo info) {
+<span class="nc bnc" id="L241" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;updateSubscription() called with: info = [&quot; + info + &quot;]&quot;);</span>
+<span class="nc" id="L242">        final Action onComplete = () -&gt; {</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">                if (DEBUG) Log.d(TAG, &quot;Updated subscription: &quot; + info.getUrl());</span>
+<span class="nc" id="L244">        };</span>
+
+<span class="nc" id="L246">        final Consumer&lt;Throwable&gt; onError = (@NonNull Throwable throwable) -&gt;</span>
+<span class="nc" id="L247">                onUnrecoverableError(throwable,</span>
+                        UserAction.SUBSCRIPTION,
+<span class="nc" id="L249">                        NewPipe.getNameOfService(info.getServiceId()),</span>
+<span class="nc" id="L250">                        &quot;Updating Subscription for &quot; + info.getUrl(),</span>
+                        R.string.subscription_update_failed);
+
+<span class="nc" id="L253">        disposables.add(subscriptionService.updateChannelInfo(info)</span>
+<span class="nc" id="L254">                .subscribeOn(Schedulers.io())</span>
+<span class="nc" id="L255">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L256">                .subscribe(onComplete, onError));</span>
+<span class="nc" id="L257">    }</span>
+
+    private Disposable monitorSubscribeButton(final Button subscribeButton, final Function&lt;Object, Object&gt; action) {
+<span class="nc" id="L260">        final Consumer&lt;Object&gt; onNext = (@NonNull Object o) -&gt; {</span>
+<span class="nc bnc" id="L261" title="All 2 branches missed.">                if (DEBUG) Log.d(TAG, &quot;Changed subscription status to this channel!&quot;);</span>
+<span class="nc" id="L262">        };</span>
+
+<span class="nc" id="L264">        final Consumer&lt;Throwable&gt; onError = (@NonNull Throwable throwable) -&gt;</span>
+<span class="nc" id="L265">                onUnrecoverableError(throwable,</span>
+                        UserAction.SUBSCRIPTION,
+<span class="nc" id="L267">                        NewPipe.getNameOfService(currentInfo.getServiceId()),</span>
+                        &quot;Subscription Change&quot;,
+                        R.string.subscription_change_failed);
+
+        /* Emit clicks from main thread unto io thread */
+<span class="nc" id="L272">        return RxView.clicks(subscribeButton)</span>
+<span class="nc" id="L273">                .subscribeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L274">                .observeOn(Schedulers.io())</span>
+<span class="nc" id="L275">                .debounce(BUTTON_DEBOUNCE_INTERVAL, TimeUnit.MILLISECONDS) // Ignore rapid clicks</span>
+<span class="nc" id="L276">                .map(action)</span>
+<span class="nc" id="L277">                .subscribe(onNext, onError);</span>
+    }
+
+    private Consumer&lt;List&lt;SubscriptionEntity&gt;&gt; getSubscribeUpdateMonitor(final ChannelInfo info) {
+<span class="nc" id="L281">        return (List&lt;SubscriptionEntity&gt; subscriptionEntities) -&gt; {</span>
+<span class="nc bnc" id="L282" title="All 2 branches missed.">            if (DEBUG)</span>
+<span class="nc" id="L283">                Log.d(TAG, &quot;subscriptionService.subscriptionTable.doOnNext() called with: subscriptionEntities = [&quot; + subscriptionEntities + &quot;]&quot;);</span>
+<span class="nc bnc" id="L284" title="All 2 branches missed.">            if (subscribeButtonMonitor != null) subscribeButtonMonitor.dispose();</span>
+
+<span class="nc bnc" id="L286" title="All 2 branches missed.">            if (subscriptionEntities.isEmpty()) {</span>
+<span class="nc bnc" id="L287" title="All 2 branches missed.">                if (DEBUG) Log.d(TAG, &quot;No subscription to this channel!&quot;);</span>
+<span class="nc" id="L288">                SubscriptionEntity channel = new SubscriptionEntity();</span>
+<span class="nc" id="L289">                channel.setServiceId(info.getServiceId());</span>
+<span class="nc" id="L290">                channel.setUrl(info.getUrl());</span>
+<span class="nc" id="L291">                channel.setData(info.getName(),</span>
+<span class="nc" id="L292">                        info.getAvatarUrl(),</span>
+<span class="nc" id="L293">                        info.getDescription(),</span>
+<span class="nc" id="L294">                        info.getSubscriberCount());</span>
+<span class="nc" id="L295">                subscribeButtonMonitor = monitorSubscribeButton(headerSubscribeButton, mapOnSubscribe(channel));</span>
+<span class="nc" id="L296">            } else {</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">                if (DEBUG) Log.d(TAG, &quot;Found subscription to this channel!&quot;);</span>
+<span class="nc" id="L298">                final SubscriptionEntity subscription = subscriptionEntities.get(0);</span>
+<span class="nc" id="L299">                subscribeButtonMonitor = monitorSubscribeButton(headerSubscribeButton, mapOnUnsubscribe(subscription));</span>
+            }
+<span class="nc" id="L301">        };</span>
+    }
+
+    private void updateSubscribeButton(boolean isSubscribed) {
+<span class="nc bnc" id="L305" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;updateSubscribeButton() called with: isSubscribed = [&quot; + isSubscribed + &quot;]&quot;);</span>
+
+<span class="nc bnc" id="L307" title="All 2 branches missed.">        boolean isButtonVisible = headerSubscribeButton.getVisibility() == View.VISIBLE;</span>
+<span class="nc bnc" id="L308" title="All 2 branches missed.">        int backgroundDuration = isButtonVisible ? 300 : 0;</span>
+<span class="nc bnc" id="L309" title="All 2 branches missed.">        int textDuration = isButtonVisible ? 200 : 0;</span>
+
+<span class="nc" id="L311">        int subscribeBackground = ContextCompat.getColor(activity, R.color.subscribe_background_color);</span>
+<span class="nc" id="L312">        int subscribeText = ContextCompat.getColor(activity, R.color.subscribe_text_color);</span>
+<span class="nc" id="L313">        int subscribedBackground = ContextCompat.getColor(activity, R.color.subscribed_background_color);</span>
+<span class="nc" id="L314">        int subscribedText = ContextCompat.getColor(activity, R.color.subscribed_text_color);</span>
+
+<span class="nc bnc" id="L316" title="All 2 branches missed.">        if (!isSubscribed) {</span>
+<span class="nc" id="L317">            headerSubscribeButton.setText(R.string.subscribe_button_title);</span>
+<span class="nc" id="L318">            animateBackgroundColor(headerSubscribeButton, backgroundDuration, subscribedBackground, subscribeBackground);</span>
+<span class="nc" id="L319">            animateTextColor(headerSubscribeButton, textDuration, subscribedText, subscribeText);</span>
+        } else {
+<span class="nc" id="L321">            headerSubscribeButton.setText(R.string.subscribed_button_title);</span>
+<span class="nc" id="L322">            animateBackgroundColor(headerSubscribeButton, backgroundDuration, subscribeBackground, subscribedBackground);</span>
+<span class="nc" id="L323">            animateTextColor(headerSubscribeButton, textDuration, subscribeText, subscribedText);</span>
+        }
+
+<span class="nc" id="L326">        animateView(headerSubscribeButton, AnimationUtils.Type.LIGHT_SCALE_AND_ALPHA, true, 100);</span>
+<span class="nc" id="L327">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Load and handle
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    protected Single&lt;ListExtractor.InfoItemsPage&gt; loadMoreItemsLogic() {
+<span class="nc" id="L335">        return ExtractorHelper.getMoreChannelItems(serviceId, url, currentNextPageUrl);</span>
+    }
+
+    @Override
+    protected Single&lt;ChannelInfo&gt; loadResult(boolean forceLoad) {
+<span class="nc" id="L340">        return ExtractorHelper.getChannelInfo(serviceId, url, forceLoad);</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Contract
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void showLoading() {
+<span class="nc" id="L349">        super.showLoading();</span>
+
+<span class="nc" id="L351">        imageLoader.cancelDisplayTask(headerChannelBanner);</span>
+<span class="nc" id="L352">        imageLoader.cancelDisplayTask(headerAvatarView);</span>
+<span class="nc" id="L353">        animateView(headerSubscribeButton, false, 100);</span>
+<span class="nc" id="L354">    }</span>
+
+    @Override
+    public void handleResult(@NonNull ChannelInfo result) {
+<span class="nc" id="L358">        super.handleResult(result);</span>
+
+<span class="nc" id="L360">        headerRootLayout.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L361">        imageLoader.displayImage(result.getBannerUrl(), headerChannelBanner,</span>
+        		ImageDisplayConstants.DISPLAY_BANNER_OPTIONS);
+<span class="nc" id="L363">        imageLoader.displayImage(result.getAvatarUrl(), headerAvatarView,</span>
+        		ImageDisplayConstants.DISPLAY_AVATAR_OPTIONS);
+
+<span class="nc" id="L366">        headerSubscribersTextView.setVisibility(View.VISIBLE);</span>
+<span class="nc bnc" id="L367" title="All 2 branches missed.">        if (result.getSubscriberCount() &gt;= 0) {</span>
+<span class="nc" id="L368">            headerSubscribersTextView.setText(Localization.localizeSubscribersCount(activity, result.getSubscriberCount()));</span>
+        } else {
+<span class="nc" id="L370">            headerSubscribersTextView.setText(R.string.subscribers_count_not_available);</span>
+        }
+
+<span class="nc bnc" id="L373" title="All 4 branches missed.">        if (menuRssButton != null) menuRssButton.setVisible(!TextUtils.isEmpty(result.getFeedUrl()));</span>
+
+<span class="nc" id="L375">        playlistCtrl.setVisibility(View.VISIBLE);</span>
+
+<span class="nc bnc" id="L377" title="All 2 branches missed.">        if (!result.getErrors().isEmpty()) {</span>
+<span class="nc" id="L378">            showSnackBarError(result.getErrors(), UserAction.REQUESTED_CHANNEL, NewPipe.getNameOfService(result.getServiceId()), result.getUrl(), 0);</span>
+        }
+
+<span class="nc bnc" id="L381" title="All 2 branches missed.">        if (disposables != null) disposables.clear();</span>
+<span class="nc bnc" id="L382" title="All 2 branches missed.">        if (subscribeButtonMonitor != null) subscribeButtonMonitor.dispose();</span>
+<span class="nc" id="L383">        updateSubscription(result);</span>
+<span class="nc" id="L384">        monitorSubscription(result);</span>
+
+<span class="nc" id="L386">        headerPlayAllButton.setOnClickListener(</span>
+<span class="nc" id="L387">                view -&gt; NavigationHelper.playOnMainPlayer(activity, getPlayQueue(), false));</span>
+<span class="nc" id="L388">        headerPopupButton.setOnClickListener(</span>
+<span class="nc" id="L389">                view -&gt; NavigationHelper.playOnPopupPlayer(activity, getPlayQueue(), false));</span>
+<span class="nc" id="L390">        headerBackgroundButton.setOnClickListener(</span>
+<span class="nc" id="L391">                view -&gt; NavigationHelper.playOnBackgroundPlayer(activity, getPlayQueue(), false));</span>
+<span class="nc" id="L392">    }</span>
+
+    private PlayQueue getPlayQueue() {
+<span class="nc" id="L395">        return getPlayQueue(0);</span>
+    }
+
+    private PlayQueue getPlayQueue(final int index) {
+<span class="nc" id="L399">        final List&lt;StreamInfoItem&gt; streamItems = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L400" title="All 2 branches missed.">        for(InfoItem i : infoListAdapter.getItemsList()) {</span>
+<span class="nc bnc" id="L401" title="All 2 branches missed.">            if(i instanceof StreamInfoItem) {</span>
+<span class="nc" id="L402">                streamItems.add((StreamInfoItem) i);</span>
+            }
+<span class="nc" id="L404">        }</span>
+<span class="nc" id="L405">        return new ChannelPlayQueue(</span>
+<span class="nc" id="L406">                currentInfo.getServiceId(),</span>
+<span class="nc" id="L407">                currentInfo.getUrl(),</span>
+<span class="nc" id="L408">                currentInfo.getNextPageUrl(),</span>
+                streamItems,
+                index
+        );
+    }
+
+    @Override
+    public void handleNextItems(ListExtractor.InfoItemsPage result) {
+<span class="nc" id="L416">        super.handleNextItems(result);</span>
+
+<span class="nc bnc" id="L418" title="All 2 branches missed.">        if (!result.getErrors().isEmpty()) {</span>
+<span class="nc" id="L419">            showSnackBarError(result.getErrors(),</span>
+                    UserAction.REQUESTED_CHANNEL,
+<span class="nc" id="L421">                    NewPipe.getNameOfService(serviceId),</span>
+                    &quot;Get next page of: &quot; + url,
+                    R.string.general_error);
+        }
+<span class="nc" id="L425">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // OnError
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    protected boolean onError(Throwable exception) {
+<span class="nc bnc" id="L433" title="All 2 branches missed.">        if (super.onError(exception)) return true;</span>
+
+<span class="nc bnc" id="L435" title="All 2 branches missed.">        int errorId = exception instanceof ExtractionException ? R.string.parsing_error : R.string.general_error;</span>
+<span class="nc" id="L436">        onUnrecoverableError(exception,</span>
+                UserAction.REQUESTED_CHANNEL,
+<span class="nc" id="L438">                NewPipe.getNameOfService(serviceId),</span>
+                url,
+                errorId);
+<span class="nc" id="L441">        return true;</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Utils
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void setTitle(String title) {
+<span class="nc" id="L450">        super.setTitle(title);</span>
+<span class="nc bnc" id="L451" title="All 2 branches missed.">        if (!useAsFrontPage) headerTitleView.setText(title);</span>
+<span class="nc" id="L452">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

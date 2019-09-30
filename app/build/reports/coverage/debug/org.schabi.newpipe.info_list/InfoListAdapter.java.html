@@ -1,0 +1,329 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InfoListAdapter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.info_list</a> &gt; <span class="el_source">InfoListAdapter.java</span></div><h1>InfoListAdapter.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.info_list;
+
+import android.content.Context;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v7.widget.GridLayoutManager;
+import android.support.v7.widget.RecyclerView;
+import android.util.Log;
+import android.view.View;
+import android.view.ViewGroup;
+
+import org.schabi.newpipe.database.stream.model.StreamStateEntity;
+import org.schabi.newpipe.extractor.InfoItem;
+import org.schabi.newpipe.extractor.channel.ChannelInfoItem;
+import org.schabi.newpipe.extractor.comments.CommentsInfoItem;
+import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem;
+import org.schabi.newpipe.extractor.stream.StreamInfoItem;
+import org.schabi.newpipe.info_list.holder.ChannelGridInfoItemHolder;
+import org.schabi.newpipe.info_list.holder.ChannelInfoItemHolder;
+import org.schabi.newpipe.info_list.holder.ChannelMiniInfoItemHolder;
+import org.schabi.newpipe.info_list.holder.CommentsInfoItemHolder;
+import org.schabi.newpipe.info_list.holder.CommentsMiniInfoItemHolder;
+import org.schabi.newpipe.info_list.holder.InfoItemHolder;
+import org.schabi.newpipe.info_list.holder.PlaylistGridInfoItemHolder;
+import org.schabi.newpipe.info_list.holder.PlaylistInfoItemHolder;
+import org.schabi.newpipe.info_list.holder.PlaylistMiniInfoItemHolder;
+import org.schabi.newpipe.info_list.holder.StreamGridInfoItemHolder;
+import org.schabi.newpipe.info_list.holder.StreamInfoItemHolder;
+import org.schabi.newpipe.info_list.holder.StreamMiniInfoItemHolder;
+import org.schabi.newpipe.local.history.HistoryRecordManager;
+import org.schabi.newpipe.util.FallbackViewHolder;
+import org.schabi.newpipe.util.OnClickGesture;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/*
+ * Created by Christian Schabesberger on 01.08.16.
+ *
+ * Copyright (C) Christian Schabesberger 2016 &lt;chris.schabesberger@mailbox.org&gt;
+ * InfoListAdapter.java is part of NewPipe.
+ *
+ * NewPipe is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * NewPipe is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NewPipe.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+public class InfoListAdapter extends RecyclerView.Adapter&lt;RecyclerView.ViewHolder&gt; {
+<span class="nc" id="L58">    private static final String TAG = InfoListAdapter.class.getSimpleName();</span>
+    private static final boolean DEBUG = false;
+
+    private static final int HEADER_TYPE = 0;
+    private static final int FOOTER_TYPE = 1;
+
+    private static final int MINI_STREAM_HOLDER_TYPE = 0x100;
+    private static final int STREAM_HOLDER_TYPE = 0x101;
+    private static final int GRID_STREAM_HOLDER_TYPE = 0x102;
+    private static final int MINI_CHANNEL_HOLDER_TYPE = 0x200;
+    private static final int CHANNEL_HOLDER_TYPE = 0x201;
+    private static final int GRID_CHANNEL_HOLDER_TYPE = 0x202;
+    private static final int MINI_PLAYLIST_HOLDER_TYPE = 0x300;
+    private static final int PLAYLIST_HOLDER_TYPE = 0x301;
+    private static final int GRID_PLAYLIST_HOLDER_TYPE = 0x302;
+    private static final int MINI_COMMENT_HOLDER_TYPE = 0x400;
+    private static final int COMMENT_HOLDER_TYPE = 0x401;
+
+    private final InfoItemBuilder infoItemBuilder;
+    private final ArrayList&lt;InfoItem&gt; infoItemList;
+    private final HistoryRecordManager recordManager;
+
+<span class="nc" id="L80">    private boolean useMiniVariant = false;</span>
+<span class="nc" id="L81">    private boolean useGridVariant = false;</span>
+<span class="nc" id="L82">    private boolean showFooter = false;</span>
+<span class="nc" id="L83">    private View header = null;</span>
+<span class="nc" id="L84">    private View footer = null;</span>
+
+    public class HFHolder extends RecyclerView.ViewHolder {
+        public View view;
+
+<span class="nc" id="L89">        public HFHolder(View v) {</span>
+<span class="nc" id="L90">            super(v);</span>
+<span class="nc" id="L91">            view = v;</span>
+<span class="nc" id="L92">        }</span>
+    }
+
+<span class="nc" id="L95">    public InfoListAdapter(Context context) {</span>
+<span class="nc" id="L96">        this.recordManager = new HistoryRecordManager(context);</span>
+<span class="nc" id="L97">        infoItemBuilder = new InfoItemBuilder(context);</span>
+<span class="nc" id="L98">        infoItemList = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L99">    }</span>
+
+    public void setOnStreamSelectedListener(OnClickGesture&lt;StreamInfoItem&gt; listener) {
+<span class="nc" id="L102">        infoItemBuilder.setOnStreamSelectedListener(listener);</span>
+<span class="nc" id="L103">    }</span>
+
+    public void setOnChannelSelectedListener(OnClickGesture&lt;ChannelInfoItem&gt; listener) {
+<span class="nc" id="L106">        infoItemBuilder.setOnChannelSelectedListener(listener);</span>
+<span class="nc" id="L107">    }</span>
+
+    public void setOnPlaylistSelectedListener(OnClickGesture&lt;PlaylistInfoItem&gt; listener) {
+<span class="nc" id="L110">        infoItemBuilder.setOnPlaylistSelectedListener(listener);</span>
+<span class="nc" id="L111">    }</span>
+
+    public void setOnCommentsSelectedListener(OnClickGesture&lt;CommentsInfoItem&gt; listener) {
+<span class="nc" id="L114">        infoItemBuilder.setOnCommentsSelectedListener(listener);</span>
+<span class="nc" id="L115">    }</span>
+
+    public void useMiniItemVariants(boolean useMiniVariant) {
+<span class="nc" id="L118">        this.useMiniVariant = useMiniVariant;</span>
+<span class="nc" id="L119">    }</span>
+
+    public void setGridItemVariants(boolean useGridVariant) {
+<span class="nc" id="L122">        this.useGridVariant = useGridVariant;</span>
+<span class="nc" id="L123">    }</span>
+
+    public void addInfoItemList(@Nullable final List&lt;InfoItem&gt; data) {
+<span class="nc bnc" id="L126" title="All 2 branches missed.">        if (data == null) {</span>
+<span class="nc" id="L127">            return;</span>
+        }
+        if (DEBUG) Log.d(TAG, &quot;addInfoItemList() before &gt; infoItemList.size() = &quot; +
+                infoItemList.size() + &quot;, data.size() = &quot; + data.size());
+
+<span class="nc" id="L132">        int offsetStart = sizeConsideringHeaderOffset();</span>
+<span class="nc" id="L133">        infoItemList.addAll(data);</span>
+
+        if (DEBUG) Log.d(TAG, &quot;addInfoItemList() after &gt; offsetStart = &quot; + offsetStart +
+                &quot;, infoItemList.size() = &quot; + infoItemList.size() +
+                &quot;, header = &quot; + header + &quot;, footer = &quot; + footer +
+                &quot;, showFooter = &quot; + showFooter);
+<span class="nc" id="L139">        notifyItemRangeInserted(offsetStart, data.size());</span>
+
+<span class="nc bnc" id="L141" title="All 4 branches missed.">        if (footer != null &amp;&amp; showFooter) {</span>
+<span class="nc" id="L142">            int footerNow = sizeConsideringHeaderOffset();</span>
+<span class="nc" id="L143">            notifyItemMoved(offsetStart, footerNow);</span>
+
+            if (DEBUG) Log.d(TAG, &quot;addInfoItemList() footer from &quot; + offsetStart +
+                    &quot; to &quot; + footerNow);
+        }
+<span class="nc" id="L148">    }</span>
+
+    public void addInfoItem(@Nullable InfoItem data) {
+<span class="nc bnc" id="L151" title="All 2 branches missed.">        if (data == null) {</span>
+<span class="nc" id="L152">            return;</span>
+        }
+        if (DEBUG) Log.d(TAG, &quot;addInfoItem() before &gt; infoItemList.size() = &quot; +
+                infoItemList.size() + &quot;, thread = &quot; + Thread.currentThread());
+
+<span class="nc" id="L157">        int positionInserted = sizeConsideringHeaderOffset();</span>
+<span class="nc" id="L158">        infoItemList.add(data);</span>
+
+        if (DEBUG) Log.d(TAG, &quot;addInfoItem() after &gt; position = &quot; + positionInserted +
+                &quot;, infoItemList.size() = &quot; + infoItemList.size() +
+                &quot;, header = &quot; + header + &quot;, footer = &quot; + footer +
+                &quot;, showFooter = &quot; + showFooter);
+<span class="nc" id="L164">        notifyItemInserted(positionInserted);</span>
+
+<span class="nc bnc" id="L166" title="All 4 branches missed.">        if (footer != null &amp;&amp; showFooter) {</span>
+<span class="nc" id="L167">            int footerNow = sizeConsideringHeaderOffset();</span>
+<span class="nc" id="L168">            notifyItemMoved(positionInserted, footerNow);</span>
+
+            if (DEBUG) Log.d(TAG, &quot;addInfoItem() footer from &quot; + positionInserted +
+                    &quot; to &quot; + footerNow);
+        }
+<span class="nc" id="L173">    }</span>
+
+    public void clearStreamItemList() {
+<span class="nc bnc" id="L176" title="All 2 branches missed.">        if (infoItemList.isEmpty()) {</span>
+<span class="nc" id="L177">            return;</span>
+        }
+<span class="nc" id="L179">        infoItemList.clear();</span>
+<span class="nc" id="L180">        notifyDataSetChanged();</span>
+<span class="nc" id="L181">    }</span>
+
+    public void setHeader(View header) {
+<span class="nc bnc" id="L184" title="All 2 branches missed.">        boolean changed = header != this.header;</span>
+<span class="nc" id="L185">        this.header = header;</span>
+<span class="nc bnc" id="L186" title="All 2 branches missed.">        if (changed) notifyDataSetChanged();</span>
+<span class="nc" id="L187">    }</span>
+
+    public void setFooter(View view) {
+<span class="nc" id="L190">        this.footer = view;</span>
+<span class="nc" id="L191">    }</span>
+
+    public void showFooter(boolean show) {
+        if (DEBUG) Log.d(TAG, &quot;showFooter() called with: show = [&quot; + show + &quot;]&quot;);
+<span class="nc bnc" id="L195" title="All 2 branches missed.">        if (show == showFooter) return;</span>
+
+<span class="nc" id="L197">        showFooter = show;</span>
+<span class="nc bnc" id="L198" title="All 2 branches missed.">        if (show) notifyItemInserted(sizeConsideringHeaderOffset());</span>
+<span class="nc" id="L199">        else notifyItemRemoved(sizeConsideringHeaderOffset());</span>
+<span class="nc" id="L200">    }</span>
+
+
+    private int sizeConsideringHeaderOffset() {
+<span class="nc bnc" id="L204" title="All 2 branches missed.">        int i = infoItemList.size() + (header != null ? 1 : 0);</span>
+        if (DEBUG) Log.d(TAG, &quot;sizeConsideringHeaderOffset() called → &quot; + i);
+<span class="nc" id="L206">        return i;</span>
+    }
+
+    public ArrayList&lt;InfoItem&gt; getItemsList() {
+<span class="nc" id="L210">        return infoItemList;</span>
+    }
+
+    @Override
+    public int getItemCount() {
+<span class="nc" id="L215">        int count = infoItemList.size();</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">        if (header != null) count++;</span>
+<span class="nc bnc" id="L217" title="All 4 branches missed.">        if (footer != null &amp;&amp; showFooter) count++;</span>
+
+        if (DEBUG) {
+            Log.d(TAG, &quot;getItemCount() called, count = &quot; + count + &quot;, infoItemList.size() = &quot; + infoItemList.size() + &quot;, header = &quot; + header + &quot;, footer = &quot; + footer + &quot;, showFooter = &quot; + showFooter);
+        }
+<span class="nc" id="L222">        return count;</span>
+    }
+
+    @Override
+    public int getItemViewType(int position) {
+        if (DEBUG) Log.d(TAG, &quot;getItemViewType() called with: position = [&quot; + position + &quot;]&quot;);
+
+<span class="nc bnc" id="L229" title="All 4 branches missed.">        if (header != null &amp;&amp; position == 0) {</span>
+<span class="nc" id="L230">            return HEADER_TYPE;</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">        } else if (header != null) {</span>
+<span class="nc" id="L232">            position--;</span>
+        }
+<span class="nc bnc" id="L234" title="All 6 branches missed.">        if (footer != null &amp;&amp; position == infoItemList.size() &amp;&amp; showFooter) {</span>
+<span class="nc" id="L235">            return FOOTER_TYPE;</span>
+        }
+<span class="nc" id="L237">        final InfoItem item = infoItemList.get(position);</span>
+<span class="nc bnc" id="L238" title="All 5 branches missed.">        switch (item.getInfoType()) {</span>
+            case STREAM:
+<span class="nc bnc" id="L240" title="All 4 branches missed.">                return useGridVariant ? GRID_STREAM_HOLDER_TYPE : useMiniVariant ? MINI_STREAM_HOLDER_TYPE : STREAM_HOLDER_TYPE;</span>
+            case CHANNEL:
+<span class="nc bnc" id="L242" title="All 4 branches missed.">                return useGridVariant ? GRID_CHANNEL_HOLDER_TYPE : useMiniVariant ? MINI_CHANNEL_HOLDER_TYPE : CHANNEL_HOLDER_TYPE;</span>
+            case PLAYLIST:
+<span class="nc bnc" id="L244" title="All 4 branches missed.">                return useGridVariant ? GRID_PLAYLIST_HOLDER_TYPE : useMiniVariant ? MINI_PLAYLIST_HOLDER_TYPE : PLAYLIST_HOLDER_TYPE;</span>
+            case COMMENT:
+<span class="nc bnc" id="L246" title="All 2 branches missed.">                return useMiniVariant ? MINI_COMMENT_HOLDER_TYPE : COMMENT_HOLDER_TYPE;</span>
+            default:
+<span class="nc" id="L248">                return -1;</span>
+        }
+    }
+
+    @NonNull
+    @Override
+    public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
+        if (DEBUG)
+            Log.d(TAG, &quot;onCreateViewHolder() called with: parent = [&quot; + parent + &quot;], type = [&quot; + type + &quot;]&quot;);
+<span class="nc bnc" id="L257" title="All 14 branches missed.">        switch (type) {</span>
+            case HEADER_TYPE:
+<span class="nc" id="L259">                return new HFHolder(header);</span>
+            case FOOTER_TYPE:
+<span class="nc" id="L261">                return new HFHolder(footer);</span>
+            case MINI_STREAM_HOLDER_TYPE:
+<span class="nc" id="L263">                return new StreamMiniInfoItemHolder(infoItemBuilder, parent);</span>
+            case STREAM_HOLDER_TYPE:
+<span class="nc" id="L265">                return new StreamInfoItemHolder(infoItemBuilder, parent);</span>
+            case GRID_STREAM_HOLDER_TYPE:
+<span class="nc" id="L267">                return new StreamGridInfoItemHolder(infoItemBuilder, parent);</span>
+            case MINI_CHANNEL_HOLDER_TYPE:
+<span class="nc" id="L269">                return new ChannelMiniInfoItemHolder(infoItemBuilder, parent);</span>
+            case CHANNEL_HOLDER_TYPE:
+<span class="nc" id="L271">                return new ChannelInfoItemHolder(infoItemBuilder, parent);</span>
+            case GRID_CHANNEL_HOLDER_TYPE:
+<span class="nc" id="L273">                return new ChannelGridInfoItemHolder(infoItemBuilder, parent);</span>
+            case MINI_PLAYLIST_HOLDER_TYPE:
+<span class="nc" id="L275">                return new PlaylistMiniInfoItemHolder(infoItemBuilder, parent);</span>
+            case PLAYLIST_HOLDER_TYPE:
+<span class="nc" id="L277">                return new PlaylistInfoItemHolder(infoItemBuilder, parent);</span>
+            case GRID_PLAYLIST_HOLDER_TYPE:
+<span class="nc" id="L279">                return new PlaylistGridInfoItemHolder(infoItemBuilder, parent);</span>
+            case MINI_COMMENT_HOLDER_TYPE:
+<span class="nc" id="L281">                return new CommentsMiniInfoItemHolder(infoItemBuilder, parent);</span>
+            case COMMENT_HOLDER_TYPE:
+<span class="nc" id="L283">                return new CommentsInfoItemHolder(infoItemBuilder, parent);</span>
+            default:
+<span class="nc" id="L285">                return new FallbackViewHolder(new View(parent.getContext()));</span>
+        }
+    }
+
+    @Override
+    public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
+        if (DEBUG) Log.d(TAG, &quot;onBindViewHolder() called with: holder = [&quot; + holder.getClass().getSimpleName() + &quot;], position = [&quot; + position + &quot;]&quot;);
+<span class="nc bnc" id="L292" title="All 2 branches missed.">        if (holder instanceof InfoItemHolder) {</span>
+            // If header isn't null, offset the items by -1
+<span class="nc bnc" id="L294" title="All 2 branches missed.">            if (header != null) position--;</span>
+
+<span class="nc" id="L296">            ((InfoItemHolder) holder).updateFromItem(infoItemList.get(position), recordManager);</span>
+<span class="nc bnc" id="L297" title="All 6 branches missed.">        } else if (holder instanceof HFHolder &amp;&amp; position == 0 &amp;&amp; header != null) {</span>
+<span class="nc" id="L298">            ((HFHolder) holder).view = header;</span>
+<span class="nc bnc" id="L299" title="All 8 branches missed.">        } else if (holder instanceof HFHolder &amp;&amp; position == sizeConsideringHeaderOffset() &amp;&amp; footer != null &amp;&amp; showFooter) {</span>
+<span class="nc" id="L300">            ((HFHolder) holder).view = footer;</span>
+        }
+<span class="nc" id="L302">    }</span>
+
+    @Override
+    public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position, @NonNull List&lt;Object&gt; payloads) {
+<span class="nc bnc" id="L306" title="All 4 branches missed.">        if (!payloads.isEmpty() &amp;&amp; holder instanceof InfoItemHolder) {</span>
+<span class="nc bnc" id="L307" title="All 2 branches missed.">            for (Object payload : payloads) {</span>
+<span class="nc bnc" id="L308" title="All 2 branches missed.">                if (payload instanceof StreamStateEntity) {</span>
+<span class="nc bnc" id="L309" title="All 2 branches missed.">                    ((InfoItemHolder) holder).updateState(infoItemList.get(header == null ? position : position - 1), recordManager);</span>
+<span class="nc bnc" id="L310" title="All 2 branches missed.">                } else if (payload instanceof Boolean) {</span>
+<span class="nc bnc" id="L311" title="All 2 branches missed.">                    ((InfoItemHolder) holder).updateState(infoItemList.get(header == null ? position : position - 1), recordManager);</span>
+                }
+<span class="nc" id="L313">            }</span>
+        } else {
+<span class="nc" id="L315">            onBindViewHolder(holder, position);</span>
+        }
+<span class="nc" id="L317">    }</span>
+
+    public GridLayoutManager.SpanSizeLookup getSpanSizeLookup(final int spanCount) {
+<span class="nc" id="L320">        return new GridLayoutManager.SpanSizeLookup() {</span>
+            @Override
+            public int getSpanSize(int position) {
+<span class="nc" id="L323">                final int type = getItemViewType(position);</span>
+<span class="nc bnc" id="L324" title="All 4 branches missed.">                return type == HEADER_TYPE || type == FOOTER_TYPE ? spanCount : 1;</span>
+            }
+        };
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

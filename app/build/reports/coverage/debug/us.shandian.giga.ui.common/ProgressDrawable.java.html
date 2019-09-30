@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ProgressDrawable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">us.shandian.giga.ui.common</a> &gt; <span class="el_source">ProgressDrawable.java</span></div><h1>ProgressDrawable.java</h1><pre class="source lang-java linenums">package us.shandian.giga.ui.common;
+
+import android.graphics.Canvas;
+import android.graphics.ColorFilter;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.PixelFormat;
+import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
+import android.os.Handler;
+import android.os.Looper;
+import android.support.annotation.ColorInt;
+import android.support.annotation.NonNull;
+
+public class ProgressDrawable extends Drawable {
+    private static final int MARQUEE_INTERVAL = 150;
+
+    private float mProgress;
+    private int mBackgroundColor, mForegroundColor;
+    private Handler mMarqueeHandler;
+    private float mMarqueeProgress;
+    private Path mMarqueeLine;
+    private int mMarqueeSize;
+    private long mMarqueeNext;
+
+<span class="nc" id="L26">    public ProgressDrawable() {</span>
+<span class="nc" id="L27">        mMarqueeLine = null;// marquee disabled</span>
+<span class="nc" id="L28">        mMarqueeProgress = 0f;</span>
+<span class="nc" id="L29">        mMarqueeSize = 0;</span>
+<span class="nc" id="L30">        mMarqueeNext = 0;</span>
+<span class="nc" id="L31">    }</span>
+
+    public void setColors(@ColorInt int background, @ColorInt int foreground) {
+<span class="nc" id="L34">        mBackgroundColor = background;</span>
+<span class="nc" id="L35">        mForegroundColor = foreground;</span>
+<span class="nc" id="L36">    }</span>
+
+    public void setProgress(float progress) {
+<span class="nc" id="L39">        mProgress = progress;</span>
+<span class="nc" id="L40">        invalidateSelf();</span>
+<span class="nc" id="L41">    }</span>
+
+    public void setMarquee(boolean marquee) {
+<span class="nc bnc" id="L44" title="All 4 branches missed.">        if (marquee == (mMarqueeLine != null)) {</span>
+<span class="nc" id="L45">            return;</span>
+        }
+<span class="nc bnc" id="L47" title="All 2 branches missed.">        mMarqueeLine = marquee ? new Path() : null;</span>
+<span class="nc bnc" id="L48" title="All 2 branches missed.">        mMarqueeHandler = marquee ? new Handler(Looper.getMainLooper()) : null;</span>
+<span class="nc" id="L49">        mMarqueeSize = 0;</span>
+<span class="nc" id="L50">        mMarqueeNext = 0;</span>
+<span class="nc" id="L51">    }</span>
+
+    @Override
+    public void draw(@NonNull Canvas canvas) {
+<span class="nc" id="L55">        int width = getBounds().width();</span>
+<span class="nc" id="L56">        int height = getBounds().height();</span>
+
+<span class="nc" id="L58">        Paint paint = new Paint();</span>
+
+<span class="nc" id="L60">        paint.setColor(mBackgroundColor);</span>
+<span class="nc" id="L61">        canvas.drawRect(0, 0, width, height, paint);</span>
+
+<span class="nc" id="L63">        paint.setColor(mForegroundColor);</span>
+
+<span class="nc bnc" id="L65" title="All 2 branches missed.">        if (mMarqueeLine != null) {</span>
+<span class="nc bnc" id="L66" title="All 2 branches missed.">            if (mMarqueeSize &lt; 1) setupMarquee(width, height);</span>
+
+<span class="nc" id="L68">            int size = mMarqueeSize;</span>
+<span class="nc" id="L69">            Paint paint2 = new Paint();</span>
+<span class="nc" id="L70">            paint2.setColor(mForegroundColor);</span>
+<span class="nc" id="L71">            paint2.setStrokeWidth(size);</span>
+<span class="nc" id="L72">            paint2.setStyle(Paint.Style.STROKE);</span>
+
+<span class="nc" id="L74">            size *= 2;</span>
+
+<span class="nc bnc" id="L76" title="All 2 branches missed.">            if (mMarqueeProgress &gt;= size) {</span>
+<span class="nc" id="L77">                mMarqueeProgress = 1;</span>
+            } else {
+<span class="nc" id="L79">                mMarqueeProgress++;</span>
+            }
+
+            // render marquee
+<span class="nc" id="L83">            width += size * 2;</span>
+<span class="nc" id="L84">            Path marquee = new Path();</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">            for (float i = -size; i &lt; width; i += size) {</span>
+<span class="nc" id="L86">                marquee.addPath(mMarqueeLine, i + mMarqueeProgress, 0);</span>
+            }
+<span class="nc" id="L88">            marquee.close();</span>
+
+<span class="nc" id="L90">            canvas.drawPath(marquee, paint2);// draw marquee</span>
+
+<span class="nc bnc" id="L92" title="All 2 branches missed.">            if (System.currentTimeMillis() &gt;= mMarqueeNext) {</span>
+                // program next update
+<span class="nc" id="L94">                mMarqueeNext = System.currentTimeMillis() + MARQUEE_INTERVAL;</span>
+<span class="nc" id="L95">                mMarqueeHandler.postDelayed(this::invalidateSelf, MARQUEE_INTERVAL);</span>
+            }
+<span class="nc" id="L97">            return;</span>
+        }
+
+<span class="nc" id="L100">        canvas.drawRect(0, 0, (int) (mProgress * width), height, paint);</span>
+<span class="nc" id="L101">    }</span>
+
+    @Override
+    public void setAlpha(int alpha) {
+        // Unsupported
+<span class="nc" id="L106">    }</span>
+
+    @Override
+    public void setColorFilter(ColorFilter filter) {
+        // Unsupported
+<span class="nc" id="L111">    }</span>
+
+    @Override
+    public int getOpacity() {
+<span class="nc" id="L115">        return PixelFormat.OPAQUE;</span>
+    }
+
+    @Override
+    public void onBoundsChange(Rect rect) {
+<span class="nc bnc" id="L120" title="All 2 branches missed.">        if (mMarqueeLine != null) setupMarquee(rect.width(), rect.height());</span>
+<span class="nc" id="L121">    }</span>
+
+    private void setupMarquee(int width, int height) {
+<span class="nc" id="L124">        mMarqueeSize = (int) ((width * 10f) / 100f);// the size is 10% of the width</span>
+
+<span class="nc" id="L126">        mMarqueeLine.rewind();</span>
+<span class="nc" id="L127">        mMarqueeLine.moveTo(-mMarqueeSize, -mMarqueeSize);</span>
+<span class="nc" id="L128">        mMarqueeLine.lineTo(-mMarqueeSize * 4, height + mMarqueeSize);</span>
+<span class="nc" id="L129">        mMarqueeLine.close();</span>
+<span class="nc" id="L130">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

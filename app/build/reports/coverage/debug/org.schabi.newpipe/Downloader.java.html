@@ -1,0 +1,282 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Downloader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe</a> &gt; <span class="el_source">Downloader.java</span></div><h1>Downloader.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe;
+
+import android.support.annotation.Nullable;
+import android.text.TextUtils;
+
+import org.schabi.newpipe.extractor.DownloadRequest;
+import org.schabi.newpipe.extractor.DownloadResponse;
+import org.schabi.newpipe.extractor.exceptions.ReCaptchaException;
+import org.schabi.newpipe.extractor.utils.Localization;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.Serializable;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
+
+
+/*
+ * Created by Christian Schabesberger on 28.01.16.
+ *
+ * Copyright (C) Christian Schabesberger 2016 &lt;chris.schabesberger@mailbox.org&gt;
+ * Downloader.java is part of NewPipe.
+ *
+ * NewPipe is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * NewPipe is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NewPipe.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+public class Downloader implements org.schabi.newpipe.extractor.Downloader {
+    public static final String USER_AGENT = &quot;Mozilla/5.0 (Windows NT 6.1; WOW64; rv:43.0) Gecko/20100101 Firefox/43.0&quot;;
+
+    private static Downloader instance;
+    private String mCookies;
+    private final OkHttpClient client;
+
+<span class="fc" id="L55">    private Downloader(OkHttpClient.Builder builder) {</span>
+<span class="fc" id="L56">        this.client = builder</span>
+<span class="fc" id="L57">                .readTimeout(30, TimeUnit.SECONDS)</span>
+                //.cache(new Cache(new File(context.getExternalCacheDir(), &quot;okhttp&quot;), 16 * 1024 * 1024))
+<span class="fc" id="L59">                .build();</span>
+<span class="fc" id="L60">    }</span>
+
+    /**
+     * It's recommended to call exactly once in the entire lifetime of the application.
+     *
+     * @param builder if null, default builder will be used
+     */
+    public static Downloader init(@Nullable OkHttpClient.Builder builder) {
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">        return instance = new Downloader(builder != null ? builder : new OkHttpClient.Builder());</span>
+    }
+
+    public static Downloader getInstance() {
+<span class="nc" id="L72">        return instance;</span>
+    }
+
+    public String getCookies() {
+<span class="nc" id="L76">        return mCookies;</span>
+    }
+
+    public void setCookies(String cookies) {
+<span class="nc" id="L80">        mCookies = cookies;</span>
+<span class="nc" id="L81">    }</span>
+
+    /**
+     * Get the size of the content that the url is pointing by firing a HEAD request.
+     *
+     * @param url an url pointing to the content
+     * @return the size of the content, in bytes
+     */
+    public long getContentLength(String url) throws IOException {
+<span class="nc" id="L90">        Response response = null;</span>
+        try {
+<span class="nc" id="L92">            final Request request = new Request.Builder()</span>
+<span class="nc" id="L93">                    .head().url(url)</span>
+<span class="nc" id="L94">                    .addHeader(&quot;User-Agent&quot;, USER_AGENT)</span>
+<span class="nc" id="L95">                    .build();</span>
+<span class="nc" id="L96">            response = client.newCall(request).execute();</span>
+
+<span class="nc" id="L98">            String contentLength = response.header(&quot;Content-Length&quot;);</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">            return contentLength == null ? -1 : Long.parseLong(contentLength);</span>
+<span class="nc" id="L100">        } catch (NumberFormatException e) {</span>
+<span class="nc" id="L101">            throw new IOException(&quot;Invalid content length&quot;, e);</span>
+        } finally {
+<span class="nc bnc" id="L103" title="All 4 branches missed.">            if (response != null) {</span>
+<span class="nc" id="L104">                response.close();</span>
+            }
+<span class="nc" id="L106">        }</span>
+    }
+
+    /**
+     * Download the text file at the supplied URL as in download(String),
+     * but set the HTTP header field &quot;Accept-Language&quot; to the supplied string.
+     *
+     * @param siteUrl  the URL of the text file to return the contents of
+     * @param localization the language and country (usually a 2-character code) to set
+     * @return the contents of the specified text file
+     */
+    @Override
+    public String download(String siteUrl, Localization localization) throws IOException, ReCaptchaException {
+<span class="nc" id="L119">        Map&lt;String, String&gt; requestProperties = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L120">        requestProperties.put(&quot;Accept-Language&quot;, localization.getLanguage());</span>
+<span class="nc" id="L121">        return download(siteUrl, requestProperties);</span>
+    }
+
+    /**
+     * Download the text file at the supplied URL as in download(String),
+     * but set the HTTP headers included in the customProperties map.
+     *
+     * @param siteUrl          the URL of the text file to return the contents of
+     * @param customProperties set request header properties
+     * @return the contents of the specified text file
+     * @throws IOException
+     */
+    @Override
+    public String download(String siteUrl, Map&lt;String, String&gt; customProperties) throws IOException, ReCaptchaException {
+<span class="nc" id="L135">        return getBody(siteUrl, customProperties).string();</span>
+    }
+
+    public InputStream stream(String siteUrl) throws IOException {
+        try {
+<span class="nc" id="L140">            return getBody(siteUrl, Collections.emptyMap()).byteStream();</span>
+<span class="nc" id="L141">        } catch (ReCaptchaException e) {</span>
+<span class="nc" id="L142">            throw new IOException(e.getMessage(), e.getCause());</span>
+        }
+    }
+
+    private ResponseBody getBody(String siteUrl, Map&lt;String, String&gt; customProperties) throws IOException, ReCaptchaException {
+<span class="nc" id="L147">        final Request.Builder requestBuilder = new Request.Builder()</span>
+<span class="nc" id="L148">                .method(&quot;GET&quot;, null).url(siteUrl);</span>
+
+<span class="nc bnc" id="L150" title="All 2 branches missed.">        for (Map.Entry&lt;String, String&gt; header : customProperties.entrySet()) {</span>
+<span class="nc" id="L151">            requestBuilder.addHeader(header.getKey(), header.getValue());</span>
+<span class="nc" id="L152">        }</span>
+
+<span class="nc bnc" id="L154" title="All 2 branches missed.">        if (!customProperties.containsKey(&quot;User-Agent&quot;)) {</span>
+<span class="nc" id="L155">            requestBuilder.header(&quot;User-Agent&quot;, USER_AGENT);</span>
+        }
+
+<span class="nc bnc" id="L158" title="All 2 branches missed.">        if (!TextUtils.isEmpty(mCookies)) {</span>
+<span class="nc" id="L159">            requestBuilder.addHeader(&quot;Cookie&quot;, mCookies);</span>
+        }
+
+<span class="nc" id="L162">        final Request request = requestBuilder.build();</span>
+<span class="nc" id="L163">        final Response response = client.newCall(request).execute();</span>
+<span class="nc" id="L164">        final ResponseBody body = response.body();</span>
+
+<span class="nc bnc" id="L166" title="All 2 branches missed.">        if (response.code() == 429) {</span>
+<span class="nc" id="L167">            throw new ReCaptchaException(&quot;reCaptcha Challenge requested&quot;, siteUrl);</span>
+        }
+
+<span class="nc bnc" id="L170" title="All 2 branches missed.">        if (body == null) {</span>
+<span class="nc" id="L171">            response.close();</span>
+<span class="nc" id="L172">            return null;</span>
+        }
+
+<span class="nc" id="L175">        return body;</span>
+    }
+
+    /**
+     * Download (via HTTP) the text file located at the supplied URL, and return its contents.
+     * Primarily intended for downloading web pages.
+     *
+     * @param siteUrl the URL of the text file to download
+     * @return the contents of the specified text file
+     */
+    @Override
+    public String download(String siteUrl) throws IOException, ReCaptchaException {
+<span class="nc" id="L187">        return download(siteUrl, Collections.emptyMap());</span>
+    }
+
+
+    @Override
+    public DownloadResponse get(String siteUrl, DownloadRequest request) throws IOException, ReCaptchaException {
+<span class="nc" id="L193">        final Request.Builder requestBuilder = new Request.Builder()</span>
+<span class="nc" id="L194">                .method(&quot;GET&quot;, null).url(siteUrl);</span>
+
+<span class="nc" id="L196">        Map&lt;String, List&lt;String&gt;&gt; requestHeaders = request.getRequestHeaders();</span>
+        // set custom headers in request
+<span class="nc bnc" id="L198" title="All 2 branches missed.">        for (Map.Entry&lt;String, List&lt;String&gt;&gt; pair : requestHeaders.entrySet()) {</span>
+<span class="nc bnc" id="L199" title="All 2 branches missed.">            for(String value : pair.getValue()){</span>
+<span class="nc" id="L200">                requestBuilder.addHeader(pair.getKey(), value);</span>
+<span class="nc" id="L201">            }</span>
+<span class="nc" id="L202">        }</span>
+
+<span class="nc bnc" id="L204" title="All 2 branches missed.">        if (!requestHeaders.containsKey(&quot;User-Agent&quot;)) {</span>
+<span class="nc" id="L205">            requestBuilder.header(&quot;User-Agent&quot;, USER_AGENT);</span>
+        }
+
+<span class="nc bnc" id="L208" title="All 2 branches missed.">        if (!TextUtils.isEmpty(mCookies)) {</span>
+<span class="nc" id="L209">            requestBuilder.addHeader(&quot;Cookie&quot;, mCookies);</span>
+        }
+
+<span class="nc" id="L212">        final Request okRequest = requestBuilder.build();</span>
+<span class="nc" id="L213">        final Response response = client.newCall(okRequest).execute();</span>
+<span class="nc" id="L214">        final ResponseBody body = response.body();</span>
+
+<span class="nc bnc" id="L216" title="All 2 branches missed.">        if (response.code() == 429) {</span>
+<span class="nc" id="L217">            throw new ReCaptchaException(&quot;reCaptcha Challenge requested&quot;, siteUrl);</span>
+        }
+
+<span class="nc bnc" id="L220" title="All 2 branches missed.">        if (body == null) {</span>
+<span class="nc" id="L221">            response.close();</span>
+<span class="nc" id="L222">            return null;</span>
+        }
+
+<span class="nc" id="L225">        return new DownloadResponse(body.string(), response.headers().toMultimap());</span>
+    }
+
+    @Override
+    public DownloadResponse get(String siteUrl) throws IOException, ReCaptchaException {
+<span class="nc" id="L230">        return get(siteUrl, DownloadRequest.emptyRequest);</span>
+    }
+
+    @Override
+    public DownloadResponse post(String siteUrl, DownloadRequest request) throws IOException, ReCaptchaException {
+
+<span class="nc" id="L236">        Map&lt;String, List&lt;String&gt;&gt; requestHeaders = request.getRequestHeaders();</span>
+<span class="nc bnc" id="L237" title="All 4 branches missed.">        if(null == requestHeaders.get(&quot;Content-Type&quot;) || requestHeaders.get(&quot;Content-Type&quot;).isEmpty()){</span>
+            // content type header is required. maybe throw an exception here
+<span class="nc" id="L239">            return null;</span>
+        }
+
+<span class="nc" id="L242">        String contentType = requestHeaders.get(&quot;Content-Type&quot;).get(0);</span>
+
+<span class="nc" id="L244">        RequestBody okRequestBody = null;</span>
+<span class="nc bnc" id="L245" title="All 2 branches missed.">        if(null != request.getRequestBody()){</span>
+<span class="nc" id="L246">            okRequestBody = RequestBody.create(MediaType.parse(contentType), request.getRequestBody());</span>
+        }
+<span class="nc" id="L248">        final Request.Builder requestBuilder = new Request.Builder()</span>
+<span class="nc" id="L249">                .method(&quot;POST&quot;,  okRequestBody).url(siteUrl);</span>
+
+        // set custom headers in request
+<span class="nc bnc" id="L252" title="All 2 branches missed.">        for (Map.Entry&lt;String, List&lt;String&gt;&gt; pair : requestHeaders.entrySet()) {</span>
+<span class="nc bnc" id="L253" title="All 2 branches missed.">            for(String value : pair.getValue()){</span>
+<span class="nc" id="L254">                requestBuilder.addHeader(pair.getKey(), value);</span>
+<span class="nc" id="L255">            }</span>
+<span class="nc" id="L256">        }</span>
+
+<span class="nc bnc" id="L258" title="All 2 branches missed.">        if (!requestHeaders.containsKey(&quot;User-Agent&quot;)) {</span>
+<span class="nc" id="L259">            requestBuilder.header(&quot;User-Agent&quot;, USER_AGENT);</span>
+        }
+
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        if (!TextUtils.isEmpty(mCookies)) {</span>
+<span class="nc" id="L263">            requestBuilder.addHeader(&quot;Cookie&quot;, mCookies);</span>
+        }
+
+<span class="nc" id="L266">        final Request okRequest = requestBuilder.build();</span>
+<span class="nc" id="L267">        final Response response = client.newCall(okRequest).execute();</span>
+<span class="nc" id="L268">        final ResponseBody body = response.body();</span>
+
+<span class="nc bnc" id="L270" title="All 2 branches missed.">        if (response.code() == 429) {</span>
+<span class="nc" id="L271">            throw new ReCaptchaException(&quot;reCaptcha Challenge requested&quot;, siteUrl);</span>
+        }
+
+<span class="nc bnc" id="L274" title="All 2 branches missed.">        if (body == null) {</span>
+<span class="nc" id="L275">            response.close();</span>
+<span class="nc" id="L276">            return null;</span>
+        }
+
+<span class="nc" id="L279">        return new DownloadResponse(body.string(), response.headers().toMultimap());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

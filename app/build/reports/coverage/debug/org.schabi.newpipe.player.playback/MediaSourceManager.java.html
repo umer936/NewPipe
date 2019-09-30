@@ -1,0 +1,513 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MediaSourceManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.player.playback</a> &gt; <span class="el_source">MediaSourceManager.java</span></div><h1>MediaSourceManager.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.player.playback;
+import android.os.Handler;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v4.util.ArraySet;
+import android.util.Log;
+
+import com.google.android.exoplayer2.source.MediaSource;
+
+import org.reactivestreams.Subscriber;
+import org.reactivestreams.Subscription;
+import org.schabi.newpipe.player.mediasource.FailedMediaSource;
+import org.schabi.newpipe.player.mediasource.LoadedMediaSource;
+import org.schabi.newpipe.player.mediasource.ManagedMediaSource;
+import org.schabi.newpipe.player.mediasource.ManagedMediaSourcePlaylist;
+import org.schabi.newpipe.player.mediasource.PlaceholderMediaSource;
+import org.schabi.newpipe.player.playqueue.PlayQueue;
+import org.schabi.newpipe.player.playqueue.PlayQueueItem;
+import org.schabi.newpipe.player.playqueue.events.MoveEvent;
+import org.schabi.newpipe.player.playqueue.events.PlayQueueEvent;
+import org.schabi.newpipe.player.playqueue.events.RemoveEvent;
+import org.schabi.newpipe.player.playqueue.events.ReorderEvent;
+import org.schabi.newpipe.util.ServiceHelper;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import io.reactivex.Observable;
+import io.reactivex.Single;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.internal.subscriptions.EmptySubscription;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subjects.PublishSubject;
+
+import static org.schabi.newpipe.player.mediasource.FailedMediaSource.MediaSourceResolutionException;
+import static org.schabi.newpipe.player.mediasource.FailedMediaSource.StreamInfoLoadException;
+import static org.schabi.newpipe.player.playqueue.PlayQueue.DEBUG;
+
+public class MediaSourceManager {
+<span class="nc" id="L45">    @NonNull private final String TAG = &quot;MediaSourceManager@&quot; + hashCode();</span>
+
+    /**
+     * Determines how many streams before and after the current stream should be loaded.
+     * The default value (1) ensures seamless playback under typical network settings.
+     * &lt;br&gt;&lt;br&gt;
+     * The streams after the current will be loaded into the playlist timeline while the
+     * streams before will only be cached for future usage.
+     *
+     * @see #onMediaSourceReceived(PlayQueueItem, ManagedMediaSource)
+     * */
+    private final static int WINDOW_SIZE = 1;
+
+    @NonNull private final PlaybackListener playbackListener;
+    @NonNull private final PlayQueue playQueue;
+
+    /**
+     * Determines the gap time between the playback position and the playback duration which
+     * the {@link #getEdgeIntervalSignal()} begins to request loading.
+     *
+     * @see #progressUpdateIntervalMillis
+     * */
+    private final long playbackNearEndGapMillis;
+    /**
+     * Determines the interval which the {@link #getEdgeIntervalSignal()} waits for between
+     * each request for loading, once {@link #playbackNearEndGapMillis} has reached.
+     * */
+    private final long progressUpdateIntervalMillis;
+    @NonNull private final Observable&lt;Long&gt; nearEndIntervalSignal;
+
+    /**
+     * Process only the last load order when receiving a stream of load orders (lessens I/O).
+     * &lt;br&gt;&lt;br&gt;
+     * The higher it is, the less loading occurs during rapid noncritical timeline changes.
+     * &lt;br&gt;&lt;br&gt;
+     * Not recommended to go below 100ms.
+     *
+     * @see #loadDebounced()
+     * */
+    private final long loadDebounceMillis;
+    @NonNull private final Disposable debouncedLoader;
+    @NonNull private final PublishSubject&lt;Long&gt; debouncedSignal;
+
+    @NonNull private Subscription playQueueReactor;
+
+    /**
+     * Determines the maximum number of disposables allowed in the {@link #loaderReactor}.
+     * Once exceeded, new calls to {@link #loadImmediate()} will evict all disposables in the
+     * {@link #loaderReactor} in order to load a new set of items.
+     *
+     * @see #loadImmediate()
+     * @see #maybeLoadItem(PlayQueueItem)
+     * */
+    private final static int MAXIMUM_LOADER_SIZE = WINDOW_SIZE * 2 + 1;
+    @NonNull private final CompositeDisposable loaderReactor;
+    @NonNull private final Set&lt;PlayQueueItem&gt; loadingItems;
+
+    @NonNull private final AtomicBoolean isBlocked;
+
+    @NonNull private ManagedMediaSourcePlaylist playlist;
+
+<span class="nc" id="L106">    private Handler removeMediaSourceHandler = new Handler();</span>
+
+    public MediaSourceManager(@NonNull final PlaybackListener listener,
+                              @NonNull final PlayQueue playQueue) {
+<span class="nc" id="L110">        this(listener, playQueue, /*loadDebounceMillis=*/400L,</span>
+<span class="nc" id="L111">                /*playbackNearEndGapMillis=*/TimeUnit.MILLISECONDS.convert(30, TimeUnit.SECONDS),</span>
+<span class="nc" id="L112">                /*progressUpdateIntervalMillis*/TimeUnit.MILLISECONDS.convert(2, TimeUnit.SECONDS));</span>
+<span class="nc" id="L113">    }</span>
+
+    private MediaSourceManager(@NonNull final PlaybackListener listener,
+                               @NonNull final PlayQueue playQueue,
+                               final long loadDebounceMillis,
+                               final long playbackNearEndGapMillis,
+<span class="nc" id="L119">                               final long progressUpdateIntervalMillis) {</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">        if (playQueue.getBroadcastReceiver() == null) {</span>
+<span class="nc" id="L121">            throw new IllegalArgumentException(&quot;Play Queue has not been initialized.&quot;);</span>
+        }
+<span class="nc bnc" id="L123" title="All 2 branches missed.">        if (playbackNearEndGapMillis &lt; progressUpdateIntervalMillis) {</span>
+<span class="nc" id="L124">            throw new IllegalArgumentException(&quot;Playback end gap=[&quot; + playbackNearEndGapMillis +</span>
+                    &quot; ms] must be longer than update interval=[ &quot; + progressUpdateIntervalMillis +
+                    &quot; ms] for them to be useful.&quot;);
+        }
+
+<span class="nc" id="L129">        this.playbackListener = listener;</span>
+<span class="nc" id="L130">        this.playQueue = playQueue;</span>
+
+<span class="nc" id="L132">        this.playbackNearEndGapMillis = playbackNearEndGapMillis;</span>
+<span class="nc" id="L133">        this.progressUpdateIntervalMillis = progressUpdateIntervalMillis;</span>
+<span class="nc" id="L134">        this.nearEndIntervalSignal = getEdgeIntervalSignal();</span>
+
+<span class="nc" id="L136">        this.loadDebounceMillis = loadDebounceMillis;</span>
+<span class="nc" id="L137">        this.debouncedSignal = PublishSubject.create();</span>
+<span class="nc" id="L138">        this.debouncedLoader = getDebouncedLoader();</span>
+
+<span class="nc" id="L140">        this.playQueueReactor = EmptySubscription.INSTANCE;</span>
+<span class="nc" id="L141">        this.loaderReactor = new CompositeDisposable();</span>
+
+<span class="nc" id="L143">        this.isBlocked = new AtomicBoolean(false);</span>
+
+<span class="nc" id="L145">        this.playlist = new ManagedMediaSourcePlaylist();</span>
+
+<span class="nc" id="L147">        this.loadingItems = Collections.synchronizedSet(new ArraySet&lt;&gt;());</span>
+
+<span class="nc" id="L149">        playQueue.getBroadcastReceiver()</span>
+<span class="nc" id="L150">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L151">                .subscribe(getReactor());</span>
+<span class="nc" id="L152">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Exposed Methods
+    //////////////////////////////////////////////////////////////////////////*/
+    /**
+     * Dispose the manager and releases all message buses and loaders.
+     * */
+    public void dispose() {
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;close() called.&quot;);</span>
+
+<span class="nc" id="L163">        debouncedSignal.onComplete();</span>
+<span class="nc" id="L164">        debouncedLoader.dispose();</span>
+
+<span class="nc" id="L166">        playQueueReactor.cancel();</span>
+<span class="nc" id="L167">        loaderReactor.dispose();</span>
+<span class="nc" id="L168">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Event Reactor
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private Subscriber&lt;PlayQueueEvent&gt; getReactor() {
+<span class="nc" id="L175">        return new Subscriber&lt;PlayQueueEvent&gt;() {</span>
+            @Override
+            public void onSubscribe(@NonNull Subscription d) {
+<span class="nc" id="L178">                playQueueReactor.cancel();</span>
+<span class="nc" id="L179">                playQueueReactor = d;</span>
+<span class="nc" id="L180">                playQueueReactor.request(1);</span>
+<span class="nc" id="L181">            }</span>
+
+            @Override
+            public void onNext(@NonNull PlayQueueEvent playQueueMessage) {
+<span class="nc" id="L185">                onPlayQueueChanged(playQueueMessage);</span>
+<span class="nc" id="L186">            }</span>
+
+            @Override
+<span class="nc" id="L189">            public void onError(@NonNull Throwable e) {}</span>
+
+            @Override
+<span class="nc" id="L192">            public void onComplete() {}</span>
+        };
+    }
+
+    private void onPlayQueueChanged(final PlayQueueEvent event) {
+<span class="nc bnc" id="L197" title="All 4 branches missed.">        if (playQueue.isEmpty() &amp;&amp; playQueue.isComplete()) {</span>
+<span class="nc" id="L198">            playbackListener.onPlaybackShutdown();</span>
+<span class="nc" id="L199">            return;</span>
+        }
+
+        // Event specific action
+<span class="nc bnc" id="L203" title="All 7 branches missed.">        switch (event.type()) {</span>
+            case INIT:
+            case ERROR:
+<span class="nc" id="L206">                maybeBlock();</span>
+            case APPEND:
+<span class="nc" id="L208">                populateSources();</span>
+<span class="nc" id="L209">                break;</span>
+            case SELECT:
+<span class="nc" id="L211">                maybeRenewCurrentIndex();</span>
+<span class="nc" id="L212">                break;</span>
+            case REMOVE:
+<span class="nc" id="L214">                final RemoveEvent removeEvent = (RemoveEvent) event;</span>
+<span class="nc" id="L215">                playlist.remove(removeEvent.getRemoveIndex());</span>
+<span class="nc" id="L216">                break;</span>
+            case MOVE:
+<span class="nc" id="L218">                final MoveEvent moveEvent = (MoveEvent) event;</span>
+<span class="nc" id="L219">                playlist.move(moveEvent.getFromIndex(), moveEvent.getToIndex());</span>
+<span class="nc" id="L220">                break;</span>
+            case REORDER:
+                // Need to move to ensure the playing index from play queue matches that of
+                // the source timeline, and then window correction can take care of the rest
+<span class="nc" id="L224">                final ReorderEvent reorderEvent = (ReorderEvent) event;</span>
+<span class="nc" id="L225">                playlist.move(reorderEvent.getFromSelectedIndex(),</span>
+<span class="nc" id="L226">                        reorderEvent.getToSelectedIndex());</span>
+<span class="nc" id="L227">                break;</span>
+            case RECOVERY:
+            default:
+                break;
+        }
+
+        // Loading and Syncing
+<span class="nc bnc" id="L234" title="All 2 branches missed.">        switch (event.type()) {</span>
+            case INIT:
+            case REORDER:
+            case ERROR:
+            case SELECT:
+<span class="nc" id="L239">                loadImmediate(); // low frequency, critical events</span>
+<span class="nc" id="L240">                break;</span>
+            case APPEND:
+            case REMOVE:
+            case MOVE:
+            case RECOVERY:
+            default:
+<span class="nc" id="L246">                loadDebounced(); // high frequency or noncritical events</span>
+                break;
+        }
+
+<span class="nc bnc" id="L250" title="All 2 branches missed.">        if (!isPlayQueueReady()) {</span>
+<span class="nc" id="L251">            maybeBlock();</span>
+<span class="nc" id="L252">            playQueue.fetch();</span>
+        }
+<span class="nc" id="L254">        playQueueReactor.request(1);</span>
+<span class="nc" id="L255">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Playback Locking
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private boolean isPlayQueueReady() {
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        final boolean isWindowLoaded = playQueue.size() - playQueue.getIndex() &gt; WINDOW_SIZE;</span>
+<span class="nc bnc" id="L263" title="All 4 branches missed.">        return playQueue.isComplete() || isWindowLoaded;</span>
+    }
+
+    private boolean isPlaybackReady() {
+<span class="nc bnc" id="L267" title="All 2 branches missed.">        if (playlist.size() != playQueue.size()) return false;</span>
+
+<span class="nc" id="L269">        final ManagedMediaSource mediaSource = playlist.get(playQueue.getIndex());</span>
+<span class="nc bnc" id="L270" title="All 2 branches missed.">        if (mediaSource == null) return false;</span>
+
+<span class="nc" id="L272">        final PlayQueueItem playQueueItem = playQueue.getItem();</span>
+<span class="nc" id="L273">        return mediaSource.isStreamEqual(playQueueItem);</span>
+    }
+
+    private void maybeBlock() {
+<span class="nc bnc" id="L277" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;maybeBlock() called.&quot;);</span>
+
+<span class="nc bnc" id="L279" title="All 2 branches missed.">        if (isBlocked.get()) return;</span>
+
+<span class="nc" id="L281">        playbackListener.onPlaybackBlock();</span>
+<span class="nc" id="L282">        resetSources();</span>
+
+<span class="nc" id="L284">        isBlocked.set(true);</span>
+<span class="nc" id="L285">    }</span>
+
+    private void maybeUnblock() {
+<span class="nc bnc" id="L288" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;maybeUnblock() called.&quot;);</span>
+
+<span class="nc bnc" id="L290" title="All 2 branches missed.">        if (isBlocked.get()) {</span>
+<span class="nc" id="L291">            isBlocked.set(false);</span>
+<span class="nc" id="L292">            playbackListener.onPlaybackUnblock(playlist.getParentMediaSource());</span>
+        }
+<span class="nc" id="L294">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Metadata Synchronization
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private void maybeSync() {
+<span class="nc bnc" id="L301" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;maybeSync() called.&quot;);</span>
+
+<span class="nc" id="L303">        final PlayQueueItem currentItem = playQueue.getItem();</span>
+<span class="nc bnc" id="L304" title="All 4 branches missed.">        if (isBlocked.get() || currentItem == null) return;</span>
+
+<span class="nc" id="L306">        playbackListener.onPlaybackSynchronize(currentItem);</span>
+<span class="nc" id="L307">    }</span>
+
+    private synchronized void maybeSynchronizePlayer() {
+<span class="nc bnc" id="L310" title="All 4 branches missed.">        if (isPlayQueueReady() &amp;&amp; isPlaybackReady()) {</span>
+<span class="nc" id="L311">            maybeUnblock();</span>
+<span class="nc" id="L312">            maybeSync();</span>
+        }
+<span class="nc" id="L314">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // MediaSource Loading
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private Observable&lt;Long&gt; getEdgeIntervalSignal() {
+<span class="nc" id="L321">        return Observable.interval(progressUpdateIntervalMillis, TimeUnit.MILLISECONDS)</span>
+<span class="nc" id="L322">                .filter(ignored -&gt;</span>
+<span class="nc" id="L323">                        playbackListener.isApproachingPlaybackEdge(playbackNearEndGapMillis));</span>
+    }
+
+    private Disposable getDebouncedLoader() {
+<span class="nc" id="L327">        return debouncedSignal.mergeWith(nearEndIntervalSignal)</span>
+<span class="nc" id="L328">                .debounce(loadDebounceMillis, TimeUnit.MILLISECONDS)</span>
+<span class="nc" id="L329">                .subscribeOn(Schedulers.single())</span>
+<span class="nc" id="L330">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L331">                .subscribe(timestamp -&gt; loadImmediate());</span>
+    }
+
+    private void loadDebounced() {
+<span class="nc" id="L335">        debouncedSignal.onNext(System.currentTimeMillis());</span>
+<span class="nc" id="L336">    }</span>
+
+    private void loadImmediate() {
+<span class="nc bnc" id="L339" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;MediaSource - loadImmediate() called&quot;);</span>
+<span class="nc" id="L340">        final ItemsToLoad itemsToLoad = getItemsToLoad(playQueue);</span>
+<span class="nc bnc" id="L341" title="All 2 branches missed.">        if (itemsToLoad == null) return;</span>
+
+        // Evict the previous items being loaded to free up memory, before start loading new ones
+<span class="nc" id="L344">        maybeClearLoaders();</span>
+
+<span class="nc" id="L346">        maybeLoadItem(itemsToLoad.center);</span>
+<span class="nc bnc" id="L347" title="All 2 branches missed.">        for (final PlayQueueItem item : itemsToLoad.neighbors) {</span>
+<span class="nc" id="L348">            maybeLoadItem(item);</span>
+<span class="nc" id="L349">        }</span>
+<span class="nc" id="L350">    }</span>
+
+    private void maybeLoadItem(@NonNull final PlayQueueItem item) {
+<span class="nc bnc" id="L353" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;maybeLoadItem() called.&quot;);</span>
+<span class="nc bnc" id="L354" title="All 2 branches missed.">        if (playQueue.indexOf(item) &gt;= playlist.size()) return;</span>
+
+<span class="nc bnc" id="L356" title="All 4 branches missed.">        if (!loadingItems.contains(item) &amp;&amp; isCorrectionNeeded(item)) {</span>
+<span class="nc bnc" id="L357" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;MediaSource - Loading=[&quot; + item.getTitle() +</span>
+<span class="nc" id="L358">                    &quot;] with url=[&quot; + item.getUrl() + &quot;]&quot;);</span>
+
+<span class="nc" id="L360">            loadingItems.add(item);</span>
+<span class="nc" id="L361">            final Disposable loader = getLoadedMediaSource(item)</span>
+<span class="nc" id="L362">                    .observeOn(AndroidSchedulers.mainThread())</span>
+                    /* No exception handling since getLoadedMediaSource guarantees nonnull return */
+<span class="nc" id="L364">                    .subscribe(mediaSource -&gt; onMediaSourceReceived(item, mediaSource));</span>
+<span class="nc" id="L365">            loaderReactor.add(loader);</span>
+        }
+<span class="nc" id="L367">    }</span>
+
+    private Single&lt;ManagedMediaSource&gt; getLoadedMediaSource(@NonNull final PlayQueueItem stream) {
+<span class="nc" id="L370">        return stream.getStream().map(streamInfo -&gt; {</span>
+<span class="nc" id="L371">            final MediaSource source = playbackListener.sourceOf(stream, streamInfo);</span>
+<span class="nc bnc" id="L372" title="All 2 branches missed.">            if (source == null) {</span>
+<span class="nc" id="L373">                final String message = &quot;Unable to resolve source from stream info.&quot; +</span>
+<span class="nc" id="L374">                        &quot; URL: &quot; + stream.getUrl() +</span>
+<span class="nc" id="L375">                        &quot;, audio count: &quot; + streamInfo.getAudioStreams().size() +</span>
+<span class="nc" id="L376">                        &quot;, video count: &quot; + streamInfo.getVideoOnlyStreams().size() +</span>
+<span class="nc" id="L377">                        streamInfo.getVideoStreams().size();</span>
+<span class="nc" id="L378">                return new FailedMediaSource(stream, new MediaSourceResolutionException(message));</span>
+            }
+
+<span class="nc" id="L381">            final long expiration = System.currentTimeMillis() +</span>
+<span class="nc" id="L382">                    ServiceHelper.getCacheExpirationMillis(streamInfo.getServiceId());</span>
+<span class="nc" id="L383">            return new LoadedMediaSource(source, stream, expiration);</span>
+<span class="nc" id="L384">        }).onErrorReturn(throwable -&gt; new FailedMediaSource(stream,</span>
+                new StreamInfoLoadException(throwable)));
+    }
+
+    private void onMediaSourceReceived(@NonNull final PlayQueueItem item,
+                                       @NonNull final ManagedMediaSource mediaSource) {
+<span class="nc bnc" id="L390" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;MediaSource - Loaded=[&quot; + item.getTitle() +</span>
+<span class="nc" id="L391">                &quot;] with url=[&quot; + item.getUrl() + &quot;]&quot;);</span>
+
+<span class="nc" id="L393">        loadingItems.remove(item);</span>
+
+<span class="nc" id="L395">        final int itemIndex = playQueue.indexOf(item);</span>
+        // Only update the playlist timeline for items at the current index or after.
+<span class="nc bnc" id="L397" title="All 2 branches missed.">        if (isCorrectionNeeded(item)) {</span>
+<span class="nc bnc" id="L398" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;MediaSource - Updating index=[&quot; + itemIndex + &quot;] with &quot; +</span>
+<span class="nc" id="L399">                    &quot;title=[&quot; + item.getTitle() + &quot;] at url=[&quot; + item.getUrl() + &quot;]&quot;);</span>
+<span class="nc" id="L400">            playlist.update(itemIndex, mediaSource, removeMediaSourceHandler, this::maybeSynchronizePlayer);</span>
+        }
+<span class="nc" id="L402">    }</span>
+
+    /**
+     * Checks if the corresponding MediaSource in
+     * {@link com.google.android.exoplayer2.source.ConcatenatingMediaSource}
+     * for a given {@link PlayQueueItem} needs replacement, either due to gapless playback
+     * readiness or playlist desynchronization.
+     * &lt;br&gt;&lt;br&gt;
+     * If the given {@link PlayQueueItem} is currently being played and is already loaded,
+     * then correction is not only needed if the playlist is desynchronized. Otherwise, the
+     * check depends on the status (e.g. expiration or placeholder) of the
+     * {@link ManagedMediaSource}.
+     * */
+    private boolean isCorrectionNeeded(@NonNull final PlayQueueItem item) {
+<span class="nc" id="L416">        final int index = playQueue.indexOf(item);</span>
+<span class="nc" id="L417">        final ManagedMediaSource mediaSource = playlist.get(index);</span>
+<span class="nc bnc" id="L418" title="All 4 branches missed.">        return mediaSource != null &amp;&amp; mediaSource.shouldBeReplacedWith(item,</span>
+<span class="nc bnc" id="L419" title="All 2 branches missed.">                /*mightBeInProgress=*/index != playQueue.getIndex());</span>
+    }
+
+    /**
+     * Checks if the current playing index contains an expired {@link ManagedMediaSource}.
+     * If so, the expired source is replaced by a {@link PlaceholderMediaSource} and
+     * {@link #loadImmediate()} is called to reload the current item.
+     * &lt;br&gt;&lt;br&gt;
+     * If not, then the media source at the current index is ready for playback, and
+     * {@link #maybeSynchronizePlayer()} is called.
+     * &lt;br&gt;&lt;br&gt;
+     * Under both cases, {@link #maybeSync()} will be called to ensure the listener
+     * is up-to-date.
+     * */
+    private void maybeRenewCurrentIndex() {
+<span class="nc" id="L434">        final int currentIndex = playQueue.getIndex();</span>
+<span class="nc" id="L435">        final ManagedMediaSource currentSource = playlist.get(currentIndex);</span>
+<span class="nc bnc" id="L436" title="All 2 branches missed.">        if (currentSource == null) return;</span>
+
+<span class="nc" id="L438">        final PlayQueueItem currentItem = playQueue.getItem();</span>
+<span class="nc bnc" id="L439" title="All 2 branches missed.">        if (!currentSource.shouldBeReplacedWith(currentItem, /*canInterruptOnRenew=*/true)) {</span>
+<span class="nc" id="L440">            maybeSynchronizePlayer();</span>
+<span class="nc" id="L441">            return;</span>
+        }
+
+<span class="nc bnc" id="L444" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;MediaSource - Reloading currently playing, &quot; +</span>
+<span class="nc" id="L445">                &quot;index=[&quot; + currentIndex + &quot;], item=[&quot; + currentItem.getTitle() + &quot;]&quot;);</span>
+<span class="nc" id="L446">        playlist.invalidate(currentIndex, removeMediaSourceHandler, this::loadImmediate);</span>
+<span class="nc" id="L447">    }</span>
+
+    private void maybeClearLoaders() {
+<span class="nc bnc" id="L450" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;MediaSource - maybeClearLoaders() called.&quot;);</span>
+<span class="nc bnc" id="L451" title="All 2 branches missed.">        if (!loadingItems.contains(playQueue.getItem()) &amp;&amp;</span>
+<span class="nc bnc" id="L452" title="All 2 branches missed.">                loaderReactor.size() &gt; MAXIMUM_LOADER_SIZE) {</span>
+<span class="nc" id="L453">            loaderReactor.clear();</span>
+<span class="nc" id="L454">            loadingItems.clear();</span>
+        }
+<span class="nc" id="L456">    }</span>
+    /*//////////////////////////////////////////////////////////////////////////
+    // MediaSource Playlist Helpers
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private void resetSources() {
+<span class="nc bnc" id="L462" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;resetSources() called.&quot;);</span>
+<span class="nc" id="L463">        playlist = new ManagedMediaSourcePlaylist();</span>
+<span class="nc" id="L464">    }</span>
+
+    private void populateSources() {
+<span class="nc bnc" id="L467" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;populateSources() called.&quot;);</span>
+<span class="nc bnc" id="L468" title="All 2 branches missed.">        while (playlist.size() &lt; playQueue.size()) {</span>
+<span class="nc" id="L469">            playlist.expand();</span>
+        }
+<span class="nc" id="L471">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Manager Helpers
+    //////////////////////////////////////////////////////////////////////////*/
+    @Nullable
+    private static ItemsToLoad getItemsToLoad(@NonNull final PlayQueue playQueue) {
+        // The current item has higher priority
+<span class="nc" id="L479">        final int currentIndex = playQueue.getIndex();</span>
+<span class="nc" id="L480">        final PlayQueueItem currentItem = playQueue.getItem(currentIndex);</span>
+<span class="nc bnc" id="L481" title="All 2 branches missed.">        if (currentItem == null) return null;</span>
+
+        // The rest are just for seamless playback
+        // Although timeline is not updated prior to the current index, these sources are still
+        // loaded into the cache for faster retrieval at a potentially later time.
+<span class="nc" id="L486">        final int leftBound = Math.max(0, currentIndex - MediaSourceManager.WINDOW_SIZE);</span>
+<span class="nc" id="L487">        final int rightLimit = currentIndex + MediaSourceManager.WINDOW_SIZE + 1;</span>
+<span class="nc" id="L488">        final int rightBound = Math.min(playQueue.size(), rightLimit);</span>
+<span class="nc" id="L489">        final Set&lt;PlayQueueItem&gt; neighbors = new ArraySet&lt;&gt;(</span>
+<span class="nc" id="L490">                playQueue.getStreams().subList(leftBound,rightBound));</span>
+
+        // Do a round robin
+<span class="nc" id="L493">        final int excess = rightLimit - playQueue.size();</span>
+<span class="nc bnc" id="L494" title="All 2 branches missed.">        if (excess &gt;= 0) {</span>
+<span class="nc" id="L495">            neighbors.addAll(playQueue.getStreams().subList(0, Math.min(playQueue.size(), excess)));</span>
+        }
+<span class="nc" id="L497">        neighbors.remove(currentItem);</span>
+
+<span class="nc" id="L499">        return new ItemsToLoad(currentItem, neighbors);</span>
+    }
+
+    private static class ItemsToLoad {
+        @NonNull final private PlayQueueItem center;
+        @NonNull final private Collection&lt;PlayQueueItem&gt; neighbors;
+
+        ItemsToLoad(@NonNull final PlayQueueItem center,
+<span class="nc" id="L507">                    @NonNull final Collection&lt;PlayQueueItem&gt; neighbors) {</span>
+<span class="nc" id="L508">            this.center = center;</span>
+<span class="nc" id="L509">            this.neighbors = neighbors;</span>
+<span class="nc" id="L510">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

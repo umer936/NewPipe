@@ -1,0 +1,559 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NavigationHelper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.util</a> &gt; <span class="el_source">NavigationHelper.java</span></div><h1>NavigationHelper.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.util;
+
+import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.content.ActivityNotFoundException;
+import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
+import android.preference.PreferenceManager;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v4.app.Fragment;
+import android.support.v4.app.FragmentManager;
+import android.support.v4.app.FragmentTransaction;
+import android.support.v7.app.AlertDialog;
+import android.util.Log;
+import android.widget.Toast;
+
+import com.nostra13.universalimageloader.core.ImageLoader;
+
+import org.schabi.newpipe.MainActivity;
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.RouterActivity;
+import org.schabi.newpipe.about.AboutActivity;
+import org.schabi.newpipe.download.DownloadActivity;
+import org.schabi.newpipe.extractor.NewPipe;
+import org.schabi.newpipe.extractor.StreamingService;
+import org.schabi.newpipe.extractor.exceptions.ExtractionException;
+import org.schabi.newpipe.extractor.stream.AudioStream;
+import org.schabi.newpipe.extractor.stream.Stream;
+import org.schabi.newpipe.extractor.stream.StreamInfo;
+import org.schabi.newpipe.extractor.stream.VideoStream;
+import org.schabi.newpipe.fragments.MainFragment;
+import org.schabi.newpipe.fragments.detail.VideoDetailFragment;
+import org.schabi.newpipe.fragments.list.channel.ChannelFragment;
+import org.schabi.newpipe.fragments.list.comments.CommentsFragment;
+import org.schabi.newpipe.fragments.list.kiosk.KioskFragment;
+import org.schabi.newpipe.fragments.list.playlist.PlaylistFragment;
+import org.schabi.newpipe.fragments.list.search.SearchFragment;
+import org.schabi.newpipe.local.bookmark.BookmarkFragment;
+import org.schabi.newpipe.local.feed.FeedFragment;
+import org.schabi.newpipe.local.history.StatisticsPlaylistFragment;
+import org.schabi.newpipe.local.playlist.LocalPlaylistFragment;
+import org.schabi.newpipe.local.subscription.SubscriptionFragment;
+import org.schabi.newpipe.local.subscription.SubscriptionsImportFragment;
+import org.schabi.newpipe.player.BackgroundPlayer;
+import org.schabi.newpipe.player.BackgroundPlayerActivity;
+import org.schabi.newpipe.player.BasePlayer;
+import org.schabi.newpipe.player.MainVideoPlayer;
+import org.schabi.newpipe.player.PopupVideoPlayer;
+import org.schabi.newpipe.player.PopupVideoPlayerActivity;
+import org.schabi.newpipe.player.VideoPlayer;
+import org.schabi.newpipe.player.playqueue.PlayQueue;
+import org.schabi.newpipe.settings.SettingsActivity;
+
+import java.util.ArrayList;
+
+@SuppressWarnings({&quot;unused&quot;, &quot;WeakerAccess&quot;})
+<span class="nc" id="L60">public class NavigationHelper {</span>
+    public static final String MAIN_FRAGMENT_TAG = &quot;main_fragment_tag&quot;;
+    public static final String SEARCH_FRAGMENT_TAG = &quot;search_fragment_tag&quot;;
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Players
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @NonNull
+    public static Intent getPlayerIntent(@NonNull final Context context,
+                                         @NonNull final Class targetClazz,
+                                         @NonNull final PlayQueue playQueue,
+                                         @Nullable final String quality,
+                                         final boolean resumePlayback) {
+<span class="nc" id="L74">        Intent intent = new Intent(context, targetClazz);</span>
+
+<span class="nc" id="L76">        final String cacheKey = SerializedCache.getInstance().put(playQueue, PlayQueue.class);</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">        if (cacheKey != null) intent.putExtra(VideoPlayer.PLAY_QUEUE_KEY, cacheKey);</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">        if (quality != null) intent.putExtra(VideoPlayer.PLAYBACK_QUALITY, quality);</span>
+<span class="nc" id="L79">        intent.putExtra(VideoPlayer.RESUME_PLAYBACK, resumePlayback);</span>
+
+<span class="nc" id="L81">        return intent;</span>
+    }
+
+    @NonNull
+    public static Intent getPlayerIntent(@NonNull final Context context,
+                                         @NonNull final Class targetClazz,
+                                         @NonNull final PlayQueue playQueue,
+                                         final boolean resumePlayback) {
+<span class="nc" id="L89">        return getPlayerIntent(context, targetClazz, playQueue, null, resumePlayback);</span>
+    }
+
+    @NonNull
+    public static Intent getPlayerEnqueueIntent(@NonNull final Context context,
+                                                @NonNull final Class targetClazz,
+                                                @NonNull final PlayQueue playQueue,
+                                                final boolean selectOnAppend,
+                                                final boolean resumePlayback) {
+<span class="nc" id="L98">        return getPlayerIntent(context, targetClazz, playQueue, resumePlayback)</span>
+<span class="nc" id="L99">                .putExtra(BasePlayer.APPEND_ONLY, true)</span>
+<span class="nc" id="L100">                .putExtra(BasePlayer.SELECT_ON_APPEND, selectOnAppend);</span>
+    }
+
+    @NonNull
+    public static Intent getPlayerIntent(@NonNull final Context context,
+                                         @NonNull final Class targetClazz,
+                                         @NonNull final PlayQueue playQueue,
+                                         final int repeatMode,
+                                         final float playbackSpeed,
+                                         final float playbackPitch,
+                                         final boolean playbackSkipSilence,
+                                         @Nullable final String playbackQuality,
+                                         final boolean resumePlayback) {
+<span class="nc" id="L113">        return getPlayerIntent(context, targetClazz, playQueue, playbackQuality, resumePlayback)</span>
+<span class="nc" id="L114">                .putExtra(BasePlayer.REPEAT_MODE, repeatMode)</span>
+<span class="nc" id="L115">                .putExtra(BasePlayer.PLAYBACK_SPEED, playbackSpeed)</span>
+<span class="nc" id="L116">                .putExtra(BasePlayer.PLAYBACK_PITCH, playbackPitch)</span>
+<span class="nc" id="L117">                .putExtra(BasePlayer.PLAYBACK_SKIP_SILENCE, playbackSkipSilence);</span>
+    }
+
+    public static void playOnMainPlayer(final Context context, final PlayQueue queue, final boolean resumePlayback) {
+<span class="nc" id="L121">        final Intent playerIntent = getPlayerIntent(context, MainVideoPlayer.class, queue, resumePlayback);</span>
+<span class="nc" id="L122">        playerIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);</span>
+<span class="nc" id="L123">        context.startActivity(playerIntent);</span>
+<span class="nc" id="L124">    }</span>
+
+    public static void playOnPopupPlayer(final Context context, final PlayQueue queue, final boolean resumePlayback) {
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (!PermissionHelper.isPopupEnabled(context)) {</span>
+<span class="nc" id="L128">            PermissionHelper.showPopupEnablementToast(context);</span>
+<span class="nc" id="L129">            return;</span>
+        }
+
+<span class="nc" id="L132">        Toast.makeText(context, R.string.popup_playing_toast, Toast.LENGTH_SHORT).show();</span>
+<span class="nc" id="L133">        startService(context, getPlayerIntent(context, PopupVideoPlayer.class, queue, resumePlayback));</span>
+<span class="nc" id="L134">    }</span>
+
+    public static void playOnBackgroundPlayer(final Context context, final PlayQueue queue, final boolean resumePlayback) {
+<span class="nc" id="L137">        Toast.makeText(context, R.string.background_player_playing_toast, Toast.LENGTH_SHORT).show();</span>
+<span class="nc" id="L138">        startService(context, getPlayerIntent(context, BackgroundPlayer.class, queue, resumePlayback));</span>
+<span class="nc" id="L139">    }</span>
+
+    public static void enqueueOnPopupPlayer(final Context context, final PlayQueue queue, final boolean resumePlayback) {
+<span class="nc" id="L142">        enqueueOnPopupPlayer(context, queue, false, resumePlayback);</span>
+<span class="nc" id="L143">    }</span>
+
+    public static void enqueueOnPopupPlayer(final Context context, final PlayQueue queue, boolean selectOnAppend, final boolean resumePlayback) {
+<span class="nc bnc" id="L146" title="All 2 branches missed.">        if (!PermissionHelper.isPopupEnabled(context)) {</span>
+<span class="nc" id="L147">            PermissionHelper.showPopupEnablementToast(context);</span>
+<span class="nc" id="L148">            return;</span>
+        }
+
+<span class="nc" id="L151">        Toast.makeText(context, R.string.popup_playing_append, Toast.LENGTH_SHORT).show();</span>
+<span class="nc" id="L152">        startService(context,</span>
+<span class="nc" id="L153">                getPlayerEnqueueIntent(context, PopupVideoPlayer.class, queue, selectOnAppend, resumePlayback));</span>
+<span class="nc" id="L154">    }</span>
+
+    public static void enqueueOnBackgroundPlayer(final Context context, final PlayQueue queue, final boolean resumePlayback) {
+<span class="nc" id="L157">        enqueueOnBackgroundPlayer(context, queue, false, resumePlayback);</span>
+<span class="nc" id="L158">    }</span>
+
+    public static void enqueueOnBackgroundPlayer(final Context context, final PlayQueue queue, boolean selectOnAppend, final boolean resumePlayback) {
+<span class="nc" id="L161">        Toast.makeText(context, R.string.background_player_append, Toast.LENGTH_SHORT).show();</span>
+<span class="nc" id="L162">        startService(context,</span>
+<span class="nc" id="L163">                getPlayerEnqueueIntent(context, BackgroundPlayer.class, queue, selectOnAppend, resumePlayback));</span>
+<span class="nc" id="L164">    }</span>
+
+    public static void startService(@NonNull final Context context, @NonNull final Intent intent) {
+<span class="nc bnc" id="L167" title="All 2 branches missed.">        if (Build.VERSION.SDK_INT &gt;= Build.VERSION_CODES.O) {</span>
+<span class="nc" id="L168">            context.startForegroundService(intent);</span>
+        } else {
+<span class="nc" id="L170">            context.startService(intent);</span>
+        }
+<span class="nc" id="L172">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // External Players
+    //////////////////////////////////////////////////////////////////////////*/
+
+    public static void playOnExternalAudioPlayer(Context context, StreamInfo info) {
+<span class="nc" id="L179">        final int index = ListHelper.getDefaultAudioFormat(context, info.getAudioStreams());</span>
+
+<span class="nc bnc" id="L181" title="All 2 branches missed.">        if (index == -1) {</span>
+<span class="nc" id="L182">            Toast.makeText(context, R.string.audio_streams_empty, Toast.LENGTH_SHORT).show();</span>
+<span class="nc" id="L183">            return;</span>
+        }
+
+<span class="nc" id="L186">        AudioStream audioStream = info.getAudioStreams().get(index);</span>
+<span class="nc" id="L187">        playOnExternalPlayer(context, info.getName(), info.getUploaderName(), audioStream);</span>
+<span class="nc" id="L188">    }</span>
+
+    public static void playOnExternalVideoPlayer(Context context, StreamInfo info) {
+<span class="nc" id="L191">        ArrayList&lt;VideoStream&gt; videoStreamsList = new ArrayList&lt;&gt;(ListHelper.getSortedStreamVideosList(context, info.getVideoStreams(), null, false));</span>
+<span class="nc" id="L192">        int index = ListHelper.getDefaultResolutionIndex(context, videoStreamsList);</span>
+
+<span class="nc bnc" id="L194" title="All 2 branches missed.">        if (index == -1) {</span>
+<span class="nc" id="L195">            Toast.makeText(context, R.string.video_streams_empty, Toast.LENGTH_SHORT).show();</span>
+<span class="nc" id="L196">            return;</span>
+        }
+
+<span class="nc" id="L199">        VideoStream videoStream = videoStreamsList.get(index);</span>
+<span class="nc" id="L200">        playOnExternalPlayer(context, info.getName(), info.getUploaderName(), videoStream);</span>
+<span class="nc" id="L201">    }</span>
+
+    public static void playOnExternalPlayer(Context context, String name, String artist, Stream stream) {
+<span class="nc" id="L204">        Intent intent = new Intent();</span>
+<span class="nc" id="L205">        intent.setAction(Intent.ACTION_VIEW);</span>
+<span class="nc" id="L206">        intent.setDataAndType(Uri.parse(stream.getUrl()), stream.getFormat().getMimeType());</span>
+<span class="nc" id="L207">        intent.putExtra(Intent.EXTRA_TITLE, name);</span>
+<span class="nc" id="L208">        intent.putExtra(&quot;title&quot;, name);</span>
+<span class="nc" id="L209">        intent.putExtra(&quot;artist&quot;, artist);</span>
+<span class="nc" id="L210">        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);</span>
+
+<span class="nc" id="L212">        resolveActivityOrAskToInstall(context, intent);</span>
+<span class="nc" id="L213">    }</span>
+
+    public static void resolveActivityOrAskToInstall(Context context, Intent intent) {
+<span class="nc bnc" id="L216" title="All 2 branches missed.">        if (intent.resolveActivity(context.getPackageManager()) != null) {</span>
+<span class="nc" id="L217">            context.startActivity(intent);</span>
+        } else {
+<span class="nc bnc" id="L219" title="All 2 branches missed.">            if (context instanceof Activity) {</span>
+<span class="nc" id="L220">                new AlertDialog.Builder(context)</span>
+<span class="nc" id="L221">                        .setMessage(R.string.no_player_found)</span>
+<span class="nc" id="L222">                        .setPositiveButton(R.string.install, (dialog, which) -&gt; {</span>
+<span class="nc" id="L223">                            Intent i = new Intent();</span>
+<span class="nc" id="L224">                            i.setAction(Intent.ACTION_VIEW);</span>
+<span class="nc" id="L225">                            i.setData(Uri.parse(context.getString(R.string.fdroid_vlc_url)));</span>
+<span class="nc" id="L226">                            context.startActivity(i);</span>
+<span class="nc" id="L227">                        })</span>
+<span class="nc" id="L228">                        .setNegativeButton(R.string.cancel, (dialog, which) -&gt; Log.i(&quot;NavigationHelper&quot;, &quot;You unlocked a secret unicorn.&quot;))</span>
+<span class="nc" id="L229">                        .show();</span>
+                //Log.e(&quot;NavigationHelper&quot;, &quot;Either no Streaming player for audio was installed, or something important crashed:&quot;);
+            } else {
+<span class="nc" id="L232">                Toast.makeText(context, R.string.no_player_found_toast, Toast.LENGTH_LONG).show();</span>
+            }
+        }
+<span class="nc" id="L235">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Through FragmentManager
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @SuppressLint(&quot;CommitTransaction&quot;)
+    private static FragmentTransaction defaultTransaction(FragmentManager fragmentManager) {
+<span class="nc" id="L243">        return fragmentManager.beginTransaction()</span>
+<span class="nc" id="L244">                .setCustomAnimations(R.animator.custom_fade_in, R.animator.custom_fade_out, R.animator.custom_fade_in, R.animator.custom_fade_out);</span>
+    }
+
+    public static void gotoMainFragment(FragmentManager fragmentManager) {
+<span class="nc" id="L248">        ImageLoader.getInstance().clearMemoryCache();</span>
+
+<span class="nc" id="L250">        boolean popped = fragmentManager.popBackStackImmediate(MAIN_FRAGMENT_TAG, 0);</span>
+<span class="nc bnc" id="L251" title="All 2 branches missed.">        if (!popped) openMainFragment(fragmentManager);</span>
+<span class="nc" id="L252">    }</span>
+
+    public static void openMainFragment(FragmentManager fragmentManager) {
+<span class="nc" id="L255">        InfoCache.getInstance().trimCache();</span>
+
+<span class="nc" id="L257">        fragmentManager.popBackStackImmediate(null, FragmentManager.POP_BACK_STACK_INCLUSIVE);</span>
+<span class="nc" id="L258">        defaultTransaction(fragmentManager)</span>
+<span class="nc" id="L259">                .replace(R.id.fragment_holder, new MainFragment())</span>
+<span class="nc" id="L260">                .addToBackStack(MAIN_FRAGMENT_TAG)</span>
+<span class="nc" id="L261">                .commit();</span>
+<span class="nc" id="L262">    }</span>
+
+    public static boolean tryGotoSearchFragment(FragmentManager fragmentManager) {
+<span class="nc bnc" id="L265" title="All 2 branches missed.">        if (MainActivity.DEBUG) {</span>
+<span class="nc bnc" id="L266" title="All 2 branches missed.">            for (int i = 0; i &lt; fragmentManager.getBackStackEntryCount(); i++) {</span>
+<span class="nc" id="L267">                Log.d(&quot;NavigationHelper&quot;, &quot;tryGoToSearchFragment() [&quot; + i + &quot;] = [&quot; + fragmentManager.getBackStackEntryAt(i) + &quot;]&quot;);</span>
+            }
+        }
+
+<span class="nc" id="L271">        return fragmentManager.popBackStackImmediate(SEARCH_FRAGMENT_TAG, 0);</span>
+    }
+
+    public static void openSearchFragment(FragmentManager fragmentManager,
+                                          int serviceId,
+                                          String searchString) {
+<span class="nc" id="L277">        defaultTransaction(fragmentManager)</span>
+<span class="nc" id="L278">                .replace(R.id.fragment_holder, SearchFragment.getInstance(serviceId, searchString))</span>
+<span class="nc" id="L279">                .addToBackStack(SEARCH_FRAGMENT_TAG)</span>
+<span class="nc" id="L280">                .commit();</span>
+<span class="nc" id="L281">    }</span>
+
+    public static void openVideoDetailFragment(FragmentManager fragmentManager, int serviceId, String url, String title) {
+<span class="nc" id="L284">        openVideoDetailFragment(fragmentManager, serviceId, url, title, false);</span>
+<span class="nc" id="L285">    }</span>
+
+    public static void openVideoDetailFragment(FragmentManager fragmentManager, int serviceId, String url, String title, boolean autoPlay) {
+<span class="nc" id="L288">        Fragment fragment = fragmentManager.findFragmentById(R.id.fragment_holder);</span>
+<span class="nc bnc" id="L289" title="All 2 branches missed.">        if (title == null) title = &quot;&quot;;</span>
+
+<span class="nc bnc" id="L291" title="All 4 branches missed.">        if (fragment instanceof VideoDetailFragment &amp;&amp; fragment.isVisible()) {</span>
+<span class="nc" id="L292">            VideoDetailFragment detailFragment = (VideoDetailFragment) fragment;</span>
+<span class="nc" id="L293">            detailFragment.setAutoplay(autoPlay);</span>
+<span class="nc" id="L294">            detailFragment.selectAndLoadVideo(serviceId, url, title);</span>
+<span class="nc" id="L295">            return;</span>
+        }
+
+<span class="nc" id="L298">        VideoDetailFragment instance = VideoDetailFragment.getInstance(serviceId, url, title);</span>
+<span class="nc" id="L299">        instance.setAutoplay(autoPlay);</span>
+
+<span class="nc" id="L301">        defaultTransaction(fragmentManager)</span>
+<span class="nc" id="L302">                .replace(R.id.fragment_holder, instance)</span>
+<span class="nc" id="L303">                .addToBackStack(null)</span>
+<span class="nc" id="L304">                .commit();</span>
+<span class="nc" id="L305">    }</span>
+
+    public static void openChannelFragment(
+            FragmentManager fragmentManager,
+            int serviceId,
+            String url,
+            String name) {
+<span class="nc bnc" id="L312" title="All 2 branches missed.">        if (name == null) name = &quot;&quot;;</span>
+<span class="nc" id="L313">        defaultTransaction(fragmentManager)</span>
+<span class="nc" id="L314">                .replace(R.id.fragment_holder, ChannelFragment.getInstance(serviceId, url, name))</span>
+<span class="nc" id="L315">                .addToBackStack(null)</span>
+<span class="nc" id="L316">                .commit();</span>
+<span class="nc" id="L317">    }</span>
+
+    public static void openCommentsFragment(
+            FragmentManager fragmentManager,
+            int serviceId,
+            String url,
+            String name) {
+<span class="nc bnc" id="L324" title="All 2 branches missed.">        if (name == null) name = &quot;&quot;;</span>
+<span class="nc" id="L325">        fragmentManager.beginTransaction().setCustomAnimations(R.anim.switch_service_in, R.anim.switch_service_out)</span>
+<span class="nc" id="L326">                .replace(R.id.fragment_holder, CommentsFragment.getInstance(serviceId, url, name))</span>
+<span class="nc" id="L327">                .addToBackStack(null)</span>
+<span class="nc" id="L328">                .commit();</span>
+<span class="nc" id="L329">    }</span>
+
+    public static void openPlaylistFragment(FragmentManager fragmentManager,
+                                            int serviceId,
+                                            String url,
+                                            String name) {
+<span class="nc bnc" id="L335" title="All 2 branches missed.">        if (name == null) name = &quot;&quot;;</span>
+<span class="nc" id="L336">        defaultTransaction(fragmentManager)</span>
+<span class="nc" id="L337">                .replace(R.id.fragment_holder, PlaylistFragment.getInstance(serviceId, url, name))</span>
+<span class="nc" id="L338">                .addToBackStack(null)</span>
+<span class="nc" id="L339">                .commit();</span>
+<span class="nc" id="L340">    }</span>
+
+    public static void openWhatsNewFragment(FragmentManager fragmentManager) {
+<span class="nc" id="L343">        defaultTransaction(fragmentManager)</span>
+<span class="nc" id="L344">                .replace(R.id.fragment_holder, new FeedFragment())</span>
+<span class="nc" id="L345">                .addToBackStack(null)</span>
+<span class="nc" id="L346">                .commit();</span>
+<span class="nc" id="L347">    }</span>
+
+    public static void openBookmarksFragment(FragmentManager fragmentManager) {
+<span class="nc" id="L350">        defaultTransaction(fragmentManager)</span>
+<span class="nc" id="L351">                .replace(R.id.fragment_holder, new BookmarkFragment())</span>
+<span class="nc" id="L352">                .addToBackStack(null)</span>
+<span class="nc" id="L353">                .commit();</span>
+<span class="nc" id="L354">    }</span>
+
+    public static void openSubscriptionFragment(FragmentManager fragmentManager) {
+<span class="nc" id="L357">        defaultTransaction(fragmentManager)</span>
+<span class="nc" id="L358">                .replace(R.id.fragment_holder, new SubscriptionFragment())</span>
+<span class="nc" id="L359">                .addToBackStack(null)</span>
+<span class="nc" id="L360">                .commit();</span>
+<span class="nc" id="L361">    }</span>
+
+    public static void openKioskFragment(FragmentManager fragmentManager, int serviceId, String kioskId) throws ExtractionException {
+<span class="nc" id="L364">        defaultTransaction(fragmentManager)</span>
+<span class="nc" id="L365">                .replace(R.id.fragment_holder, KioskFragment.getInstance(serviceId, kioskId))</span>
+<span class="nc" id="L366">                .addToBackStack(null)</span>
+<span class="nc" id="L367">                .commit();</span>
+<span class="nc" id="L368">    }</span>
+
+    public static void openLocalPlaylistFragment(FragmentManager fragmentManager, long playlistId, String name) {
+<span class="nc bnc" id="L371" title="All 2 branches missed.">        if (name == null) name = &quot;&quot;;</span>
+<span class="nc" id="L372">        defaultTransaction(fragmentManager)</span>
+<span class="nc" id="L373">                .replace(R.id.fragment_holder, LocalPlaylistFragment.getInstance(playlistId, name))</span>
+<span class="nc" id="L374">                .addToBackStack(null)</span>
+<span class="nc" id="L375">                .commit();</span>
+<span class="nc" id="L376">    }</span>
+
+    public static void openStatisticFragment(FragmentManager fragmentManager) {
+<span class="nc" id="L379">        defaultTransaction(fragmentManager)</span>
+<span class="nc" id="L380">                .replace(R.id.fragment_holder, new StatisticsPlaylistFragment())</span>
+<span class="nc" id="L381">                .addToBackStack(null)</span>
+<span class="nc" id="L382">                .commit();</span>
+<span class="nc" id="L383">    }</span>
+
+    public static void openSubscriptionsImportFragment(FragmentManager fragmentManager, int serviceId) {
+<span class="nc" id="L386">        defaultTransaction(fragmentManager)</span>
+<span class="nc" id="L387">                .replace(R.id.fragment_holder, SubscriptionsImportFragment.getInstance(serviceId))</span>
+<span class="nc" id="L388">                .addToBackStack(null)</span>
+<span class="nc" id="L389">                .commit();</span>
+<span class="nc" id="L390">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Through Intents
+    //////////////////////////////////////////////////////////////////////////*/
+
+    public static void openSearch(Context context, int serviceId, String searchString) {
+<span class="nc" id="L397">        Intent mIntent = new Intent(context, MainActivity.class);</span>
+<span class="nc" id="L398">        mIntent.putExtra(Constants.KEY_SERVICE_ID, serviceId);</span>
+<span class="nc" id="L399">        mIntent.putExtra(Constants.KEY_SEARCH_STRING, searchString);</span>
+<span class="nc" id="L400">        mIntent.putExtra(Constants.KEY_OPEN_SEARCH, true);</span>
+<span class="nc" id="L401">        context.startActivity(mIntent);</span>
+<span class="nc" id="L402">    }</span>
+
+    public static void openChannel(Context context, int serviceId, String url) {
+<span class="nc" id="L405">        openChannel(context, serviceId, url, null);</span>
+<span class="nc" id="L406">    }</span>
+
+    public static void openChannel(Context context, int serviceId, String url, String name) {
+<span class="nc" id="L409">        Intent openIntent = getOpenIntent(context, url, serviceId, StreamingService.LinkType.CHANNEL);</span>
+<span class="nc bnc" id="L410" title="All 4 branches missed.">        if (name != null &amp;&amp; !name.isEmpty()) openIntent.putExtra(Constants.KEY_TITLE, name);</span>
+<span class="nc" id="L411">        context.startActivity(openIntent);</span>
+<span class="nc" id="L412">    }</span>
+
+    public static void openVideoDetail(Context context, int serviceId, String url) {
+<span class="nc" id="L415">        openVideoDetail(context, serviceId, url, null);</span>
+<span class="nc" id="L416">    }</span>
+
+    public static void openVideoDetail(Context context, int serviceId, String url, String title) {
+<span class="nc" id="L419">        Intent openIntent = getOpenIntent(context, url, serviceId, StreamingService.LinkType.STREAM);</span>
+<span class="nc bnc" id="L420" title="All 4 branches missed.">        if (title != null &amp;&amp; !title.isEmpty()) openIntent.putExtra(Constants.KEY_TITLE, title);</span>
+<span class="nc" id="L421">        context.startActivity(openIntent);</span>
+<span class="nc" id="L422">    }</span>
+
+    public static void openMainActivity(Context context) {
+<span class="nc" id="L425">        Intent mIntent = new Intent(context, MainActivity.class);</span>
+<span class="nc" id="L426">        mIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);</span>
+<span class="nc" id="L427">        mIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK);</span>
+<span class="nc" id="L428">        context.startActivity(mIntent);</span>
+<span class="nc" id="L429">    }</span>
+
+    public static void openRouterActivity(Context context, String url) {
+<span class="nc" id="L432">        Intent mIntent = new Intent(context, RouterActivity.class);</span>
+<span class="nc" id="L433">        mIntent.setData(Uri.parse(url));</span>
+<span class="nc" id="L434">        mIntent.putExtra(RouterActivity.internalRouteKey, true);</span>
+<span class="nc" id="L435">        context.startActivity(mIntent);</span>
+<span class="nc" id="L436">    }</span>
+
+    public static void openAbout(Context context) {
+<span class="nc" id="L439">        Intent intent = new Intent(context, AboutActivity.class);</span>
+<span class="nc" id="L440">        context.startActivity(intent);</span>
+<span class="nc" id="L441">    }</span>
+
+    public static void openSettings(Context context) {
+<span class="nc" id="L444">        Intent intent = new Intent(context, SettingsActivity.class);</span>
+<span class="nc" id="L445">        context.startActivity(intent);</span>
+<span class="nc" id="L446">    }</span>
+
+    public static boolean openDownloads(Activity activity) {
+<span class="nc bnc" id="L449" title="All 2 branches missed.">        if (!PermissionHelper.checkStoragePermissions(activity, PermissionHelper.DOWNLOADS_REQUEST_CODE)) {</span>
+<span class="nc" id="L450">            return false;</span>
+        }
+<span class="nc" id="L452">        Intent intent = new Intent(activity, DownloadActivity.class);</span>
+<span class="nc" id="L453">        activity.startActivity(intent);</span>
+<span class="nc" id="L454">        return true;</span>
+    }
+
+    public static Intent getBackgroundPlayerActivityIntent(final Context context) {
+<span class="nc" id="L458">        return getServicePlayerActivityIntent(context, BackgroundPlayerActivity.class);</span>
+    }
+
+    public static Intent getPopupPlayerActivityIntent(final Context context) {
+<span class="nc" id="L462">        return getServicePlayerActivityIntent(context, PopupVideoPlayerActivity.class);</span>
+    }
+
+    private static Intent getServicePlayerActivityIntent(final Context context,
+                                                         final Class activityClass) {
+<span class="nc" id="L467">        Intent intent = new Intent(context, activityClass);</span>
+<span class="nc bnc" id="L468" title="All 2 branches missed.">        if (Build.VERSION.SDK_INT &lt; Build.VERSION_CODES.N) {</span>
+<span class="nc" id="L469">            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);</span>
+        }
+<span class="nc" id="L471">        return intent;</span>
+    }
+    /*//////////////////////////////////////////////////////////////////////////
+    // Link handling
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private static Intent getOpenIntent(Context context, String url, int serviceId, StreamingService.LinkType type) {
+<span class="nc" id="L478">        Intent mIntent = new Intent(context, MainActivity.class);</span>
+<span class="nc" id="L479">        mIntent.putExtra(Constants.KEY_SERVICE_ID, serviceId);</span>
+<span class="nc" id="L480">        mIntent.putExtra(Constants.KEY_URL, url);</span>
+<span class="nc" id="L481">        mIntent.putExtra(Constants.KEY_LINK_TYPE, type);</span>
+<span class="nc" id="L482">        return mIntent;</span>
+    }
+
+    public static Intent getIntentByLink(Context context, String url) throws ExtractionException {
+<span class="nc" id="L486">        return getIntentByLink(context, NewPipe.getServiceByUrl(url), url);</span>
+    }
+
+    public static Intent getIntentByLink(Context context, StreamingService service, String url) throws ExtractionException {
+<span class="nc" id="L490">        StreamingService.LinkType linkType = service.getLinkTypeByUrl(url);</span>
+
+<span class="nc bnc" id="L492" title="All 2 branches missed.">        if (linkType == StreamingService.LinkType.NONE) {</span>
+<span class="nc" id="L493">            throw new ExtractionException(&quot;Url not known to service. service=&quot; + service + &quot; url=&quot; + url);</span>
+        }
+
+<span class="nc" id="L496">        Intent rIntent = getOpenIntent(context, url, service.getServiceId(), linkType);</span>
+
+<span class="nc bnc" id="L498" title="All 2 branches missed.">        switch (linkType) {</span>
+            case STREAM:
+<span class="nc" id="L500">                rIntent.putExtra(VideoDetailFragment.AUTO_PLAY,</span>
+<span class="nc" id="L501">                        PreferenceManager.getDefaultSharedPreferences(context)</span>
+<span class="nc" id="L502">                        .getBoolean(context.getString(R.string.autoplay_through_intent_key), false));</span>
+                break;
+        }
+
+<span class="nc" id="L506">        return rIntent;</span>
+    }
+
+    private static Uri openMarketUrl(String packageName) {
+<span class="nc" id="L510">        return Uri.parse(&quot;market://details&quot;)</span>
+<span class="nc" id="L511">                .buildUpon()</span>
+<span class="nc" id="L512">                .appendQueryParameter(&quot;id&quot;, packageName)</span>
+<span class="nc" id="L513">                .build();</span>
+    }
+
+    private static Uri getGooglePlayUrl(String packageName) {
+<span class="nc" id="L517">        return Uri.parse(&quot;https://play.google.com/store/apps/details&quot;)</span>
+<span class="nc" id="L518">                .buildUpon()</span>
+<span class="nc" id="L519">                .appendQueryParameter(&quot;id&quot;, packageName)</span>
+<span class="nc" id="L520">                .build();</span>
+    }
+
+    private static void installApp(Context context, String packageName) {
+        try {
+            // Try market:// scheme
+<span class="nc" id="L526">            context.startActivity(new Intent(Intent.ACTION_VIEW, openMarketUrl(packageName)));</span>
+<span class="nc" id="L527">        } catch (ActivityNotFoundException e) {</span>
+            // Fall back to google play URL (don't worry F-Droid can handle it :)
+<span class="nc" id="L529">            context.startActivity(new Intent(Intent.ACTION_VIEW, getGooglePlayUrl(packageName)));</span>
+<span class="nc" id="L530">        }</span>
+<span class="nc" id="L531">    }</span>
+
+    /**
+     * Start an activity to install Kore
+     * @param context the context
+     */
+    public static void installKore(Context context) {
+<span class="nc" id="L538">        installApp(context, context.getString(R.string.kore_package));</span>
+<span class="nc" id="L539">    }</span>
+
+    /**
+     * Start Kore app to show a video on Kodi
+     *
+     * For a list of supported urls see the
+     * &lt;a href=&quot;https://github.com/xbmc/Kore/blob/master/app/src/main/AndroidManifest.xml&quot;&gt;
+     *     Kore source code
+     * &lt;/a&gt;.
+     *
+     * @param context the context to use
+     * @param videoURL the url to the video
+     */
+    public static void playWithKore(Context context, Uri videoURL) {
+<span class="nc" id="L553">        Intent intent = new Intent(Intent.ACTION_VIEW);</span>
+<span class="nc" id="L554">        intent.setPackage(context.getString(R.string.kore_package));</span>
+<span class="nc" id="L555">        intent.setData(videoURL);</span>
+<span class="nc" id="L556">        context.startActivity(intent);</span>
+<span class="nc" id="L557">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

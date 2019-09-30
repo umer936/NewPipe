@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Postprocessing.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">us.shandian.giga.postprocessing</a> &gt; <span class="el_source">Postprocessing.java</span></div><h1>Postprocessing.java</h1><pre class="source lang-java linenums">package us.shandian.giga.postprocessing;
+
+import android.os.Message;
+import android.support.annotation.NonNull;
+import android.util.Log;
+
+import org.schabi.newpipe.streams.io.SharpStream;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.Serializable;
+
+import us.shandian.giga.get.DownloadMission;
+import us.shandian.giga.io.ChunkFileInputStream;
+import us.shandian.giga.io.CircularFileWriter;
+import us.shandian.giga.io.CircularFileWriter.OffsetChecker;
+import us.shandian.giga.service.DownloadManagerService;
+
+import static us.shandian.giga.get.DownloadMission.ERROR_NOTHING;
+import static us.shandian.giga.get.DownloadMission.ERROR_POSTPROCESSING_HOLD;
+import static us.shandian.giga.get.DownloadMission.ERROR_UNKNOWN_EXCEPTION;
+
+public abstract class Postprocessing implements Serializable {
+
+    static transient final byte OK_RESULT = ERROR_NOTHING;
+
+    public transient static final String ALGORITHM_TTML_CONVERTER = &quot;ttml&quot;;
+    public transient static final String ALGORITHM_WEBM_MUXER = &quot;webm&quot;;
+    public transient static final String ALGORITHM_MP4_FROM_DASH_MUXER = &quot;mp4D-mp4&quot;;
+    public transient static final String ALGORITHM_M4A_NO_DASH = &quot;mp4D-m4a&quot;;
+
+    public static Postprocessing getAlgorithm(@NonNull String algorithmName, String[] args) {
+        Postprocessing instance;
+
+<span class="nc bnc" id="L35" title="All 18 branches missed.">        switch (algorithmName) {</span>
+            case ALGORITHM_TTML_CONVERTER:
+<span class="nc" id="L37">                instance = new TtmlConverter();</span>
+<span class="nc" id="L38">                break;</span>
+            case ALGORITHM_WEBM_MUXER:
+<span class="nc" id="L40">                instance = new WebMMuxer();</span>
+<span class="nc" id="L41">                break;</span>
+            case ALGORITHM_MP4_FROM_DASH_MUXER:
+<span class="nc" id="L43">                instance = new Mp4FromDashMuxer();</span>
+<span class="nc" id="L44">                break;</span>
+            case ALGORITHM_M4A_NO_DASH:
+<span class="nc" id="L46">                instance = new M4aNoDash();</span>
+<span class="nc" id="L47">                break;</span>
+            /*case &quot;example-algorithm&quot;:
+                instance = new ExampleAlgorithm();*/
+            default:
+<span class="nc" id="L51">                throw new UnsupportedOperationException(&quot;Unimplemented post-processing algorithm: &quot; + algorithmName);</span>
+        }
+
+<span class="nc" id="L54">        instance.args = args;</span>
+<span class="nc" id="L55">        return instance;</span>
+    }
+
+    /**
+     * Get a boolean value that indicate if the given algorithm work on the same
+     * file
+     */
+    public final boolean worksOnSameFile;
+
+    /**
+     * Indicates whether the selected algorithm needs space reserved at the beginning of the file
+     */
+    public final boolean reserveSpace;
+
+    /**
+     * Gets the given algorithm short name
+     */
+    private final String name;
+
+
+    private String[] args;
+
+    protected transient DownloadMission mission;
+
+    private File tempFile;
+
+<span class="nc" id="L81">    Postprocessing(boolean reserveSpace, boolean worksOnSameFile, String algorithmName) {</span>
+<span class="nc" id="L82">        this.reserveSpace = reserveSpace;</span>
+<span class="nc" id="L83">        this.worksOnSameFile = worksOnSameFile;</span>
+<span class="nc" id="L84">        this.name = algorithmName;// for debugging only</span>
+<span class="nc" id="L85">    }</span>
+
+    public void setTemporalDir(@NonNull File directory) {
+<span class="nc" id="L88">        long rnd = (int) (Math.random() * 100000f);</span>
+<span class="nc" id="L89">        tempFile = new File(directory, rnd + &quot;_&quot; + System.nanoTime() + &quot;.tmp&quot;);</span>
+<span class="nc" id="L90">    }</span>
+
+    public void cleanupTemporalDir() {
+<span class="nc bnc" id="L93" title="All 4 branches missed.">        if (tempFile != null &amp;&amp; tempFile.exists()) {</span>
+            //noinspection ResultOfMethodCallIgnored
+<span class="nc" id="L95">            tempFile.delete();</span>
+        }
+<span class="nc" id="L97">    }</span>
+
+
+    public void run(DownloadMission target) throws IOException {
+<span class="nc" id="L101">        this.mission = target;</span>
+
+<span class="nc" id="L103">        CircularFileWriter out = null;</span>
+        int result;
+<span class="nc" id="L105">        long finalLength = -1;</span>
+
+<span class="nc" id="L107">        mission.done = 0;</span>
+<span class="nc" id="L108">        mission.length = mission.storage.length();</span>
+
+<span class="nc bnc" id="L110" title="All 2 branches missed.">        if (worksOnSameFile) {</span>
+<span class="nc" id="L111">            ChunkFileInputStream[] sources = new ChunkFileInputStream[mission.urls.length];</span>
+            try {
+<span class="nc" id="L113">                int i = 0;</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">                for (; i &lt; sources.length - 1; i++) {</span>
+<span class="nc" id="L115">                    sources[i] = new ChunkFileInputStream(mission.storage.getStream(), mission.offsets[i], mission.offsets[i + 1]);</span>
+                }
+<span class="nc" id="L117">                sources[i] = new ChunkFileInputStream(mission.storage.getStream(), mission.offsets[i]);</span>
+
+<span class="nc bnc" id="L119" title="All 2 branches missed.">                if (test(sources)) {</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">                    for (SharpStream source : sources) source.rewind();</span>
+
+<span class="nc" id="L122">                    OffsetChecker checker = () -&gt; {</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">                        for (ChunkFileInputStream source : sources) {</span>
+                            /*
+                             * WARNING: never use rewind() in any chunk after any writing (especially on first chunks)
+                             *          or the CircularFileWriter can lead to unexpected results
+                             */
+<span class="nc bnc" id="L128" title="All 4 branches missed.">                            if (source.isClosed() || source.available() &lt; 1) {</span>
+<span class="nc" id="L129">                                continue;// the selected source is not used anymore</span>
+                            }
+
+<span class="nc" id="L132">                            return source.getFilePointer() - 1;</span>
+                        }
+
+<span class="nc" id="L135">                        return -1;</span>
+                    };
+
+<span class="nc" id="L138">                    out = new CircularFileWriter(mission.storage.getStream(), tempFile, checker);</span>
+<span class="nc" id="L139">                    out.onProgress = this::progressReport;</span>
+
+<span class="nc" id="L141">                    out.onWriteError = (err) -&gt; {</span>
+<span class="nc" id="L142">                        mission.psState = 3;</span>
+<span class="nc" id="L143">                        mission.notifyError(ERROR_POSTPROCESSING_HOLD, err);</span>
+
+                        try {
+<span class="nc" id="L146">                            synchronized (this) {</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">                                while (mission.psState == 3)</span>
+<span class="nc" id="L148">                                    wait();</span>
+<span class="nc" id="L149">                            }</span>
+<span class="nc" id="L150">                        } catch (InterruptedException e) {</span>
+                            // nothing to do
+<span class="nc" id="L152">                            Log.e(this.getClass().getSimpleName(), &quot;got InterruptedException&quot;);</span>
+<span class="nc" id="L153">                        }</span>
+
+<span class="nc bnc" id="L155" title="All 2 branches missed.">                        return mission.errCode == ERROR_NOTHING;</span>
+                    };
+
+<span class="nc" id="L158">                    result = process(out, sources);</span>
+
+<span class="nc bnc" id="L160" title="All 2 branches missed.">                    if (result == OK_RESULT)</span>
+<span class="nc" id="L161">                        finalLength = out.finalizeFile();</span>
+<span class="nc" id="L162">                } else {</span>
+<span class="nc" id="L163">                    result = OK_RESULT;</span>
+                }
+            } finally {
+<span class="nc bnc" id="L166" title="All 4 branches missed.">                for (SharpStream source : sources) {</span>
+<span class="nc bnc" id="L167" title="All 8 branches missed.">                    if (source != null &amp;&amp; !source.isClosed()) {</span>
+<span class="nc" id="L168">                        source.close();</span>
+                    }
+                }
+<span class="nc bnc" id="L171" title="All 4 branches missed.">                if (out != null) {</span>
+<span class="nc" id="L172">                    out.close();</span>
+                }
+<span class="nc bnc" id="L174" title="All 4 branches missed.">                if (tempFile != null) {</span>
+                    //noinspection ResultOfMethodCallIgnored
+<span class="nc" id="L176">                    tempFile.delete();</span>
+<span class="nc" id="L177">                    tempFile = null;</span>
+                }
+<span class="nc" id="L179">            }</span>
+<span class="nc" id="L180">        } else {</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">            result = test() ? process(null) : OK_RESULT;</span>
+        }
+
+<span class="nc bnc" id="L184" title="All 2 branches missed.">        if (result == OK_RESULT) {</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">            if (finalLength != -1) {</span>
+<span class="nc" id="L186">                mission.done = finalLength;</span>
+<span class="nc" id="L187">                mission.length = finalLength;</span>
+            }
+        } else {
+<span class="nc" id="L190">            mission.errCode = ERROR_UNKNOWN_EXCEPTION;</span>
+<span class="nc" id="L191">            mission.errObject = new RuntimeException(&quot;post-processing algorithm returned &quot; + result);</span>
+        }
+
+<span class="nc bnc" id="L194" title="All 4 branches missed.">        if (result != OK_RESULT &amp;&amp; worksOnSameFile) mission.storage.delete();</span>
+
+<span class="nc" id="L196">        this.mission = null;</span>
+<span class="nc" id="L197">    }</span>
+
+    /**
+     * Test if the post-processing algorithm can be skipped
+     *
+     * @param sources files to be processed
+     * @return {@code true} if the post-processing is required, otherwise, {@code false}
+     * @throws IOException if an I/O error occurs.
+     */
+    boolean test(SharpStream... sources) throws IOException {
+<span class="nc" id="L207">        return true;</span>
+    }
+
+    /**
+     * Abstract method to execute the post-processing algorithm
+     *
+     * @param out     output stream
+     * @param sources files to be processed
+     * @return a error code, 0 means the operation was successful
+     * @throws IOException if an I/O error occurs.
+     */
+    abstract int process(SharpStream out, SharpStream... sources) throws IOException;
+
+    String getArgumentAt(int index, String defaultValue) {
+<span class="nc bnc" id="L221" title="All 4 branches missed.">        if (args == null || index &gt;= args.length) {</span>
+<span class="nc" id="L222">            return defaultValue;</span>
+        }
+
+<span class="nc" id="L225">        return args[index];</span>
+    }
+
+    private void progressReport(long done) {
+<span class="nc" id="L229">        mission.done = done;</span>
+<span class="nc bnc" id="L230" title="All 2 branches missed.">        if (mission.length &lt; mission.done) mission.length = mission.done;</span>
+
+<span class="nc" id="L232">        Message m = new Message();</span>
+<span class="nc" id="L233">        m.what = DownloadManagerService.MESSAGE_PROGRESS;</span>
+<span class="nc" id="L234">        m.obj = mission;</span>
+
+<span class="nc" id="L236">        mission.mHandler.sendMessage(m);</span>
+<span class="nc" id="L237">    }</span>
+
+    @NonNull
+    @Override
+    public String toString() {
+<span class="nc" id="L242">        StringBuilder str = new StringBuilder();</span>
+
+<span class="nc" id="L244">        str.append(&quot;name=&quot;).append(name).append('[');</span>
+
+<span class="nc bnc" id="L246" title="All 2 branches missed.">        if (args != null) {</span>
+<span class="nc bnc" id="L247" title="All 2 branches missed.">            for (String arg : args) {</span>
+<span class="nc" id="L248">                str.append(&quot;, &quot;);</span>
+<span class="nc" id="L249">                str.append(arg);</span>
+            }
+<span class="nc" id="L251">            str.delete(0, 1);</span>
+        }
+
+<span class="nc" id="L254">        return str.append(']').toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

@@ -1,0 +1,579 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BackgroundPlayer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.player</a> &gt; <span class="el_source">BackgroundPlayer.java</span></div><h1>BackgroundPlayer.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2017 Mauricio Colli &lt;mauriciocolli@outlook.com&gt;
+ * BackgroundPlayer.java is part of NewPipe
+ *
+ * License: GPL-3.0+
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package org.schabi.newpipe.player;
+
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.graphics.Bitmap;
+import android.os.Build;
+import android.os.IBinder;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v4.app.NotificationCompat;
+import android.util.Log;
+import android.view.View;
+import android.widget.RemoteViews;
+
+import com.google.android.exoplayer2.PlaybackParameters;
+import com.google.android.exoplayer2.Player;
+import com.google.android.exoplayer2.source.MediaSource;
+import com.nostra13.universalimageloader.core.assist.FailReason;
+
+import org.schabi.newpipe.BuildConfig;
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.extractor.stream.StreamInfo;
+import org.schabi.newpipe.player.event.PlayerEventListener;
+import org.schabi.newpipe.player.helper.LockManager;
+import org.schabi.newpipe.player.playqueue.PlayQueueItem;
+import org.schabi.newpipe.player.resolver.AudioPlaybackResolver;
+import org.schabi.newpipe.player.resolver.MediaSourceTag;
+import org.schabi.newpipe.util.NavigationHelper;
+import org.schabi.newpipe.util.ThemeHelper;
+
+import static org.schabi.newpipe.player.helper.PlayerHelper.getTimeString;
+
+
+/**
+ * Base players joining the common properties
+ *
+ * @author mauriciocolli
+ */
+<span class="nc" id="L62">public final class BackgroundPlayer extends Service {</span>
+    private static final String TAG = &quot;BackgroundPlayer&quot;;
+<span class="nc" id="L64">    private static final boolean DEBUG = BasePlayer.DEBUG;</span>
+
+    public static final String ACTION_CLOSE = &quot;org.schabi.newpipe.player.BackgroundPlayer.CLOSE&quot;;
+    public static final String ACTION_PLAY_PAUSE = &quot;org.schabi.newpipe.player.BackgroundPlayer.PLAY_PAUSE&quot;;
+    public static final String ACTION_REPEAT = &quot;org.schabi.newpipe.player.BackgroundPlayer.REPEAT&quot;;
+    public static final String ACTION_PLAY_NEXT = &quot;org.schabi.newpipe.player.BackgroundPlayer.ACTION_PLAY_NEXT&quot;;
+    public static final String ACTION_PLAY_PREVIOUS = &quot;org.schabi.newpipe.player.BackgroundPlayer.ACTION_PLAY_PREVIOUS&quot;;
+    public static final String ACTION_FAST_REWIND = &quot;org.schabi.newpipe.player.BackgroundPlayer.ACTION_FAST_REWIND&quot;;
+    public static final String ACTION_FAST_FORWARD = &quot;org.schabi.newpipe.player.BackgroundPlayer.ACTION_FAST_FORWARD&quot;;
+
+    public static final String SET_IMAGE_RESOURCE_METHOD = &quot;setImageResource&quot;;
+
+    private BasePlayerImpl basePlayerImpl;
+    private LockManager lockManager;
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Service-Activity Binder
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private PlayerEventListener activityListener;
+    private IBinder mBinder;
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Notification
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private static final int NOTIFICATION_ID = 123789;
+    private NotificationManager notificationManager;
+    private NotificationCompat.Builder notBuilder;
+    private RemoteViews notRemoteView;
+    private RemoteViews bigNotRemoteView;
+
+    private boolean shouldUpdateOnProgress;
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Service's LifeCycle
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onCreate() {
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onCreate() called&quot;);</span>
+<span class="nc" id="L105">        notificationManager = ((NotificationManager) getSystemService(NOTIFICATION_SERVICE));</span>
+<span class="nc" id="L106">        lockManager = new LockManager(this);</span>
+
+<span class="nc" id="L108">        ThemeHelper.setTheme(this);</span>
+<span class="nc" id="L109">        basePlayerImpl = new BasePlayerImpl(this);</span>
+<span class="nc" id="L110">        basePlayerImpl.setup();</span>
+
+<span class="nc" id="L112">        mBinder = new PlayerServiceBinder(basePlayerImpl);</span>
+<span class="nc" id="L113">        shouldUpdateOnProgress = true;</span>
+<span class="nc" id="L114">    }</span>
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+<span class="nc bnc" id="L118" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onStartCommand() called with: intent = [&quot; + intent +</span>
+                &quot;], flags = [&quot; + flags + &quot;], startId = [&quot; + startId + &quot;]&quot;);
+<span class="nc" id="L120">        basePlayerImpl.handleIntent(intent);</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        if (basePlayerImpl.mediaSessionManager != null) {</span>
+<span class="nc" id="L122">            basePlayerImpl.mediaSessionManager.handleMediaButtonIntent(intent);</span>
+        }
+<span class="nc" id="L124">        return START_NOT_STICKY;</span>
+    }
+
+    @Override
+    public void onDestroy() {
+<span class="nc bnc" id="L129" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;destroy() called&quot;);</span>
+<span class="nc" id="L130">        onClose();</span>
+<span class="nc" id="L131">    }</span>
+
+    @Override
+    protected void attachBaseContext(Context base) {
+<span class="nc" id="L135">        super.attachBaseContext(AudioServiceLeakFix.preventLeakOf(base));</span>
+<span class="nc" id="L136">    }</span>
+
+    @Override
+    public IBinder onBind(Intent intent) {
+<span class="nc" id="L140">        return mBinder;</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Actions
+    //////////////////////////////////////////////////////////////////////////*/
+    private void onClose() {
+<span class="nc bnc" id="L147" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onClose() called&quot;);</span>
+
+<span class="nc bnc" id="L149" title="All 2 branches missed.">        if (lockManager != null) {</span>
+<span class="nc" id="L150">            lockManager.releaseWifiAndCpu();</span>
+        }
+<span class="nc bnc" id="L152" title="All 2 branches missed.">        if (basePlayerImpl != null) {</span>
+<span class="nc" id="L153">            basePlayerImpl.savePlaybackState();</span>
+<span class="nc" id="L154">            basePlayerImpl.stopActivityBinding();</span>
+<span class="nc" id="L155">            basePlayerImpl.destroy();</span>
+        }
+<span class="nc bnc" id="L157" title="All 2 branches missed.">        if (notificationManager != null) notificationManager.cancel(NOTIFICATION_ID);</span>
+<span class="nc" id="L158">        mBinder = null;</span>
+<span class="nc" id="L159">        basePlayerImpl = null;</span>
+<span class="nc" id="L160">        lockManager = null;</span>
+
+<span class="nc" id="L162">        stopForeground(true);</span>
+<span class="nc" id="L163">        stopSelf();</span>
+<span class="nc" id="L164">    }</span>
+
+    private void onScreenOnOff(boolean on) {
+<span class="nc bnc" id="L167" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onScreenOnOff() called with: on = [&quot; + on + &quot;]&quot;);</span>
+<span class="nc" id="L168">        shouldUpdateOnProgress = on;</span>
+<span class="nc" id="L169">        basePlayerImpl.triggerProgressUpdate();</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">        if (on) {</span>
+<span class="nc" id="L171">            basePlayerImpl.startProgressLoop();</span>
+        } else {
+<span class="nc" id="L173">            basePlayerImpl.stopProgressLoop();</span>
+        }
+<span class="nc" id="L175">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Notification
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private void resetNotification() {
+<span class="nc" id="L182">        notBuilder = createNotification();</span>
+<span class="nc" id="L183">    }</span>
+
+    private NotificationCompat.Builder createNotification() {
+<span class="nc" id="L186">        notRemoteView = new RemoteViews(BuildConfig.APPLICATION_ID, R.layout.player_notification);</span>
+<span class="nc" id="L187">        bigNotRemoteView = new RemoteViews(BuildConfig.APPLICATION_ID, R.layout.player_notification_expanded);</span>
+
+<span class="nc" id="L189">        setupNotification(notRemoteView);</span>
+<span class="nc" id="L190">        setupNotification(bigNotRemoteView);</span>
+
+<span class="nc" id="L192">        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, getString(R.string.notification_channel_id))</span>
+<span class="nc" id="L193">                .setOngoing(true)</span>
+<span class="nc" id="L194">                .setSmallIcon(R.drawable.ic_newpipe_triangle_white)</span>
+<span class="nc" id="L195">                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)</span>
+<span class="nc" id="L196">                .setCustomContentView(notRemoteView)</span>
+<span class="nc" id="L197">                .setCustomBigContentView(bigNotRemoteView);</span>
+<span class="nc bnc" id="L198" title="All 2 branches missed.">        if (android.os.Build.VERSION.SDK_INT &gt;= android.os.Build.VERSION_CODES.JELLY_BEAN) {</span>
+<span class="nc" id="L199">            builder.setPriority(NotificationCompat.PRIORITY_MAX);</span>
+        }
+<span class="nc" id="L201">        return builder;</span>
+    }
+
+    private void setupNotification(RemoteViews remoteViews) {
+<span class="nc bnc" id="L205" title="All 2 branches missed.">        if (basePlayerImpl == null) return;</span>
+
+<span class="nc" id="L207">        remoteViews.setTextViewText(R.id.notificationSongName, basePlayerImpl.getVideoTitle());</span>
+<span class="nc" id="L208">        remoteViews.setTextViewText(R.id.notificationArtist, basePlayerImpl.getUploaderName());</span>
+
+<span class="nc" id="L210">        remoteViews.setOnClickPendingIntent(R.id.notificationPlayPause,</span>
+<span class="nc" id="L211">                PendingIntent.getBroadcast(this, NOTIFICATION_ID, new Intent(ACTION_PLAY_PAUSE), PendingIntent.FLAG_UPDATE_CURRENT));</span>
+<span class="nc" id="L212">        remoteViews.setOnClickPendingIntent(R.id.notificationStop,</span>
+<span class="nc" id="L213">                PendingIntent.getBroadcast(this, NOTIFICATION_ID, new Intent(ACTION_CLOSE), PendingIntent.FLAG_UPDATE_CURRENT));</span>
+<span class="nc" id="L214">        remoteViews.setOnClickPendingIntent(R.id.notificationRepeat,</span>
+<span class="nc" id="L215">                PendingIntent.getBroadcast(this, NOTIFICATION_ID, new Intent(ACTION_REPEAT), PendingIntent.FLAG_UPDATE_CURRENT));</span>
+
+        // Starts background player activity -- attempts to unlock lockscreen
+<span class="nc" id="L218">        final Intent intent = NavigationHelper.getBackgroundPlayerActivityIntent(this);</span>
+<span class="nc" id="L219">        remoteViews.setOnClickPendingIntent(R.id.notificationContent,</span>
+<span class="nc" id="L220">                PendingIntent.getActivity(this, NOTIFICATION_ID, intent, PendingIntent.FLAG_UPDATE_CURRENT));</span>
+
+<span class="nc bnc" id="L222" title="All 4 branches missed.">        if (basePlayerImpl.playQueue != null &amp;&amp; basePlayerImpl.playQueue.size() &gt; 1) {</span>
+<span class="nc" id="L223">            remoteViews.setInt(R.id.notificationFRewind, SET_IMAGE_RESOURCE_METHOD, R.drawable.exo_controls_previous);</span>
+<span class="nc" id="L224">            remoteViews.setInt(R.id.notificationFForward, SET_IMAGE_RESOURCE_METHOD, R.drawable.exo_controls_next);</span>
+<span class="nc" id="L225">            remoteViews.setOnClickPendingIntent(R.id.notificationFRewind,</span>
+<span class="nc" id="L226">                    PendingIntent.getBroadcast(this, NOTIFICATION_ID, new Intent(ACTION_PLAY_PREVIOUS), PendingIntent.FLAG_UPDATE_CURRENT));</span>
+<span class="nc" id="L227">            remoteViews.setOnClickPendingIntent(R.id.notificationFForward,</span>
+<span class="nc" id="L228">                    PendingIntent.getBroadcast(this, NOTIFICATION_ID, new Intent(ACTION_PLAY_NEXT), PendingIntent.FLAG_UPDATE_CURRENT));</span>
+        } else {
+<span class="nc" id="L230">            remoteViews.setInt(R.id.notificationFRewind, SET_IMAGE_RESOURCE_METHOD, R.drawable.exo_controls_rewind);</span>
+<span class="nc" id="L231">            remoteViews.setInt(R.id.notificationFForward, SET_IMAGE_RESOURCE_METHOD, R.drawable.exo_controls_fastforward);</span>
+<span class="nc" id="L232">            remoteViews.setOnClickPendingIntent(R.id.notificationFRewind,</span>
+<span class="nc" id="L233">                    PendingIntent.getBroadcast(this, NOTIFICATION_ID, new Intent(ACTION_FAST_REWIND), PendingIntent.FLAG_UPDATE_CURRENT));</span>
+<span class="nc" id="L234">            remoteViews.setOnClickPendingIntent(R.id.notificationFForward,</span>
+<span class="nc" id="L235">                    PendingIntent.getBroadcast(this, NOTIFICATION_ID, new Intent(ACTION_FAST_FORWARD), PendingIntent.FLAG_UPDATE_CURRENT));</span>
+        }
+
+<span class="nc" id="L238">        setRepeatModeIcon(remoteViews, basePlayerImpl.getRepeatMode());</span>
+<span class="nc" id="L239">    }</span>
+
+    /**
+     * Updates the notification, and the play/pause button in it.
+     * Used for changes on the remoteView
+     *
+     * @param drawableId if != -1, sets the drawable with that id on the play/pause button
+     */
+    private synchronized void updateNotification(int drawableId) {
+        //if (DEBUG) Log.d(TAG, &quot;updateNotification() called with: drawableId = [&quot; + drawableId + &quot;]&quot;);
+<span class="nc bnc" id="L249" title="All 2 branches missed.">        if (notBuilder == null) return;</span>
+<span class="nc bnc" id="L250" title="All 2 branches missed.">        if (drawableId != -1) {</span>
+<span class="nc bnc" id="L251" title="All 2 branches missed.">            if (notRemoteView != null) notRemoteView.setImageViewResource(R.id.notificationPlayPause, drawableId);</span>
+<span class="nc bnc" id="L252" title="All 2 branches missed.">            if (bigNotRemoteView != null) bigNotRemoteView.setImageViewResource(R.id.notificationPlayPause, drawableId);</span>
+        }
+<span class="nc" id="L254">        notificationManager.notify(NOTIFICATION_ID, notBuilder.build());</span>
+<span class="nc" id="L255">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Utils
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private void setRepeatModeIcon(final RemoteViews remoteViews, final int repeatMode) {
+<span class="nc bnc" id="L262" title="All 4 branches missed.">        switch (repeatMode) {</span>
+            case Player.REPEAT_MODE_OFF:
+<span class="nc" id="L264">                remoteViews.setInt(R.id.notificationRepeat, SET_IMAGE_RESOURCE_METHOD, R.drawable.exo_controls_repeat_off);</span>
+<span class="nc" id="L265">                break;</span>
+            case Player.REPEAT_MODE_ONE:
+<span class="nc" id="L267">                remoteViews.setInt(R.id.notificationRepeat, SET_IMAGE_RESOURCE_METHOD, R.drawable.exo_controls_repeat_one);</span>
+<span class="nc" id="L268">                break;</span>
+            case Player.REPEAT_MODE_ALL:
+<span class="nc" id="L270">                remoteViews.setInt(R.id.notificationRepeat, SET_IMAGE_RESOURCE_METHOD, R.drawable.exo_controls_repeat_all);</span>
+                break;
+        }
+<span class="nc" id="L273">    }</span>
+    //////////////////////////////////////////////////////////////////////////
+
+    protected class BasePlayerImpl extends BasePlayer {
+
+        @NonNull final private AudioPlaybackResolver resolver;
+        private int cachedDuration;
+        private String cachedDurationString;
+
+<span class="nc" id="L282">        BasePlayerImpl(Context context) {</span>
+<span class="nc" id="L283">            super(context);</span>
+<span class="nc" id="L284">            this.resolver = new AudioPlaybackResolver(context, dataSource);</span>
+<span class="nc" id="L285">        }</span>
+
+        @Override
+        public void initPlayer(boolean playOnReady) {
+<span class="nc" id="L289">            super.initPlayer(playOnReady);</span>
+<span class="nc" id="L290">        }</span>
+
+        @Override
+        public void handleIntent(final Intent intent) {
+<span class="nc" id="L294">            super.handleIntent(intent);</span>
+
+<span class="nc" id="L296">            resetNotification();</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">            if (bigNotRemoteView != null) bigNotRemoteView.setProgressBar(R.id.notificationProgressBar, 100, 0, false);</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">            if (notRemoteView != null) notRemoteView.setProgressBar(R.id.notificationProgressBar, 100, 0, false);</span>
+<span class="nc" id="L299">            startForeground(NOTIFICATION_ID, notBuilder.build());</span>
+<span class="nc" id="L300">        }</span>
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // Thumbnail Loading
+        //////////////////////////////////////////////////////////////////////////*/
+
+        private void updateNotificationThumbnail() {
+<span class="nc bnc" id="L307" title="All 2 branches missed.">            if (basePlayerImpl == null) return;</span>
+<span class="nc bnc" id="L308" title="All 2 branches missed.">            if (notRemoteView != null) {</span>
+<span class="nc" id="L309">                notRemoteView.setImageViewBitmap(R.id.notificationCover,</span>
+<span class="nc" id="L310">                        basePlayerImpl.getThumbnail());</span>
+            }
+<span class="nc bnc" id="L312" title="All 2 branches missed.">            if (bigNotRemoteView != null) {</span>
+<span class="nc" id="L313">                bigNotRemoteView.setImageViewBitmap(R.id.notificationCover,</span>
+<span class="nc" id="L314">                        basePlayerImpl.getThumbnail());</span>
+            }
+<span class="nc" id="L316">        }</span>
+
+        @Override
+        public void onLoadingComplete(String imageUri, View view, Bitmap loadedImage) {
+<span class="nc" id="L320">            super.onLoadingComplete(imageUri, view, loadedImage);</span>
+<span class="nc" id="L321">            resetNotification();</span>
+<span class="nc" id="L322">            updateNotificationThumbnail();</span>
+<span class="nc" id="L323">            updateNotification(-1);</span>
+<span class="nc" id="L324">        }</span>
+
+        @Override
+        public void onLoadingFailed(String imageUri, View view, FailReason failReason) {
+<span class="nc" id="L328">            super.onLoadingFailed(imageUri, view, failReason);</span>
+<span class="nc" id="L329">            resetNotification();</span>
+<span class="nc" id="L330">            updateNotificationThumbnail();</span>
+<span class="nc" id="L331">            updateNotification(-1);</span>
+<span class="nc" id="L332">        }</span>
+        /*//////////////////////////////////////////////////////////////////////////
+        // States Implementation
+        //////////////////////////////////////////////////////////////////////////*/
+
+        @Override
+        public void onPrepared(boolean playWhenReady) {
+<span class="nc" id="L339">            super.onPrepared(playWhenReady);</span>
+<span class="nc" id="L340">            simpleExoPlayer.setVolume(1f);</span>
+<span class="nc" id="L341">        }</span>
+
+        @Override
+        public void onShuffleClicked() {
+<span class="nc" id="L345">            super.onShuffleClicked();</span>
+<span class="nc" id="L346">            updatePlayback();</span>
+<span class="nc" id="L347">        }</span>
+
+        @Override
+        public void onUpdateProgress(int currentProgress, int duration, int bufferPercent) {
+<span class="nc" id="L351">            updateProgress(currentProgress, duration, bufferPercent);</span>
+
+<span class="nc bnc" id="L353" title="All 2 branches missed.">            if (!shouldUpdateOnProgress) return;</span>
+<span class="nc" id="L354">            resetNotification();</span>
+<span class="nc bnc" id="L355" title="All 2 branches missed.">            if (Build.VERSION.SDK_INT &gt;= Build.VERSION_CODES.O /*Oreo*/) updateNotificationThumbnail();</span>
+<span class="nc bnc" id="L356" title="All 2 branches missed.">            if (bigNotRemoteView != null) {</span>
+<span class="nc bnc" id="L357" title="All 2 branches missed.">                if(cachedDuration != duration) {</span>
+<span class="nc" id="L358">                    cachedDuration = duration;</span>
+<span class="nc" id="L359">                    cachedDurationString = getTimeString(duration);</span>
+                }
+<span class="nc" id="L361">                bigNotRemoteView.setProgressBar(R.id.notificationProgressBar, duration, currentProgress, false);</span>
+<span class="nc" id="L362">                bigNotRemoteView.setTextViewText(R.id.notificationTime, getTimeString(currentProgress) + &quot; / &quot; + cachedDurationString);</span>
+            }
+<span class="nc bnc" id="L364" title="All 2 branches missed.">            if (notRemoteView != null) {</span>
+<span class="nc" id="L365">                notRemoteView.setProgressBar(R.id.notificationProgressBar, duration, currentProgress, false);</span>
+            }
+<span class="nc" id="L367">            updateNotification(-1);</span>
+<span class="nc" id="L368">        }</span>
+
+        @Override
+        public void onPlayPrevious() {
+<span class="nc" id="L372">            super.onPlayPrevious();</span>
+<span class="nc" id="L373">            triggerProgressUpdate();</span>
+<span class="nc" id="L374">        }</span>
+
+        @Override
+        public void onPlayNext() {
+<span class="nc" id="L378">            super.onPlayNext();</span>
+<span class="nc" id="L379">            triggerProgressUpdate();</span>
+<span class="nc" id="L380">        }</span>
+
+        @Override
+        public void destroy() {
+<span class="nc" id="L384">            super.destroy();</span>
+<span class="nc bnc" id="L385" title="All 2 branches missed.">            if (notRemoteView != null) notRemoteView.setImageViewBitmap(R.id.notificationCover, null);</span>
+<span class="nc bnc" id="L386" title="All 2 branches missed.">            if (bigNotRemoteView != null) bigNotRemoteView.setImageViewBitmap(R.id.notificationCover, null);</span>
+<span class="nc" id="L387">        }</span>
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // ExoPlayer Listener
+        //////////////////////////////////////////////////////////////////////////*/
+
+        @Override
+        public void onPlaybackParametersChanged(PlaybackParameters playbackParameters) {
+<span class="nc" id="L395">            super.onPlaybackParametersChanged(playbackParameters);</span>
+<span class="nc" id="L396">            updatePlayback();</span>
+<span class="nc" id="L397">        }</span>
+
+        @Override
+        public void onLoadingChanged(boolean isLoading) {
+            // Disable default behavior
+<span class="nc" id="L402">        }</span>
+
+        @Override
+        public void onRepeatModeChanged(int i) {
+<span class="nc" id="L406">            resetNotification();</span>
+<span class="nc" id="L407">            updateNotification(-1);</span>
+<span class="nc" id="L408">            updatePlayback();</span>
+<span class="nc" id="L409">        }</span>
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // Playback Listener
+        //////////////////////////////////////////////////////////////////////////*/
+
+        protected void onMetadataChanged(@NonNull final MediaSourceTag tag) {
+<span class="nc" id="L416">            super.onMetadataChanged(tag);</span>
+<span class="nc" id="L417">            resetNotification();</span>
+<span class="nc" id="L418">            updateNotificationThumbnail();</span>
+<span class="nc" id="L419">            updateNotification(-1);</span>
+<span class="nc" id="L420">            updateMetadata();</span>
+<span class="nc" id="L421">        }</span>
+
+        @Override
+        @Nullable
+        public MediaSource sourceOf(final PlayQueueItem item, final StreamInfo info) {
+<span class="nc" id="L426">            return resolver.resolve(info);</span>
+        }
+
+        @Override
+        public void onPlaybackShutdown() {
+<span class="nc" id="L431">            super.onPlaybackShutdown();</span>
+<span class="nc" id="L432">            onClose();</span>
+<span class="nc" id="L433">        }</span>
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // Activity Event Listener
+        //////////////////////////////////////////////////////////////////////////*/
+
+        /*package-private*/ void setActivityListener(PlayerEventListener listener) {
+<span class="nc" id="L440">            activityListener = listener;</span>
+<span class="nc" id="L441">            updateMetadata();</span>
+<span class="nc" id="L442">            updatePlayback();</span>
+<span class="nc" id="L443">            triggerProgressUpdate();</span>
+<span class="nc" id="L444">        }</span>
+
+        /*package-private*/ void removeActivityListener(PlayerEventListener listener) {
+<span class="nc bnc" id="L447" title="All 2 branches missed.">            if (activityListener == listener) {</span>
+<span class="nc" id="L448">                activityListener = null;</span>
+            }
+<span class="nc" id="L450">        }</span>
+
+        private void updateMetadata() {
+<span class="nc bnc" id="L453" title="All 4 branches missed.">            if (activityListener != null &amp;&amp; getCurrentMetadata() != null) {</span>
+<span class="nc" id="L454">                activityListener.onMetadataUpdate(getCurrentMetadata().getMetadata());</span>
+            }
+<span class="nc" id="L456">        }</span>
+
+        private void updatePlayback() {
+<span class="nc bnc" id="L459" title="All 6 branches missed.">            if (activityListener != null &amp;&amp; simpleExoPlayer != null &amp;&amp; playQueue != null) {</span>
+<span class="nc" id="L460">                activityListener.onPlaybackUpdate(currentState, getRepeatMode(),</span>
+<span class="nc" id="L461">                        playQueue.isShuffled(), getPlaybackParameters());</span>
+            }
+<span class="nc" id="L463">        }</span>
+
+        private void updateProgress(int currentProgress, int duration, int bufferPercent) {
+<span class="nc bnc" id="L466" title="All 2 branches missed.">            if (activityListener != null) {</span>
+<span class="nc" id="L467">                activityListener.onProgressUpdate(currentProgress, duration, bufferPercent);</span>
+            }
+<span class="nc" id="L469">        }</span>
+
+        private void stopActivityBinding() {
+<span class="nc bnc" id="L472" title="All 2 branches missed.">            if (activityListener != null) {</span>
+<span class="nc" id="L473">                activityListener.onServiceStopped();</span>
+<span class="nc" id="L474">                activityListener = null;</span>
+            }
+<span class="nc" id="L476">        }</span>
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // Broadcast Receiver
+        //////////////////////////////////////////////////////////////////////////*/
+
+        @Override
+        protected void setupBroadcastReceiver(IntentFilter intentFilter) {
+<span class="nc" id="L484">            super.setupBroadcastReceiver(intentFilter);</span>
+<span class="nc" id="L485">            intentFilter.addAction(ACTION_CLOSE);</span>
+<span class="nc" id="L486">            intentFilter.addAction(ACTION_PLAY_PAUSE);</span>
+<span class="nc" id="L487">            intentFilter.addAction(ACTION_REPEAT);</span>
+<span class="nc" id="L488">            intentFilter.addAction(ACTION_PLAY_PREVIOUS);</span>
+<span class="nc" id="L489">            intentFilter.addAction(ACTION_PLAY_NEXT);</span>
+<span class="nc" id="L490">            intentFilter.addAction(ACTION_FAST_REWIND);</span>
+<span class="nc" id="L491">            intentFilter.addAction(ACTION_FAST_FORWARD);</span>
+
+<span class="nc" id="L493">            intentFilter.addAction(Intent.ACTION_SCREEN_ON);</span>
+<span class="nc" id="L494">            intentFilter.addAction(Intent.ACTION_SCREEN_OFF);</span>
+
+<span class="nc" id="L496">            intentFilter.addAction(Intent.ACTION_HEADSET_PLUG);</span>
+<span class="nc" id="L497">        }</span>
+
+        @Override
+        public void onBroadcastReceived(Intent intent) {
+<span class="nc" id="L501">            super.onBroadcastReceived(intent);</span>
+<span class="nc bnc" id="L502" title="All 4 branches missed.">            if (intent == null || intent.getAction() == null) return;</span>
+<span class="nc bnc" id="L503" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;onBroadcastReceived() called with: intent = [&quot; + intent + &quot;]&quot;);</span>
+<span class="nc bnc" id="L504" title="All 38 branches missed.">            switch (intent.getAction()) {</span>
+                case ACTION_CLOSE:
+<span class="nc" id="L506">                    onClose();</span>
+<span class="nc" id="L507">                    break;</span>
+                case ACTION_PLAY_PAUSE:
+<span class="nc" id="L509">                    onPlayPause();</span>
+<span class="nc" id="L510">                    break;</span>
+                case ACTION_REPEAT:
+<span class="nc" id="L512">                    onRepeatClicked();</span>
+<span class="nc" id="L513">                    break;</span>
+                case ACTION_PLAY_NEXT:
+<span class="nc" id="L515">                    onPlayNext();</span>
+<span class="nc" id="L516">                    break;</span>
+                case ACTION_PLAY_PREVIOUS:
+<span class="nc" id="L518">                    onPlayPrevious();</span>
+<span class="nc" id="L519">                    break;</span>
+                case ACTION_FAST_FORWARD:
+<span class="nc" id="L521">                    onFastForward();</span>
+<span class="nc" id="L522">                    break;</span>
+                case ACTION_FAST_REWIND:
+<span class="nc" id="L524">                    onFastRewind();</span>
+<span class="nc" id="L525">                    break;</span>
+                case Intent.ACTION_SCREEN_ON:
+<span class="nc" id="L527">                    onScreenOnOff(true);</span>
+<span class="nc" id="L528">                    break;</span>
+                case Intent.ACTION_SCREEN_OFF:
+<span class="nc" id="L530">                    onScreenOnOff(false);</span>
+                    break;
+            }
+<span class="nc" id="L533">        }</span>
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // States
+        //////////////////////////////////////////////////////////////////////////*/
+
+        @Override
+        public void changeState(int state) {
+<span class="nc" id="L541">            super.changeState(state);</span>
+<span class="nc" id="L542">            updatePlayback();</span>
+<span class="nc" id="L543">        }</span>
+
+        @Override
+        public void onPlaying() {
+<span class="nc" id="L547">            super.onPlaying();</span>
+<span class="nc" id="L548">            resetNotification();</span>
+<span class="nc" id="L549">            updateNotificationThumbnail();</span>
+<span class="nc" id="L550">            updateNotification(R.drawable.ic_pause_white);</span>
+<span class="nc" id="L551">            lockManager.acquireWifiAndCpu();</span>
+<span class="nc" id="L552">        }</span>
+
+        @Override
+        public void onPaused() {
+<span class="nc" id="L556">            super.onPaused();</span>
+<span class="nc" id="L557">            resetNotification();</span>
+<span class="nc" id="L558">            updateNotificationThumbnail();</span>
+<span class="nc" id="L559">            updateNotification(R.drawable.ic_play_arrow_white);</span>
+<span class="nc" id="L560">            lockManager.releaseWifiAndCpu();</span>
+<span class="nc" id="L561">        }</span>
+
+        @Override
+        public void onCompleted() {
+<span class="nc" id="L565">            super.onCompleted();</span>
+<span class="nc" id="L566">            resetNotification();</span>
+<span class="nc bnc" id="L567" title="All 2 branches missed.">            if (bigNotRemoteView != null) {</span>
+<span class="nc" id="L568">                bigNotRemoteView.setProgressBar(R.id.notificationProgressBar, 100, 100, false);</span>
+            }
+<span class="nc bnc" id="L570" title="All 2 branches missed.">            if (notRemoteView != null) {</span>
+<span class="nc" id="L571">                notRemoteView.setProgressBar(R.id.notificationProgressBar, 100, 100, false);</span>
+            }
+<span class="nc" id="L573">            updateNotificationThumbnail();</span>
+<span class="nc" id="L574">            updateNotification(R.drawable.ic_replay_white);</span>
+<span class="nc" id="L575">            lockManager.releaseWifiAndCpu();</span>
+<span class="nc" id="L576">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>App.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe</a> &gt; <span class="el_source">App.java</span></div><h1>App.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe;
+
+import android.annotation.TargetApi;
+import android.app.Application;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.content.Context;
+import android.os.Build;
+import android.preference.PreferenceManager;
+import android.support.annotation.Nullable;
+import android.util.Log;
+
+import com.nostra13.universalimageloader.cache.memory.impl.LRULimitedMemoryCache;
+import com.nostra13.universalimageloader.core.ImageLoader;
+import com.nostra13.universalimageloader.core.ImageLoaderConfiguration;
+import com.squareup.leakcanary.LeakCanary;
+import com.squareup.leakcanary.RefWatcher;
+
+import org.acra.ACRA;
+import org.acra.config.ACRAConfiguration;
+import org.acra.config.ACRAConfigurationException;
+import org.acra.config.ConfigurationBuilder;
+import org.acra.sender.ReportSenderFactory;
+import org.schabi.newpipe.extractor.Downloader;
+import org.schabi.newpipe.extractor.NewPipe;
+import org.schabi.newpipe.extractor.utils.Localization;
+import org.schabi.newpipe.report.AcraReportSenderFactory;
+import org.schabi.newpipe.report.ErrorActivity;
+import org.schabi.newpipe.report.UserAction;
+import org.schabi.newpipe.settings.SettingsActivity;
+import org.schabi.newpipe.util.ExtractorHelper;
+import org.schabi.newpipe.util.StateSaver;
+
+import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.net.SocketException;
+import java.util.Collections;
+import java.util.List;
+
+import io.reactivex.annotations.NonNull;
+import io.reactivex.exceptions.CompositeException;
+import io.reactivex.exceptions.MissingBackpressureException;
+import io.reactivex.exceptions.OnErrorNotImplementedException;
+import io.reactivex.exceptions.UndeliverableException;
+import io.reactivex.functions.Consumer;
+import io.reactivex.plugins.RxJavaPlugins;
+
+/*
+ * Copyright (C) Hans-Christoph Steiner 2016 &lt;hans@eds.org&gt;
+ * App.java is part of NewPipe.
+ *
+ * NewPipe is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * NewPipe is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NewPipe.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+<span class="fc" id="L66">public class App extends Application {</span>
+<span class="fc" id="L67">    protected static final String TAG = App.class.toString();</span>
+    private RefWatcher refWatcher;
+    private static App app;
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private static final Class&lt;? extends ReportSenderFactory&gt;[]
+<span class="fc" id="L73">            reportSenderFactoryClasses = new Class[]{AcraReportSenderFactory.class};</span>
+
+    @Override
+    protected void attachBaseContext(Context base) {
+<span class="fc" id="L77">        super.attachBaseContext(base);</span>
+
+<span class="fc" id="L79">        initACRA();</span>
+<span class="fc" id="L80">    }</span>
+
+    @Override
+    public void onCreate() {
+<span class="fc" id="L84">        super.onCreate();</span>
+
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">        if (LeakCanary.isInAnalyzerProcess(this)) {</span>
+            // This process is dedicated to LeakCanary for heap analysis.
+            // You should not init your app in this process.
+<span class="nc" id="L89">            return;</span>
+        }
+<span class="fc" id="L91">        refWatcher = installLeakCanary();</span>
+
+<span class="fc" id="L93">        app = this;</span>
+
+        // Initialize settings first because others inits can use its values
+<span class="fc" id="L96">        SettingsActivity.initSettings(this);</span>
+
+<span class="fc" id="L98">        NewPipe.init(getDownloader(),</span>
+<span class="fc" id="L99">                org.schabi.newpipe.util.Localization.getPreferredExtractorLocal(this));</span>
+<span class="fc" id="L100">        StateSaver.init(this);</span>
+<span class="fc" id="L101">        initNotificationChannel();</span>
+
+        // Initialize image loader
+<span class="fc" id="L104">        ImageLoader.getInstance().init(getImageLoaderConfigurations(10, 50));</span>
+
+<span class="fc" id="L106">        configureRxJavaErrorHandler();</span>
+
+        // Check for new version
+<span class="fc" id="L109">        new CheckForNewAppVersionTask().execute();</span>
+<span class="fc" id="L110">    }</span>
+
+    protected Downloader getDownloader() {
+<span class="nc" id="L113">        return org.schabi.newpipe.Downloader.init(null);</span>
+    }
+
+    private void configureRxJavaErrorHandler() {
+        // https://github.com/ReactiveX/RxJava/wiki/What's-different-in-2.0#error-handling
+<span class="fc" id="L118">        RxJavaPlugins.setErrorHandler(new Consumer&lt;Throwable&gt;() {</span>
+            @Override
+            public void accept(@NonNull Throwable throwable) {
+<span class="nc" id="L121">                Log.e(TAG, &quot;RxJavaPlugins.ErrorHandler called with -&gt; : &quot; +</span>
+<span class="nc" id="L122">                        &quot;throwable = [&quot; + throwable.getClass().getName() + &quot;]&quot;);</span>
+
+<span class="nc bnc" id="L124" title="All 2 branches missed.">                if (throwable instanceof UndeliverableException) {</span>
+                    // As UndeliverableException is a wrapper, get the cause of it to get the &quot;real&quot; exception
+<span class="nc" id="L126">                    throwable = throwable.getCause();</span>
+                }
+
+                final List&lt;Throwable&gt; errors;
+<span class="nc bnc" id="L130" title="All 2 branches missed.">                if (throwable instanceof CompositeException) {</span>
+<span class="nc" id="L131">                    errors = ((CompositeException) throwable).getExceptions();</span>
+                } else {
+<span class="nc" id="L133">                    errors = Collections.singletonList(throwable);</span>
+                }
+
+<span class="nc bnc" id="L136" title="All 2 branches missed.">                for (final Throwable error : errors) {</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">                    if (isThrowableIgnored(error)) return;</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">                    if (isThrowableCritical(error)) {</span>
+<span class="nc" id="L139">                        reportException(error);</span>
+<span class="nc" id="L140">                        return;</span>
+                    }
+<span class="nc" id="L142">                }</span>
+
+                // Out-of-lifecycle exceptions should only be reported if a debug user wishes so,
+                // When exception is not reported, log it
+<span class="nc bnc" id="L146" title="All 2 branches missed.">                if (isDisposedRxExceptionsReported()) {</span>
+<span class="nc" id="L147">                    reportException(throwable);</span>
+                } else {
+<span class="nc" id="L149">                    Log.e(TAG, &quot;RxJavaPlugin: Undeliverable Exception received: &quot;, throwable);</span>
+                }
+<span class="nc" id="L151">            }</span>
+
+            private boolean isThrowableIgnored(@NonNull final Throwable throwable) {
+                // Don't crash the application over a simple network problem
+<span class="nc" id="L155">                return ExtractorHelper.hasAssignableCauseThrowable(throwable,</span>
+                        IOException.class, SocketException.class, // network api cancellation
+                        InterruptedException.class, InterruptedIOException.class); // blocking code disposed
+            }
+
+            private boolean isThrowableCritical(@NonNull final Throwable throwable) {
+                // Though these exceptions cannot be ignored
+<span class="nc" id="L162">                return ExtractorHelper.hasAssignableCauseThrowable(throwable,</span>
+                        NullPointerException.class, IllegalArgumentException.class, // bug in app
+                        OnErrorNotImplementedException.class, MissingBackpressureException.class,
+                        IllegalStateException.class); // bug in operator
+            }
+
+            private void reportException(@NonNull final Throwable throwable) {
+                // Throw uncaught exception that will trigger the report system
+<span class="nc" id="L170">                Thread.currentThread().getUncaughtExceptionHandler()</span>
+<span class="nc" id="L171">                        .uncaughtException(Thread.currentThread(), throwable);</span>
+<span class="nc" id="L172">            }</span>
+        });
+<span class="fc" id="L174">    }</span>
+
+    private ImageLoaderConfiguration getImageLoaderConfigurations(final int memoryCacheSizeMb,
+                                                                  final int diskCacheSizeMb) {
+<span class="fc" id="L178">        return new ImageLoaderConfiguration.Builder(this)</span>
+<span class="fc" id="L179">                .memoryCache(new LRULimitedMemoryCache(memoryCacheSizeMb * 1024 * 1024))</span>
+<span class="fc" id="L180">                .diskCacheSize(diskCacheSizeMb * 1024 * 1024)</span>
+<span class="fc" id="L181">                .imageDownloader(new ImageDownloader(getApplicationContext()))</span>
+<span class="fc" id="L182">                .build();</span>
+    }
+
+    private void initACRA() {
+        try {
+<span class="fc" id="L187">            final ACRAConfiguration acraConfig = new ConfigurationBuilder(this)</span>
+<span class="fc" id="L188">                    .setReportSenderFactoryClasses(reportSenderFactoryClasses)</span>
+<span class="fc" id="L189">                    .setBuildConfigClass(BuildConfig.class)</span>
+<span class="fc" id="L190">                    .build();</span>
+<span class="fc" id="L191">            ACRA.init(this, acraConfig);</span>
+<span class="nc" id="L192">        } catch (ACRAConfigurationException ace) {</span>
+<span class="nc" id="L193">            ace.printStackTrace();</span>
+<span class="nc" id="L194">            ErrorActivity.reportError(this,</span>
+                    ace,
+                    null,
+                    null,
+<span class="nc" id="L198">                    ErrorActivity.ErrorInfo.make(UserAction.SOMETHING_ELSE, &quot;none&quot;,</span>
+                    &quot;Could not initialize ACRA crash report&quot;, R.string.app_ui_crash));
+<span class="fc" id="L200">        }</span>
+<span class="fc" id="L201">    }</span>
+
+    public void initNotificationChannel() {
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">        if (Build.VERSION.SDK_INT &lt; android.os.Build.VERSION_CODES.O) {</span>
+<span class="nc" id="L205">            return;</span>
+        }
+
+<span class="fc" id="L208">        final String id = getString(R.string.notification_channel_id);</span>
+<span class="fc" id="L209">        final CharSequence name = getString(R.string.notification_channel_name);</span>
+<span class="fc" id="L210">        final String description = getString(R.string.notification_channel_description);</span>
+
+        // Keep this below DEFAULT to avoid making noise on every notification update
+<span class="fc" id="L213">        final int importance = NotificationManager.IMPORTANCE_LOW;</span>
+
+<span class="fc" id="L215">        NotificationChannel mChannel = new NotificationChannel(id, name, importance);</span>
+<span class="fc" id="L216">        mChannel.setDescription(description);</span>
+
+<span class="fc" id="L218">        NotificationManager mNotificationManager =</span>
+<span class="fc" id="L219">                (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);</span>
+<span class="fc" id="L220">        mNotificationManager.createNotificationChannel(mChannel);</span>
+
+<span class="fc" id="L222">        setUpUpdateNotificationChannel(importance);</span>
+<span class="fc" id="L223">    }</span>
+
+    /**
+     * Set up notification channel for app update.
+     * @param importance
+     */
+    @TargetApi(Build.VERSION_CODES.O)
+    private void setUpUpdateNotificationChannel(int importance) {
+
+<span class="fc" id="L232">        final String appUpdateId</span>
+<span class="fc" id="L233">                = getString(R.string.app_update_notification_channel_id);</span>
+<span class="fc" id="L234">        final CharSequence appUpdateName</span>
+<span class="fc" id="L235">                = getString(R.string.app_update_notification_channel_name);</span>
+<span class="fc" id="L236">        final String appUpdateDescription</span>
+<span class="fc" id="L237">                = getString(R.string.app_update_notification_channel_description);</span>
+
+<span class="fc" id="L239">        NotificationChannel appUpdateChannel</span>
+                = new NotificationChannel(appUpdateId, appUpdateName, importance);
+<span class="fc" id="L241">        appUpdateChannel.setDescription(appUpdateDescription);</span>
+
+<span class="fc" id="L243">        NotificationManager appUpdateNotificationManager</span>
+<span class="fc" id="L244">                = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);</span>
+<span class="fc" id="L245">        appUpdateNotificationManager.createNotificationChannel(appUpdateChannel);</span>
+<span class="fc" id="L246">    }</span>
+
+    @Nullable
+    public static RefWatcher getRefWatcher(Context context) {
+<span class="nc" id="L250">        final App application = (App) context.getApplicationContext();</span>
+<span class="nc" id="L251">        return application.refWatcher;</span>
+    }
+
+    protected RefWatcher installLeakCanary() {
+<span class="nc" id="L255">        return RefWatcher.DISABLED;</span>
+    }
+
+    protected boolean isDisposedRxExceptionsReported() {
+<span class="nc" id="L259">        return false;</span>
+    }
+
+    public static App getApp() {
+<span class="fc" id="L263">        return app;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

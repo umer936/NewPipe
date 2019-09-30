@@ -1,0 +1,370 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SubtitleConverter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.streams</a> &gt; <span class="el_source">SubtitleConverter.java</span></div><h1>SubtitleConverter.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.streams;
+
+import org.schabi.newpipe.streams.io.SharpStream;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.nio.charset.Charset;
+import java.text.ParseException;
+import java.util.Locale;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.xpath.XPathExpressionException;
+
+/**
+ * @author kapodamy
+ */
+<span class="nc" id="L24">public class SubtitleConverter {</span>
+    private static final String NEW_LINE = &quot;\r\n&quot;;
+
+    public void dumpTTML(SharpStream in, final SharpStream out, final boolean ignoreEmptyFrames, final boolean detectYoutubeDuplicateLines
+    ) throws IOException, ParseException, SAXException, ParserConfigurationException, XPathExpressionException {
+
+<span class="nc" id="L30">        final FrameWriter callback = new FrameWriter() {</span>
+<span class="nc" id="L31">            int frameIndex = 0;</span>
+<span class="nc" id="L32">            final Charset charset = Charset.forName(&quot;utf-8&quot;);</span>
+
+            @Override
+            public void yield(SubtitleFrame frame) throws IOException {
+<span class="nc bnc" id="L36" title="All 4 branches missed.">                if (ignoreEmptyFrames &amp;&amp; frame.isEmptyText()) {</span>
+<span class="nc" id="L37">                    return;</span>
+                }
+<span class="nc" id="L39">                out.write(String.valueOf(frameIndex++).getBytes(charset));</span>
+<span class="nc" id="L40">                out.write(NEW_LINE.getBytes(charset));</span>
+<span class="nc" id="L41">                out.write(getTime(frame.start, true).getBytes(charset));</span>
+<span class="nc" id="L42">                out.write(&quot; --&gt; &quot;.getBytes(charset));</span>
+<span class="nc" id="L43">                out.write(getTime(frame.end, true).getBytes(charset));</span>
+<span class="nc" id="L44">                out.write(NEW_LINE.getBytes(charset));</span>
+<span class="nc" id="L45">                out.write(frame.text.getBytes(charset));</span>
+<span class="nc" id="L46">                out.write(NEW_LINE.getBytes(charset));</span>
+<span class="nc" id="L47">                out.write(NEW_LINE.getBytes(charset));</span>
+<span class="nc" id="L48">            }</span>
+        };
+
+<span class="nc" id="L51">        read_xml_based(in, callback, detectYoutubeDuplicateLines,</span>
+                &quot;tt&quot;, &quot;xmlns&quot;, &quot;http://www.w3.org/ns/ttml&quot;,
+                new String[]{&quot;timedtext&quot;, &quot;head&quot;, &quot;wp&quot;},
+                new String[]{&quot;body&quot;, &quot;div&quot;, &quot;p&quot;},
+                &quot;begin&quot;, &quot;end&quot;, true
+        );
+<span class="nc" id="L57">    }</span>
+
+    private void read_xml_based(SharpStream source, FrameWriter callback, boolean detectYoutubeDuplicateLines,
+                                String root, String formatAttr, String formatVersion, String[] cuePath, String[] framePath,
+                                String timeAttr, String durationAttr, boolean hasTimestamp
+    ) throws IOException, ParseException, SAXException, ParserConfigurationException, XPathExpressionException {
+        /*
+         * XML based subtitles parser with BASIC support
+         * multiple CUE is not supported
+         * styling is not supported
+         * tag timestamps (in auto-generated subtitles) are not supported, maybe in the future
+         * also TimestampTagOption enum is not applicable
+         * Language parsing is not supported
+         */
+
+<span class="nc" id="L72">        byte[] buffer = new byte[(int) source.available()];</span>
+<span class="nc" id="L73">        source.read(buffer);</span>
+
+<span class="nc" id="L75">        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();</span>
+<span class="nc" id="L76">        factory.setNamespaceAware(true);</span>
+<span class="nc" id="L77">        DocumentBuilder builder = factory.newDocumentBuilder();</span>
+<span class="nc" id="L78">        Document xml = builder.parse(new ByteArrayInputStream(buffer));</span>
+
+        String attr;
+
+        // get the format version or namespace
+<span class="nc" id="L83">        Element node = xml.getDocumentElement();</span>
+
+<span class="nc bnc" id="L85" title="All 2 branches missed.">        if (node == null) {</span>
+<span class="nc" id="L86">            throw new ParseException(&quot;Can't get the format version. ¿wrong namespace?&quot;, -1);</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">        } else if (!node.getNodeName().equals(root)) {</span>
+<span class="nc" id="L88">            throw new ParseException(&quot;Invalid root&quot;, -1);</span>
+        }
+
+<span class="nc bnc" id="L91" title="All 2 branches missed.">        if (formatAttr.equals(&quot;xmlns&quot;)) {</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">            if (!node.getNamespaceURI().equals(formatVersion)) {</span>
+<span class="nc" id="L93">                throw new UnsupportedOperationException(&quot;Expected xml namespace: &quot; + formatVersion);</span>
+            }
+        } else {
+<span class="nc" id="L96">            attr = node.getAttributeNS(formatVersion, formatAttr);</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">            if (attr == null) {</span>
+<span class="nc" id="L98">                throw new ParseException(&quot;Can't get the format attribute&quot;, -1);</span>
+            }
+<span class="nc bnc" id="L100" title="All 2 branches missed.">            if (!attr.equals(formatVersion)) {</span>
+<span class="nc" id="L101">                throw new ParseException(&quot;Invalid format version : &quot; + attr, -1);</span>
+            }
+        }
+
+        NodeList node_list;
+
+<span class="nc" id="L107">        int line_break = 0;// Maximum characters per line if present (valid for TranScript v3)</span>
+
+<span class="nc bnc" id="L109" title="All 2 branches missed.">        if (!hasTimestamp) {</span>
+<span class="nc" id="L110">            node_list = selectNodes(xml, cuePath, formatVersion);</span>
+
+<span class="nc bnc" id="L112" title="All 2 branches missed.">            if (node_list != null) {</span>
+                // if the subtitle has multiple CUEs, use the highest value
+<span class="nc bnc" id="L114" title="All 2 branches missed.">                for (int i = 0; i &lt; node_list.getLength(); i++) {</span>
+                    try {
+<span class="nc" id="L116">                        int tmp = Integer.parseInt(((Element) node_list.item(i)).getAttributeNS(formatVersion, &quot;ah&quot;));</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">                        if (tmp &gt; line_break) {</span>
+<span class="nc" id="L118">                            line_break = tmp;</span>
+                        }
+<span class="nc" id="L120">                    } catch (Exception err) {</span>
+<span class="nc" id="L121">                    }</span>
+                }
+            }
+        }
+
+        // parse every frame
+<span class="nc" id="L127">        node_list = selectNodes(xml, framePath, formatVersion);</span>
+
+<span class="nc bnc" id="L129" title="All 2 branches missed.">        if (node_list == null) {</span>
+<span class="nc" id="L130">            return;// no frames detected</span>
+        }
+
+<span class="nc" id="L133">        int fs_ff = -1;// first timestamp of first frame</span>
+<span class="nc" id="L134">        boolean limit_lines = false;</span>
+
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        for (int i = 0; i &lt; node_list.getLength(); i++) {</span>
+<span class="nc" id="L137">            Element elem = (Element) node_list.item(i);</span>
+<span class="nc" id="L138">            SubtitleFrame obj = new SubtitleFrame();</span>
+<span class="nc" id="L139">            obj.text = elem.getTextContent();</span>
+
+<span class="nc" id="L141">            attr = elem.getAttribute(timeAttr);// ¡this cant be null!</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">            obj.start = hasTimestamp ? parseTimestamp(attr) : Integer.parseInt(attr);</span>
+
+<span class="nc" id="L144">            attr = elem.getAttribute(durationAttr);</span>
+<span class="nc bnc" id="L145" title="All 4 branches missed.">            if (obj.text == null || attr == null) {</span>
+<span class="nc" id="L146">                continue;// normally is a blank line (on auto-generated subtitles) ignore</span>
+            }
+
+<span class="nc bnc" id="L149" title="All 2 branches missed.">            if (hasTimestamp) {</span>
+<span class="nc" id="L150">                obj.end = parseTimestamp(attr);</span>
+
+<span class="nc bnc" id="L152" title="All 2 branches missed.">                if (detectYoutubeDuplicateLines) {</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">                    if (limit_lines) {</span>
+<span class="nc" id="L154">                        int swap = obj.end;</span>
+<span class="nc" id="L155">                        obj.end = fs_ff;</span>
+<span class="nc" id="L156">                        fs_ff = swap;</span>
+<span class="nc" id="L157">                    } else {</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">                        if (fs_ff &lt; 0) {</span>
+<span class="nc" id="L159">                            fs_ff = obj.end;</span>
+                        } else {
+<span class="nc bnc" id="L161" title="All 2 branches missed.">                            if (fs_ff &lt; obj.start) {</span>
+<span class="nc" id="L162">                                limit_lines = true;// the subtitles has duplicated lines</span>
+                            } else {
+<span class="nc" id="L164">                                detectYoutubeDuplicateLines = false;</span>
+                            }
+                        }
+                    }
+                }
+            } else {
+<span class="nc" id="L170">                obj.end = obj.start + Integer.parseInt(attr);</span>
+            }
+
+<span class="nc bnc" id="L173" title="All 4 branches missed.">            if (/*node.getAttribute(&quot;w&quot;).equals(&quot;1&quot;) &amp;&amp;*/line_break &gt; 1 &amp;&amp; obj.text.length() &gt; line_break) {</span>
+
+                // implement auto line breaking (once)
+<span class="nc" id="L176">                StringBuilder text = new StringBuilder(obj.text);</span>
+<span class="nc" id="L177">                obj.text = null;</span>
+
+<span class="nc bnc" id="L179" title="All 2 branches missed.">                switch (text.charAt(line_break)) {</span>
+                    case ' ':
+                    case '\t':
+<span class="nc" id="L182">                        putBreakAt(line_break, text);</span>
+<span class="nc" id="L183">                        break;</span>
+                    default:// find the word start position
+<span class="nc bnc" id="L185" title="All 2 branches missed.">                        for (int j = line_break - 1; j &gt; 0; j--) {</span>
+<span class="nc bnc" id="L186" title="All 3 branches missed.">                            switch (text.charAt(j)) {</span>
+                                case ' ':
+                                case '\t':
+<span class="nc" id="L189">                                    putBreakAt(j, text);</span>
+<span class="nc" id="L190">                                    j = -1;</span>
+<span class="nc" id="L191">                                    break;</span>
+                                case '\r':
+                                case '\n':
+<span class="nc" id="L194">                                    j = -1;// long word, just ignore</span>
+                                    break;
+                            }
+                        }
+                        break;
+                }
+
+<span class="nc" id="L201">                obj.text = text.toString();// set the processed text</span>
+            }
+
+<span class="nc" id="L204">            callback.yield(obj);</span>
+        }
+<span class="nc" id="L206">    }</span>
+
+    private static NodeList selectNodes(Document xml, String[] path, String namespaceUri) {
+<span class="nc" id="L209">        Element ref = xml.getDocumentElement();</span>
+
+<span class="nc bnc" id="L211" title="All 2 branches missed.">        for (int i = 0; i &lt; path.length - 1; i++) {</span>
+<span class="nc" id="L212">            NodeList nodes = ref.getChildNodes();</span>
+<span class="nc bnc" id="L213" title="All 2 branches missed.">            if (nodes.getLength() &lt; 1) {</span>
+<span class="nc" id="L214">                return null;</span>
+            }
+
+            Element elem;
+<span class="nc bnc" id="L218" title="All 2 branches missed.">            for (int j = 0; j &lt; nodes.getLength(); j++) {</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">                if (nodes.item(j).getNodeType() == Node.ELEMENT_NODE) {</span>
+<span class="nc" id="L220">                    elem = (Element) nodes.item(j);</span>
+<span class="nc bnc" id="L221" title="All 4 branches missed.">                    if (elem.getNodeName().equals(path[i]) &amp;&amp; elem.getNamespaceURI().equals(namespaceUri)) {</span>
+<span class="nc" id="L222">                        ref = elem;</span>
+<span class="nc" id="L223">                        break;</span>
+                    }
+                }
+            }
+        }
+
+<span class="nc" id="L229">        return ref.getElementsByTagNameNS(namespaceUri, path[path.length - 1]);</span>
+    }
+
+    private static int parseTimestamp(String multiImpl) throws NumberFormatException, ParseException {
+<span class="nc bnc" id="L233" title="All 2 branches missed.">        if (multiImpl.length() &lt; 1) {</span>
+<span class="nc" id="L234">            return 0;</span>
+<span class="nc bnc" id="L235" title="All 2 branches missed.">        } else if (multiImpl.length() == 1) {</span>
+<span class="nc" id="L236">            return Integer.parseInt(multiImpl) * 1000;// ¡this must be a number in seconds!</span>
+        }
+
+        // detect wallclock-time
+<span class="nc bnc" id="L240" title="All 2 branches missed.">        if (multiImpl.startsWith(&quot;wallclock(&quot;)) {</span>
+<span class="nc" id="L241">            throw new UnsupportedOperationException(&quot;Parsing wallclock timestamp is not implemented&quot;);</span>
+        }
+
+        // detect offset-time
+<span class="nc bnc" id="L245" title="All 2 branches missed.">        if (multiImpl.indexOf(':') &lt; 0) {</span>
+<span class="nc" id="L246">            int multiplier = 1000;</span>
+<span class="nc" id="L247">            char metric = multiImpl.charAt(multiImpl.length() - 1);</span>
+<span class="nc bnc" id="L248" title="All 4 branches missed.">            switch (metric) {</span>
+                case 'h':
+<span class="nc" id="L250">                    multiplier *= 3600000;</span>
+<span class="nc" id="L251">                    break;</span>
+                case 'm':
+<span class="nc" id="L253">                    multiplier *= 60000;</span>
+<span class="nc" id="L254">                    break;</span>
+                case 's':
+<span class="nc bnc" id="L256" title="All 2 branches missed.">                    if (multiImpl.charAt(multiImpl.length() - 2) == 'm') {</span>
+<span class="nc" id="L257">                        multiplier = 1;// ms</span>
+                    }
+                    break;
+                default:
+<span class="nc bnc" id="L261" title="All 2 branches missed.">                    if (!Character.isDigit(metric)) {</span>
+<span class="nc" id="L262">                        throw new NumberFormatException(&quot;Invalid metric suffix found on : &quot; + multiImpl);</span>
+                    }
+<span class="nc" id="L264">                    metric = '\0';</span>
+                    break;
+            }
+            try {
+<span class="nc" id="L268">                String offset_time = multiImpl;</span>
+
+<span class="nc bnc" id="L270" title="All 2 branches missed.">                if (multiplier == 1) {</span>
+<span class="nc" id="L271">                    offset_time = offset_time.substring(0, offset_time.length() - 2);</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">                } else if (metric != '\0') {</span>
+<span class="nc" id="L273">                    offset_time = offset_time.substring(0, offset_time.length() - 1);</span>
+                }
+
+<span class="nc" id="L276">                double time_metric_based = Double.parseDouble(offset_time);</span>
+<span class="nc bnc" id="L277" title="All 2 branches missed.">                if (Math.abs(time_metric_based) &lt;= Double.MAX_VALUE) {</span>
+<span class="nc" id="L278">                    return (int) (time_metric_based * multiplier);</span>
+                }
+<span class="nc" id="L280">            } catch (Exception err) {</span>
+<span class="nc" id="L281">                throw new UnsupportedOperationException(&quot;Invalid or not implemented timestamp on: &quot; + multiImpl);</span>
+<span class="nc" id="L282">            }</span>
+        }
+
+        // detect clock-time
+<span class="nc" id="L286">        int time = 0;</span>
+<span class="nc" id="L287">        String[] units = multiImpl.split(&quot;:&quot;);</span>
+
+<span class="nc bnc" id="L289" title="All 2 branches missed.">        if (units.length &lt; 3) {</span>
+<span class="nc" id="L290">            throw new ParseException(&quot;Invalid clock-time timestamp&quot;, -1);</span>
+        }
+
+<span class="nc" id="L293">        time += Integer.parseInt(units[0]) * 3600000;// hours</span>
+<span class="nc" id="L294">        time += Integer.parseInt(units[1]) * 60000;//minutes</span>
+<span class="nc" id="L295">        time += Float.parseFloat(units[2]) * 1000f;// seconds and milliseconds (if present)</span>
+
+        // frames and sub-frames are ignored (not implemented)
+        // time += units[3] * fps;
+<span class="nc" id="L299">        return time;</span>
+    }
+
+    private static void putBreakAt(int idx, StringBuilder str) {
+        // this should be optimized at compile time
+
+<span class="nc bnc" id="L305" title="All 2 branches missed.">        if (NEW_LINE.length() &gt; 1) {</span>
+<span class="nc" id="L306">            str.delete(idx, idx + 1);// remove after replace</span>
+<span class="nc" id="L307">            str.insert(idx, NEW_LINE);</span>
+        } else {
+<span class="nc" id="L309">            str.setCharAt(idx, NEW_LINE.charAt(0));</span>
+        }
+<span class="nc" id="L311">    }</span>
+
+    private static String getTime(int time, boolean comma) {
+        // cast every value to integer to avoid auto-round in ToString(&quot;00&quot;).
+<span class="nc" id="L315">        StringBuilder str = new StringBuilder(12);</span>
+<span class="nc" id="L316">        str.append(numberToString(time / 1000 / 3600, 2));// hours</span>
+<span class="nc" id="L317">        str.append(':');</span>
+<span class="nc" id="L318">        str.append(numberToString(time / 1000 / 60 % 60, 2));// minutes</span>
+<span class="nc" id="L319">        str.append(':');</span>
+<span class="nc" id="L320">        str.append(numberToString(time / 1000 % 60, 2));// seconds</span>
+<span class="nc bnc" id="L321" title="All 2 branches missed.">        str.append(comma ? ',' : '.');</span>
+<span class="nc" id="L322">        str.append(numberToString(time % 1000, 3));// miliseconds</span>
+
+<span class="nc" id="L324">        return str.toString();</span>
+    }
+
+    private static String numberToString(int nro, int pad) {
+<span class="nc" id="L328">        return String.format(Locale.ENGLISH, &quot;%0&quot;.concat(String.valueOf(pad)).concat(&quot;d&quot;), nro);</span>
+    }
+
+
+    /******************
+     * helper classes *
+     ******************/
+
+    private interface FrameWriter {
+
+        void yield(SubtitleFrame frame) throws IOException;
+    }
+
+<span class="nc" id="L341">    private static class SubtitleFrame {</span>
+        //Java no support unsigned int
+
+        public int end;
+        public int start;
+<span class="nc" id="L346">        public String text = &quot;&quot;;</span>
+
+        private boolean isEmptyText() {
+<span class="nc bnc" id="L349" title="All 2 branches missed.">            if (text == null) {</span>
+<span class="nc" id="L350">                return true;</span>
+            }
+
+<span class="nc bnc" id="L353" title="All 2 branches missed.">            for (int i = 0; i &lt; text.length(); i++) {</span>
+<span class="nc bnc" id="L354" title="All 2 branches missed.">                switch (text.charAt(i)) {</span>
+                    case ' ':
+                    case '\t':
+                    case '\r':
+                    case '\n':
+<span class="nc" id="L359">                        break;</span>
+                    default:
+<span class="nc" id="L361">                        return false;</span>
+                }
+            }
+
+<span class="nc" id="L365">            return true;</span>
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

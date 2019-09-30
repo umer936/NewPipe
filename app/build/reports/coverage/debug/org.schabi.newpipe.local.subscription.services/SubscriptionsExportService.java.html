@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SubscriptionsExportService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.local.subscription.services</a> &gt; <span class="el_source">SubscriptionsExportService.java</span></div><h1>SubscriptionsExportService.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2018 Mauricio Colli &lt;mauriciocolli@outlook.com&gt;
+ * SubscriptionsExportService.java is part of NewPipe
+ *
+ * License: GPL-3.0+
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package org.schabi.newpipe.local.subscription.services;
+
+import android.content.Intent;
+import android.support.v4.content.LocalBroadcastManager;
+import android.text.TextUtils;
+import android.util.Log;
+
+import org.reactivestreams.Subscriber;
+import org.reactivestreams.Subscription;
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.database.subscription.SubscriptionEntity;
+import org.schabi.newpipe.extractor.subscription.SubscriptionItem;
+import org.schabi.newpipe.local.subscription.ImportExportJsonHelper;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.util.ArrayList;
+import java.util.List;
+
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.functions.Function;
+import io.reactivex.schedulers.Schedulers;
+
+import static org.schabi.newpipe.MainActivity.DEBUG;
+
+<span class="nc" id="L46">public class SubscriptionsExportService extends BaseImportExportService {</span>
+    public static final String KEY_FILE_PATH = &quot;key_file_path&quot;;
+
+    /**
+     * A {@link LocalBroadcastManager local broadcast} will be made with this action when the export is successfully completed.
+     */
+    public static final String EXPORT_COMPLETE_ACTION = &quot;org.schabi.newpipe.local.subscription.services.SubscriptionsExportService.EXPORT_COMPLETE&quot;;
+
+    private Subscription subscription;
+    private File outFile;
+    private FileOutputStream outputStream;
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+<span class="nc bnc" id="L60" title="All 4 branches missed.">        if (intent == null || subscription != null) return START_NOT_STICKY;</span>
+
+<span class="nc" id="L62">        final String path = intent.getStringExtra(KEY_FILE_PATH);</span>
+<span class="nc bnc" id="L63" title="All 2 branches missed.">        if (TextUtils.isEmpty(path)) {</span>
+<span class="nc" id="L64">            stopAndReportError(new IllegalStateException(&quot;Exporting to a file, but the path is empty or null&quot;), &quot;Exporting subscriptions&quot;);</span>
+<span class="nc" id="L65">            return START_NOT_STICKY;</span>
+        }
+
+        try {
+<span class="nc" id="L69">            outputStream = new FileOutputStream(outFile = new File(path));</span>
+<span class="nc" id="L70">        } catch (FileNotFoundException e) {</span>
+<span class="nc" id="L71">            handleError(e);</span>
+<span class="nc" id="L72">            return START_NOT_STICKY;</span>
+<span class="nc" id="L73">        }</span>
+
+<span class="nc" id="L75">        startExport();</span>
+
+<span class="nc" id="L77">        return START_NOT_STICKY;</span>
+    }
+
+    @Override
+    protected int getNotificationId() {
+<span class="nc" id="L82">        return 4567;</span>
+    }
+
+    @Override
+    public int getTitle() {
+<span class="nc" id="L87">        return R.string.export_ongoing;</span>
+    }
+
+    @Override
+    protected void disposeAll() {
+<span class="nc" id="L92">        super.disposeAll();</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        if (subscription != null) subscription.cancel();</span>
+<span class="nc" id="L94">    }</span>
+
+    private void startExport() {
+<span class="nc" id="L97">        showToast(R.string.export_ongoing);</span>
+
+<span class="nc" id="L99">        subscriptionService.subscriptionTable()</span>
+<span class="nc" id="L100">                .getAll()</span>
+<span class="nc" id="L101">                .take(1)</span>
+<span class="nc" id="L102">                .map(subscriptionEntities -&gt; {</span>
+<span class="nc" id="L103">                    final List&lt;SubscriptionItem&gt; result = new ArrayList&lt;&gt;(subscriptionEntities.size());</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">                    for (SubscriptionEntity entity : subscriptionEntities) {</span>
+<span class="nc" id="L105">                        result.add(new SubscriptionItem(entity.getServiceId(), entity.getUrl(), entity.getName()));</span>
+<span class="nc" id="L106">                    }</span>
+<span class="nc" id="L107">                    return result;</span>
+                })
+<span class="nc" id="L109">                .map(exportToFile())</span>
+<span class="nc" id="L110">                .subscribeOn(Schedulers.io())</span>
+<span class="nc" id="L111">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L112">                .subscribe(getSubscriber());</span>
+<span class="nc" id="L113">    }</span>
+
+    private Subscriber&lt;File&gt; getSubscriber() {
+<span class="nc" id="L116">        return new Subscriber&lt;File&gt;() {</span>
+            @Override
+            public void onSubscribe(Subscription s) {
+<span class="nc" id="L119">                subscription = s;</span>
+<span class="nc" id="L120">                s.request(1);</span>
+<span class="nc" id="L121">            }</span>
+
+            @Override
+            public void onNext(File file) {
+<span class="nc bnc" id="L125" title="All 2 branches missed.">                if (DEBUG) Log.d(TAG, &quot;startExport() success: file = &quot; + file);</span>
+<span class="nc" id="L126">            }</span>
+
+            @Override
+            public void onError(Throwable error) {
+<span class="nc" id="L130">                Log.e(TAG, &quot;onError() called with: error = [&quot; + error + &quot;]&quot;, error);</span>
+<span class="nc" id="L131">                handleError(error);</span>
+<span class="nc" id="L132">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L136">                LocalBroadcastManager.getInstance(SubscriptionsExportService.this).sendBroadcast(new Intent(EXPORT_COMPLETE_ACTION));</span>
+<span class="nc" id="L137">                showToast(R.string.export_complete_toast);</span>
+<span class="nc" id="L138">                stopService();</span>
+<span class="nc" id="L139">            }</span>
+        };
+    }
+
+    private Function&lt;List&lt;SubscriptionItem&gt;, File&gt; exportToFile() {
+<span class="nc" id="L144">        return subscriptionItems -&gt; {</span>
+<span class="nc" id="L145">            ImportExportJsonHelper.writeTo(subscriptionItems, outputStream, eventListener);</span>
+<span class="nc" id="L146">            return outFile;</span>
+        };
+    }
+
+    protected void handleError(Throwable error) {
+<span class="nc" id="L151">        super.handleError(R.string.subscriptions_export_unsuccessful, error);</span>
+<span class="nc" id="L152">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

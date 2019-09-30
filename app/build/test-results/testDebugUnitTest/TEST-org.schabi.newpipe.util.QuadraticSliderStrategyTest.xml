@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="org.schabi.newpipe.util.QuadraticSliderStrategyTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2019-09-30T21:08:09" hostname="galliumos" time="0.027">
+  <properties/>
+  <testcase name="testRightBound" classname="org.schabi.newpipe.util.QuadraticSliderStrategyTest" time="0.0"/>
+  <testcase name="testLeftBound" classname="org.schabi.newpipe.util.QuadraticSliderStrategyTest" time="0.001"/>
+  <testcase name="testRightRegion" classname="org.schabi.newpipe.util.QuadraticSliderStrategyTest" time="0.002"/>
+  <testcase name="testQuadraticPropertyLeftRegion" classname="org.schabi.newpipe.util.QuadraticSliderStrategyTest" time="0.002"/>
+  <testcase name="testQuadraticPropertyRightRegion" classname="org.schabi.newpipe.util.QuadraticSliderStrategyTest" time="0.002"/>
+  <testcase name="testReverseConversion" classname="org.schabi.newpipe.util.QuadraticSliderStrategyTest" time="0.001"/>
+  <testcase name="testCenter" classname="org.schabi.newpipe.util.QuadraticSliderStrategyTest" time="0.0"/>
+  <testcase name="testConversion" classname="org.schabi.newpipe.util.QuadraticSliderStrategyTest" time="0.004"/>
+  <testcase name="testLeftRegion" classname="org.schabi.newpipe.util.QuadraticSliderStrategyTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

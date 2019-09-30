@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DownloadSettingsFragment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.settings</a> &gt; <span class="el_source">DownloadSettingsFragment.java</span></div><h1>DownloadSettingsFragment.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.settings;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.ContentResolver;
+import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.support.annotation.Nullable;
+import android.support.annotation.StringRes;
+import android.support.v7.preference.Preference;
+import android.util.Log;
+import android.widget.Toast;
+
+import com.nononsenseapps.filepicker.Utils;
+
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.util.FilePickerActivityHelper;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+
+import us.shandian.giga.io.StoredDirectoryHelper;
+
+<span class="nc" id="L31">public class DownloadSettingsFragment extends BasePreferenceFragment {</span>
+    private static final int REQUEST_DOWNLOAD_VIDEO_PATH = 0x1235;
+    private static final int REQUEST_DOWNLOAD_AUDIO_PATH = 0x1236;
+    public static final boolean IGNORE_RELEASE_ON_OLD_PATH = true;
+
+    private String DOWNLOAD_PATH_VIDEO_PREFERENCE;
+    private String DOWNLOAD_PATH_AUDIO_PREFERENCE;
+    private String STORAGE_USE_SAF_PREFERENCE;
+
+    private Preference prefPathVideo;
+    private Preference prefPathAudio;
+    private Preference prefStorageAsk;
+
+    private Context ctx;
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+<span class="nc" id="L48">        super.onCreate(savedInstanceState);</span>
+
+<span class="nc" id="L50">        DOWNLOAD_PATH_VIDEO_PREFERENCE = getString(R.string.download_path_video_key);</span>
+<span class="nc" id="L51">        DOWNLOAD_PATH_AUDIO_PREFERENCE = getString(R.string.download_path_audio_key);</span>
+<span class="nc" id="L52">        STORAGE_USE_SAF_PREFERENCE = getString(R.string.storage_use_saf);</span>
+<span class="nc" id="L53">        final String downloadStorageAsk = getString(R.string.downloads_storage_ask);</span>
+
+<span class="nc" id="L55">        prefPathVideo = findPreference(DOWNLOAD_PATH_VIDEO_PREFERENCE);</span>
+<span class="nc" id="L56">        prefPathAudio = findPreference(DOWNLOAD_PATH_AUDIO_PREFERENCE);</span>
+<span class="nc" id="L57">        prefStorageAsk = findPreference(downloadStorageAsk);</span>
+
+<span class="nc" id="L59">        updatePreferencesSummary();</span>
+<span class="nc bnc" id="L60" title="All 2 branches missed.">        updatePathPickers(!defaultPreferences.getBoolean(downloadStorageAsk, false));</span>
+
+<span class="nc bnc" id="L62" title="All 2 branches missed.">        if (Build.VERSION.SDK_INT &gt;= Build.VERSION_CODES.LOLLIPOP) {</span>
+<span class="nc" id="L63">            prefStorageAsk.setSummary(R.string.downloads_storage_ask_summary);</span>
+        }
+
+<span class="nc bnc" id="L66" title="All 4 branches missed.">        if (hasInvalidPath(DOWNLOAD_PATH_VIDEO_PREFERENCE) || hasInvalidPath(DOWNLOAD_PATH_AUDIO_PREFERENCE)) {</span>
+<span class="nc" id="L67">            updatePreferencesSummary();</span>
+        }
+
+<span class="nc" id="L70">        prefStorageAsk.setOnPreferenceChangeListener((preference, value) -&gt; {</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">            updatePathPickers(!(boolean) value);</span>
+<span class="nc" id="L72">            return true;</span>
+        });
+<span class="nc" id="L74">    }</span>
+
+    @Override
+    public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
+<span class="nc" id="L78">        addPreferencesFromResource(R.xml.download_settings);</span>
+<span class="nc" id="L79">    }</span>
+
+    @Override
+    public void onAttach(Context context) {
+<span class="nc" id="L83">        super.onAttach(context);</span>
+<span class="nc" id="L84">        ctx = context;</span>
+<span class="nc" id="L85">    }</span>
+
+    @Override
+    public void onDetach() {
+<span class="nc" id="L89">        super.onDetach();</span>
+<span class="nc" id="L90">        ctx = null;</span>
+<span class="nc" id="L91">        prefStorageAsk.setOnPreferenceChangeListener(null);</span>
+<span class="nc" id="L92">    }</span>
+
+    private void updatePreferencesSummary() {
+<span class="nc" id="L95">        showPathInSummary(DOWNLOAD_PATH_VIDEO_PREFERENCE, R.string.download_path_summary, prefPathVideo);</span>
+<span class="nc" id="L96">        showPathInSummary(DOWNLOAD_PATH_AUDIO_PREFERENCE, R.string.download_path_audio_summary, prefPathAudio);</span>
+<span class="nc" id="L97">    }</span>
+
+    private void showPathInSummary(String prefKey, @StringRes int defaultString, Preference target) {
+<span class="nc" id="L100">        String rawUri = defaultPreferences.getString(prefKey, null);</span>
+<span class="nc bnc" id="L101" title="All 4 branches missed.">        if (rawUri == null || rawUri.isEmpty()) {</span>
+<span class="nc" id="L102">            target.setSummary(getString(defaultString));</span>
+<span class="nc" id="L103">            return;</span>
+        }
+
+<span class="nc bnc" id="L106" title="All 2 branches missed.">        if (rawUri.charAt(0) == File.separatorChar) {</span>
+<span class="nc" id="L107">            target.setSummary(rawUri);</span>
+<span class="nc" id="L108">            return;</span>
+        }
+<span class="nc bnc" id="L110" title="All 2 branches missed.">        if (rawUri.startsWith(ContentResolver.SCHEME_FILE)) {</span>
+<span class="nc" id="L111">            target.setSummary(new File(URI.create(rawUri)).getPath());</span>
+<span class="nc" id="L112">            return;</span>
+        }
+
+        try {
+<span class="nc" id="L116">            rawUri = URLDecoder.decode(rawUri, StandardCharsets.UTF_8.name());</span>
+<span class="nc" id="L117">        } catch (UnsupportedEncodingException e) {</span>
+            // nothing to do
+<span class="nc" id="L119">        }</span>
+
+<span class="nc" id="L121">        target.setSummary(rawUri);</span>
+<span class="nc" id="L122">    }</span>
+
+    private boolean isFileUri(String path) {
+<span class="nc bnc" id="L125" title="All 4 branches missed.">        return path.charAt(0) == File.separatorChar || path.startsWith(ContentResolver.SCHEME_FILE);</span>
+    }
+
+    private boolean hasInvalidPath(String prefKey) {
+<span class="nc" id="L129">        String value = defaultPreferences.getString(prefKey, null);</span>
+<span class="nc bnc" id="L130" title="All 4 branches missed.">        return value == null || value.isEmpty();</span>
+    }
+
+    private void updatePathPickers(boolean enabled) {
+<span class="nc" id="L134">        prefPathVideo.setEnabled(enabled);</span>
+<span class="nc" id="L135">        prefPathAudio.setEnabled(enabled);</span>
+<span class="nc" id="L136">    }</span>
+
+    // FIXME: after releasing the old path, all downloads created on the folder becomes inaccessible
+    private void forgetSAFTree(Context ctx, String oldPath) {
+        if (IGNORE_RELEASE_ON_OLD_PATH) {
+<span class="nc" id="L141">            return;</span>
+        }
+
+        if (oldPath == null || oldPath.isEmpty() || isFileUri(oldPath)) return;
+
+        try {
+            Uri uri = Uri.parse(oldPath);
+
+            ctx.getContentResolver().releasePersistableUriPermission(uri, StoredDirectoryHelper.PERMISSION_FLAGS);
+            ctx.revokeUriPermission(uri, StoredDirectoryHelper.PERMISSION_FLAGS);
+
+            Log.i(TAG, &quot;Revoke old path permissions success on &quot; + oldPath);
+        } catch (Exception err) {
+            Log.e(TAG, &quot;Error revoking old path permissions on &quot; + oldPath, err);
+        }
+    }
+
+    private void showMessageDialog(@StringRes int title, @StringRes int message) {
+<span class="nc" id="L159">        AlertDialog.Builder msg = new AlertDialog.Builder(ctx);</span>
+<span class="nc" id="L160">        msg.setTitle(title);</span>
+<span class="nc" id="L161">        msg.setMessage(message);</span>
+<span class="nc" id="L162">        msg.setPositiveButton(android.R.string.ok, null);</span>
+<span class="nc" id="L163">        msg.show();</span>
+<span class="nc" id="L164">    }</span>
+
+    @Override
+    public boolean onPreferenceTreeClick(Preference preference) {
+<span class="nc bnc" id="L168" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L169">            Log.d(TAG, &quot;onPreferenceTreeClick() called with: preference = [&quot; + preference + &quot;]&quot;);</span>
+        }
+
+<span class="nc" id="L172">        String key = preference.getKey();</span>
+        int request;
+
+<span class="nc bnc" id="L175" title="All 2 branches missed.">        if (key.equals(STORAGE_USE_SAF_PREFERENCE)) {</span>
+<span class="nc" id="L176">            Toast.makeText(getContext(), R.string.download_choose_new_path, Toast.LENGTH_LONG).show();</span>
+<span class="nc" id="L177">            return true;</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">        } else if (key.equals(DOWNLOAD_PATH_VIDEO_PREFERENCE)) {</span>
+<span class="nc" id="L179">            request = REQUEST_DOWNLOAD_VIDEO_PATH;</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">        } else if (key.equals(DOWNLOAD_PATH_AUDIO_PREFERENCE)) {</span>
+<span class="nc" id="L181">            request = REQUEST_DOWNLOAD_AUDIO_PATH;</span>
+        } else {
+<span class="nc" id="L183">            return super.onPreferenceTreeClick(preference);</span>
+        }
+
+        Intent i;
+<span class="nc bnc" id="L187" title="All 4 branches missed.">        if (Build.VERSION.SDK_INT &gt;= Build.VERSION_CODES.LOLLIPOP &amp;&amp; NewPipeSettings.useStorageAccessFramework(ctx)) {</span>
+<span class="nc" id="L188">            i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)</span>
+<span class="nc" id="L189">                    .putExtra(&quot;android.content.extra.SHOW_ADVANCED&quot;, true)</span>
+<span class="nc" id="L190">                    .addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | StoredDirectoryHelper.PERMISSION_FLAGS);</span>
+        } else {
+<span class="nc" id="L192">            i = new Intent(getActivity(), FilePickerActivityHelper.class)</span>
+<span class="nc" id="L193">                    .putExtra(FilePickerActivityHelper.EXTRA_ALLOW_MULTIPLE, false)</span>
+<span class="nc" id="L194">                    .putExtra(FilePickerActivityHelper.EXTRA_ALLOW_CREATE_DIR, true)</span>
+<span class="nc" id="L195">                    .putExtra(FilePickerActivityHelper.EXTRA_MODE, FilePickerActivityHelper.MODE_DIR);</span>
+        }
+
+<span class="nc" id="L198">        startActivityForResult(i, request);</span>
+
+<span class="nc" id="L200">        return true;</span>
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+<span class="nc" id="L205">        super.onActivityResult(requestCode, resultCode, data);</span>
+<span class="nc bnc" id="L206" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L207">            Log.d(TAG, &quot;onActivityResult() called with: requestCode = [&quot; + requestCode + &quot;], &quot; +</span>
+                    &quot;resultCode = [&quot; + resultCode + &quot;], data = [&quot; + data + &quot;]&quot;
+            );
+        }
+
+<span class="nc bnc" id="L212" title="All 2 branches missed.">        if (resultCode != Activity.RESULT_OK) return;</span>
+
+        String key;
+<span class="nc bnc" id="L215" title="All 2 branches missed.">        if (requestCode == REQUEST_DOWNLOAD_VIDEO_PATH)</span>
+<span class="nc" id="L216">            key = DOWNLOAD_PATH_VIDEO_PREFERENCE;</span>
+<span class="nc bnc" id="L217" title="All 2 branches missed.">        else if (requestCode == REQUEST_DOWNLOAD_AUDIO_PATH)</span>
+<span class="nc" id="L218">            key = DOWNLOAD_PATH_AUDIO_PREFERENCE;</span>
+        else
+<span class="nc" id="L220">            return;</span>
+
+<span class="nc" id="L222">        Uri uri = data.getData();</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">        if (uri == null) {</span>
+<span class="nc" id="L224">            showMessageDialog(R.string.general_error, R.string.invalid_directory);</span>
+<span class="nc" id="L225">            return;</span>
+        }
+
+
+        // revoke permissions on the old save path (required for SAF only)
+<span class="nc" id="L230">        final Context ctx = getContext();</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">        if (ctx == null) throw new NullPointerException(&quot;getContext()&quot;);</span>
+
+<span class="nc" id="L233">        forgetSAFTree(ctx, defaultPreferences.getString(key, &quot;&quot;));</span>
+
+<span class="nc bnc" id="L235" title="All 4 branches missed.">        if (Build.VERSION.SDK_INT &gt;= Build.VERSION_CODES.LOLLIPOP &amp;&amp; !FilePickerActivityHelper.isOwnFileUri(ctx, uri)) {</span>
+            // steps to acquire the selected path:
+            //     1. acquire permissions on the new save path
+            //     2. save the new path, if step(2) was successful
+            try {
+<span class="nc" id="L240">                ctx.grantUriPermission(ctx.getPackageName(), uri, StoredDirectoryHelper.PERMISSION_FLAGS);</span>
+
+<span class="nc" id="L242">                StoredDirectoryHelper mainStorage = new StoredDirectoryHelper(ctx, uri, null);</span>
+<span class="nc" id="L243">                Log.i(TAG, &quot;Acquiring tree success from &quot; + uri.toString());</span>
+
+<span class="nc bnc" id="L245" title="All 2 branches missed.">                if (!mainStorage.canWrite())</span>
+<span class="nc" id="L246">                    throw new IOException(&quot;No write permissions on &quot; + uri.toString());</span>
+<span class="nc" id="L247">            } catch (IOException err) {</span>
+<span class="nc" id="L248">                Log.e(TAG, &quot;Error acquiring tree from &quot; + uri.toString(), err);</span>
+<span class="nc" id="L249">                showMessageDialog(R.string.general_error, R.string.no_available_dir);</span>
+<span class="nc" id="L250">                return;</span>
+<span class="nc" id="L251">            }</span>
+        } else {
+<span class="nc" id="L253">            File target = Utils.getFileForUri(uri);</span>
+<span class="nc bnc" id="L254" title="All 2 branches missed.">            if (!target.canWrite()) {</span>
+<span class="nc" id="L255">                showMessageDialog(R.string.download_to_sdcard_error_title, R.string.download_to_sdcard_error_message);</span>
+<span class="nc" id="L256">                return;</span>
+            }
+<span class="nc" id="L258">            uri = Uri.fromFile(target);</span>
+        }
+
+<span class="nc" id="L261">        defaultPreferences.edit().putString(key, uri.toString()).apply();</span>
+<span class="nc" id="L262">        updatePreferencesSummary();</span>
+<span class="nc" id="L263">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

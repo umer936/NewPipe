@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ManagedMediaSourcePlaylist.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.player.mediasource</a> &gt; <span class="el_source">ManagedMediaSourcePlaylist.java</span></div><h1>ManagedMediaSourcePlaylist.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.player.mediasource;
+import android.os.Handler;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+
+import com.google.android.exoplayer2.source.ConcatenatingMediaSource;
+import com.google.android.exoplayer2.source.ShuffleOrder;
+
+public class ManagedMediaSourcePlaylist {
+    @NonNull private final ConcatenatingMediaSource internalSource;
+
+<span class="nc" id="L12">    public ManagedMediaSourcePlaylist() {</span>
+<span class="nc" id="L13">        internalSource = new ConcatenatingMediaSource(/*isPlaylistAtomic=*/false,</span>
+                new ShuffleOrder.UnshuffledShuffleOrder(0));
+<span class="nc" id="L15">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // MediaSource Delegations
+    //////////////////////////////////////////////////////////////////////////*/
+
+    public int size() {
+<span class="nc" id="L22">        return internalSource.getSize();</span>
+    }
+
+    /**
+     * Returns the {@link ManagedMediaSource} at the given index of the playlist.
+     * If the index is invalid, then null is returned.
+     * */
+    @Nullable
+    public ManagedMediaSource get(final int index) {
+<span class="nc bnc" id="L31" title="All 4 branches missed.">        return (index &lt; 0 || index &gt;= size()) ?</span>
+<span class="nc" id="L32">                null : (ManagedMediaSource) internalSource.getMediaSource(index);</span>
+    }
+
+    @NonNull
+    public ConcatenatingMediaSource getParentMediaSource() {
+<span class="nc" id="L37">        return internalSource;</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Playlist Manipulation
+    //////////////////////////////////////////////////////////////////////////*/
+
+    /**
+     * Expands the {@link ConcatenatingMediaSource} by appending it with a
+     * {@link PlaceholderMediaSource}.
+     *
+     * @see #append(ManagedMediaSource)
+     * */
+    public synchronized void expand() {
+<span class="nc" id="L51">        append(new PlaceholderMediaSource());</span>
+<span class="nc" id="L52">    }</span>
+
+    /**
+     * Appends a {@link ManagedMediaSource} to the end of {@link ConcatenatingMediaSource}.
+     * @see ConcatenatingMediaSource#addMediaSource
+     * */
+    public synchronized void append(@NonNull final ManagedMediaSource source) {
+<span class="nc" id="L59">        internalSource.addMediaSource(source);</span>
+<span class="nc" id="L60">    }</span>
+
+    /**
+     * Removes a {@link ManagedMediaSource} from {@link ConcatenatingMediaSource}
+     * at the given index. If this index is out of bound, then the removal is ignored.
+     * @see ConcatenatingMediaSource#removeMediaSource(int)
+     * */
+    public synchronized void remove(final int index) {
+<span class="nc bnc" id="L68" title="All 4 branches missed.">        if (index &lt; 0 || index &gt; internalSource.getSize()) return;</span>
+
+<span class="nc" id="L70">        internalSource.removeMediaSource(index);</span>
+<span class="nc" id="L71">    }</span>
+
+    /**
+     * Moves a {@link ManagedMediaSource} in {@link ConcatenatingMediaSource}
+     * from the given source index to the target index. If either index is out of bound,
+     * then the call is ignored.
+     * @see ConcatenatingMediaSource#moveMediaSource(int, int)
+     * */
+    public synchronized void move(final int source, final int target) {
+<span class="nc bnc" id="L80" title="All 4 branches missed.">        if (source &lt; 0 || target &lt; 0) return;</span>
+<span class="nc bnc" id="L81" title="All 4 branches missed.">        if (source &gt;= internalSource.getSize() || target &gt;= internalSource.getSize()) return;</span>
+
+<span class="nc" id="L83">        internalSource.moveMediaSource(source, target);</span>
+<span class="nc" id="L84">    }</span>
+
+    /**
+     * Invalidates the {@link ManagedMediaSource} at the given index by replacing it
+     * with a {@link PlaceholderMediaSource}.
+     * @see #update(int, ManagedMediaSource, Handler, Runnable)
+     * */
+    public synchronized void invalidate(final int index,
+                                        @Nullable final Handler handler,
+                                        @Nullable final Runnable finalizingAction) {
+<span class="nc bnc" id="L94" title="All 2 branches missed.">        if (get(index) instanceof PlaceholderMediaSource) return;</span>
+<span class="nc" id="L95">        update(index, new PlaceholderMediaSource(), handler, finalizingAction);</span>
+<span class="nc" id="L96">    }</span>
+
+    /**
+     * Updates the {@link ManagedMediaSource} in {@link ConcatenatingMediaSource}
+     * at the given index with a given {@link ManagedMediaSource}.
+     * @see #update(int, ManagedMediaSource, Handler, Runnable)
+     * */
+    public synchronized void update(final int index, @NonNull final ManagedMediaSource source) {
+<span class="nc" id="L104">        update(index, source, null, /*doNothing=*/null);</span>
+<span class="nc" id="L105">    }</span>
+
+    /**
+     * Updates the {@link ManagedMediaSource} in {@link ConcatenatingMediaSource}
+     * at the given index with a given {@link ManagedMediaSource}. If the index is out of bound,
+     * then the replacement is ignored.
+     * @see ConcatenatingMediaSource#addMediaSource
+     * @see ConcatenatingMediaSource#removeMediaSource(int, Handler, Runnable)
+     * */
+    public synchronized void update(final int index, @NonNull final ManagedMediaSource source,
+                                    @Nullable final Handler handler,
+                                    @Nullable final Runnable finalizingAction) {
+<span class="nc bnc" id="L117" title="All 4 branches missed.">        if (index &lt; 0 || index &gt;= internalSource.getSize()) return;</span>
+
+        // Add and remove are sequential on the same thread, therefore here, the exoplayer
+        // message queue must receive and process add before remove, effectively treating them
+        // as atomic.
+
+        // Since the finalizing action occurs strictly after the timeline has completed
+        // all its changes on the playback thread, thus, it is possible, in the meantime,
+        // other calls that modifies the playlist media source occur in between. This makes
+        // it unsafe to call remove as the finalizing action of add.
+<span class="nc" id="L127">        internalSource.addMediaSource(index + 1, source);</span>
+
+        // Because of the above race condition, it is thus only safe to synchronize the player
+        // in the finalizing action AFTER the removal is complete and the timeline has changed.
+<span class="nc" id="L131">        internalSource.removeMediaSource(index, handler, finalizingAction);</span>
+<span class="nc" id="L132">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

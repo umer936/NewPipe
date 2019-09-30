@@ -1,0 +1,724 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DownloadManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">us.shandian.giga.service</a> &gt; <span class="el_source">DownloadManager.java</span></div><h1>DownloadManager.java</h1><pre class="source lang-java linenums">package us.shandian.giga.service;
+
+import android.content.Context;
+import android.os.Handler;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v7.util.DiffUtil;
+import android.util.Log;
+import android.widget.Toast;
+
+import org.schabi.newpipe.R;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+
+import us.shandian.giga.get.DownloadMission;
+import us.shandian.giga.get.FinishedMission;
+import us.shandian.giga.get.Mission;
+import us.shandian.giga.get.sqlite.FinishedMissionStore;
+import us.shandian.giga.io.StoredDirectoryHelper;
+import us.shandian.giga.io.StoredFileHelper;
+import us.shandian.giga.util.Utility;
+
+import static org.schabi.newpipe.BuildConfig.DEBUG;
+
+public class DownloadManager {
+<span class="nc" id="L30">    private static final String TAG = DownloadManager.class.getSimpleName();</span>
+
+<span class="nc" id="L32">    enum NetworkState {Unavailable, Operating, MeteredOperating}</span>
+
+    public final static int SPECIAL_NOTHING = 0;
+    public final static int SPECIAL_PENDING = 1;
+    public final static int SPECIAL_FINISHED = 2;
+
+    public static final String TAG_AUDIO = &quot;audio&quot;;
+    public static final String TAG_VIDEO = &quot;video&quot;;
+
+    private final FinishedMissionStore mFinishedMissionStore;
+
+<span class="nc" id="L43">    private final ArrayList&lt;DownloadMission&gt; mMissionsPending = new ArrayList&lt;&gt;();</span>
+    private final ArrayList&lt;FinishedMission&gt; mMissionsFinished;
+
+    private final Handler mHandler;
+    private final File mPendingMissionsDir;
+
+<span class="nc" id="L49">    private NetworkState mLastNetworkStatus = NetworkState.Unavailable;</span>
+
+    int mPrefMaxRetry;
+    boolean mPrefMeteredDownloads;
+    boolean mPrefQueueLimit;
+    private boolean mSelfMissionsControl;
+
+    StoredDirectoryHelper mMainStorageAudio;
+    StoredDirectoryHelper mMainStorageVideo;
+
+    /**
+     * Create a new instance
+     *
+     * @param context Context for the data source for finished downloads
+     * @param handler Thread required for Messaging
+     */
+<span class="nc" id="L65">    DownloadManager(@NonNull Context context, Handler handler, StoredDirectoryHelper storageVideo, StoredDirectoryHelper storageAudio) {</span>
+<span class="nc bnc" id="L66" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L67">            Log.d(TAG, &quot;new DownloadManager instance. 0x&quot; + Integer.toHexString(this.hashCode()));</span>
+        }
+
+<span class="nc" id="L70">        mFinishedMissionStore = new FinishedMissionStore(context);</span>
+<span class="nc" id="L71">        mHandler = handler;</span>
+<span class="nc" id="L72">        mMainStorageAudio = storageAudio;</span>
+<span class="nc" id="L73">        mMainStorageVideo = storageVideo;</span>
+<span class="nc" id="L74">        mMissionsFinished = loadFinishedMissions();</span>
+<span class="nc" id="L75">        mPendingMissionsDir = getPendingDir(context);</span>
+
+<span class="nc bnc" id="L77" title="All 2 branches missed.">        if (!Utility.mkdir(mPendingMissionsDir, false)) {</span>
+<span class="nc" id="L78">            throw new RuntimeException(&quot;failed to create pending_downloads in data directory&quot;);</span>
+        }
+
+<span class="nc" id="L81">        loadPendingMissions(context);</span>
+<span class="nc" id="L82">    }</span>
+
+    private static File getPendingDir(@NonNull Context context) {
+        //File dir = new File(ContextCompat.getDataDir(context), &quot;pending_downloads&quot;);
+<span class="nc" id="L86">        File dir = context.getExternalFilesDir(&quot;pending_downloads&quot;);</span>
+
+<span class="nc bnc" id="L88" title="All 2 branches missed.">        if (dir == null) {</span>
+            // One of the following paths are not accessible ¿unmounted internal memory?
+            //        /storage/emulated/0/Android/data/org.schabi.newpipe[.debug]/pending_downloads
+            //        /sdcard/Android/data/org.schabi.newpipe[.debug]/pending_downloads
+<span class="nc" id="L92">            Log.w(TAG, &quot;path to pending downloads are not accessible&quot;);</span>
+        }
+
+<span class="nc" id="L95">        return dir;</span>
+    }
+
+    /**
+     * Loads finished missions from the data source
+     */
+    private ArrayList&lt;FinishedMission&gt; loadFinishedMissions() {
+<span class="nc" id="L102">        ArrayList&lt;FinishedMission&gt; finishedMissions = mFinishedMissionStore.loadFinishedMissions();</span>
+
+        // check if the files exists, otherwise, forget the download
+<span class="nc bnc" id="L105" title="All 2 branches missed.">        for (int i = finishedMissions.size() - 1; i &gt;= 0; i--) {</span>
+<span class="nc" id="L106">            FinishedMission mission = finishedMissions.get(i);</span>
+
+<span class="nc bnc" id="L108" title="All 2 branches missed.">            if (!mission.storage.existsAsFile()) {</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">                if (DEBUG) Log.d(TAG, &quot;downloaded file removed: &quot; + mission.storage.getName());</span>
+
+<span class="nc" id="L111">                mFinishedMissionStore.deleteMission(mission);</span>
+<span class="nc" id="L112">                finishedMissions.remove(i);</span>
+            }
+        }
+
+<span class="nc" id="L116">        return finishedMissions;</span>
+    }
+
+    private void loadPendingMissions(Context ctx) {
+<span class="nc" id="L120">        File[] subs = mPendingMissionsDir.listFiles();</span>
+
+<span class="nc bnc" id="L122" title="All 2 branches missed.">        if (subs == null) {</span>
+<span class="nc" id="L123">            Log.e(TAG, &quot;listFiles() returned null&quot;);</span>
+<span class="nc" id="L124">            return;</span>
+        }
+<span class="nc bnc" id="L126" title="All 2 branches missed.">        if (subs.length &lt; 1) {</span>
+<span class="nc" id="L127">            return;</span>
+        }
+<span class="nc bnc" id="L129" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L130">            Log.d(TAG, &quot;Loading pending downloads from directory: &quot; + mPendingMissionsDir.getAbsolutePath());</span>
+        }
+
+<span class="nc bnc" id="L133" title="All 2 branches missed.">        for (File sub : subs) {</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">            if (!sub.isFile()) continue;</span>
+
+<span class="nc" id="L136">            DownloadMission mis = Utility.readFromFile(sub);</span>
+<span class="nc bnc" id="L137" title="All 4 branches missed.">            if (mis == null || mis.isFinished()) {</span>
+                //noinspection ResultOfMethodCallIgnored
+<span class="nc" id="L139">                sub.delete();</span>
+<span class="nc" id="L140">                continue;</span>
+            }
+
+            boolean exists;
+            try {
+<span class="nc" id="L145">                mis.storage = StoredFileHelper.deserialize(mis.storage, ctx);</span>
+<span class="nc bnc" id="L146" title="All 4 branches missed.">                exists = !mis.storage.isInvalid() &amp;&amp; mis.storage.existsAsFile();</span>
+<span class="nc" id="L147">            } catch (Exception ex) {</span>
+<span class="nc" id="L148">                Log.e(TAG, &quot;Failed to load the file source of &quot; + mis.storage.toString(), ex);</span>
+<span class="nc" id="L149">                mis.storage.invalidate();</span>
+<span class="nc" id="L150">                exists = false;</span>
+<span class="nc" id="L151">            }</span>
+
+<span class="nc bnc" id="L153" title="All 2 branches missed.">            if (mis.isPsRunning()) {</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">                if (mis.psAlgorithm.worksOnSameFile) {</span>
+                    // Incomplete post-processing results in a corrupted download file
+                    // because the selected algorithm works on the same file to save space.
+                    // the file will be deleted if the storage API
+                    // is Java IO (avoid showing the &quot;Save as...&quot; dialog)
+<span class="nc bnc" id="L159" title="All 6 branches missed.">                    if (exists &amp;&amp; mis.storage.isDirect() &amp;&amp; !mis.storage.delete())</span>
+<span class="nc" id="L160">                        Log.w(TAG, &quot;Unable to delete incomplete download file: &quot; + sub.getPath());</span>
+
+<span class="nc" id="L162">                    exists = true;</span>
+                }
+
+<span class="nc" id="L165">                mis.psState = 0;</span>
+<span class="nc" id="L166">                mis.errCode = DownloadMission.ERROR_POSTPROCESSING_STOPPED;</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">            } else if (!exists) {</span>
+<span class="nc" id="L168">                tryRecover(mis);</span>
+
+                // the progress is lost, reset mission state
+<span class="nc bnc" id="L171" title="All 2 branches missed.">                if (mis.isInitialized())</span>
+<span class="nc" id="L172">                    mis.resetState(true, true, DownloadMission.ERROR_PROGRESS_LOST);</span>
+            }
+
+<span class="nc bnc" id="L175" title="All 2 branches missed.">            if (mis.psAlgorithm != null) {</span>
+<span class="nc" id="L176">                mis.psAlgorithm.cleanupTemporalDir();</span>
+<span class="nc" id="L177">                mis.psAlgorithm.setTemporalDir(pickAvailableTemporalDir(ctx));</span>
+            }
+
+<span class="nc" id="L180">            mis.recovered = exists;</span>
+<span class="nc" id="L181">            mis.metadata = sub;</span>
+<span class="nc" id="L182">            mis.maxRetry = mPrefMaxRetry;</span>
+<span class="nc" id="L183">            mis.mHandler = mHandler;</span>
+
+<span class="nc" id="L185">            mMissionsPending.add(mis);</span>
+        }
+
+<span class="nc bnc" id="L188" title="All 2 branches missed.">        if (mMissionsPending.size() &gt; 1)</span>
+<span class="nc" id="L189">            Collections.sort(mMissionsPending, (mission1, mission2) -&gt; Long.compare(mission1.timestamp, mission2.timestamp));</span>
+<span class="nc" id="L190">    }</span>
+
+    /**
+     * Start a new download mission
+     *
+     * @param mission the new download mission to add and run (if possible)
+     */
+    void startMission(DownloadMission mission) {
+<span class="nc" id="L198">        synchronized (this) {</span>
+<span class="nc" id="L199">            mission.timestamp = System.currentTimeMillis();</span>
+<span class="nc" id="L200">            mission.mHandler = mHandler;</span>
+<span class="nc" id="L201">            mission.maxRetry = mPrefMaxRetry;</span>
+
+            // create metadata file
+            while (true) {
+<span class="nc" id="L205">                mission.metadata = new File(mPendingMissionsDir, String.valueOf(mission.timestamp));</span>
+<span class="nc bnc" id="L206" title="All 4 branches missed.">                if (!mission.metadata.isFile() &amp;&amp; !mission.metadata.exists()) {</span>
+                    try {
+<span class="nc bnc" id="L208" title="All 2 branches missed.">                        if (!mission.metadata.createNewFile())</span>
+<span class="nc" id="L209">                            throw new RuntimeException(&quot;Cant create download metadata file&quot;);</span>
+<span class="nc" id="L210">                    } catch (IOException e) {</span>
+<span class="nc" id="L211">                        throw new RuntimeException(e);</span>
+<span class="nc" id="L212">                    }</span>
+                    break;
+                }
+<span class="nc" id="L215">                mission.timestamp = System.currentTimeMillis();</span>
+            }
+
+<span class="nc" id="L218">            mSelfMissionsControl = true;</span>
+<span class="nc" id="L219">            mMissionsPending.add(mission);</span>
+
+            // Before continue, save the metadata in case the internet connection is not available
+<span class="nc" id="L222">            Utility.writeToFile(mission.metadata, mission);</span>
+
+<span class="nc bnc" id="L224" title="All 2 branches missed.">            if (mission.storage == null) {</span>
+                // noting to do here
+<span class="nc" id="L226">                mission.errCode = DownloadMission.ERROR_FILE_CREATION;</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">                if (mission.errObject != null)</span>
+<span class="nc" id="L228">                    mission.errObject = new IOException(&quot;DownloadMission.storage == NULL&quot;);</span>
+<span class="nc" id="L229">                return;</span>
+            }
+
+<span class="nc bnc" id="L232" title="All 4 branches missed.">            boolean start = !mPrefQueueLimit || getRunningMissionsCount() &lt; 1;</span>
+
+<span class="nc bnc" id="L234" title="All 4 branches missed.">            if (canDownloadInCurrentNetwork() &amp;&amp; start) {</span>
+<span class="nc" id="L235">                mHandler.sendEmptyMessage(DownloadManagerService.MESSAGE_PROGRESS);</span>
+<span class="nc" id="L236">                mission.start();</span>
+            }
+<span class="nc" id="L238">        }</span>
+<span class="nc" id="L239">    }</span>
+
+
+    public void resumeMission(DownloadMission mission) {
+<span class="nc bnc" id="L243" title="All 2 branches missed.">        if (!mission.running) {</span>
+<span class="nc" id="L244">            mHandler.sendEmptyMessage(DownloadManagerService.MESSAGE_PROGRESS);</span>
+<span class="nc" id="L245">            mission.start();</span>
+        }
+<span class="nc" id="L247">    }</span>
+
+    public void pauseMission(DownloadMission mission) {
+<span class="nc bnc" id="L250" title="All 2 branches missed.">        if (mission.running) {</span>
+<span class="nc" id="L251">            mission.setEnqueued(false);</span>
+<span class="nc" id="L252">            mission.pause();</span>
+<span class="nc" id="L253">            mHandler.sendEmptyMessage(DownloadManagerService.MESSAGE_PAUSED);</span>
+        }
+<span class="nc" id="L255">    }</span>
+
+    public void deleteMission(Mission mission) {
+<span class="nc" id="L258">        synchronized (this) {</span>
+<span class="nc bnc" id="L259" title="All 2 branches missed.">            if (mission instanceof DownloadMission) {</span>
+<span class="nc" id="L260">                mMissionsPending.remove(mission);</span>
+<span class="nc bnc" id="L261" title="All 2 branches missed.">            } else if (mission instanceof FinishedMission) {</span>
+<span class="nc" id="L262">                mMissionsFinished.remove(mission);</span>
+<span class="nc" id="L263">                mFinishedMissionStore.deleteMission(mission);</span>
+            }
+
+<span class="nc" id="L266">            mHandler.sendEmptyMessage(DownloadManagerService.MESSAGE_DELETED);</span>
+<span class="nc" id="L267">            mission.delete();</span>
+<span class="nc" id="L268">        }</span>
+<span class="nc" id="L269">    }</span>
+
+    public void forgetMission(StoredFileHelper storage) {
+<span class="nc" id="L272">        synchronized (this) {</span>
+<span class="nc" id="L273">            Mission mission = getAnyMission(storage);</span>
+<span class="nc bnc" id="L274" title="All 2 branches missed.">            if (mission == null) return;</span>
+
+<span class="nc bnc" id="L276" title="All 2 branches missed.">            if (mission instanceof DownloadMission) {</span>
+<span class="nc" id="L277">                mMissionsPending.remove(mission);</span>
+<span class="nc bnc" id="L278" title="All 2 branches missed.">            } else if (mission instanceof FinishedMission) {</span>
+<span class="nc" id="L279">                mMissionsFinished.remove(mission);</span>
+<span class="nc" id="L280">                mFinishedMissionStore.deleteMission(mission);</span>
+            }
+
+<span class="nc" id="L283">            mHandler.sendEmptyMessage(DownloadManagerService.MESSAGE_DELETED);</span>
+<span class="nc" id="L284">            mission.storage = null;</span>
+<span class="nc" id="L285">            mission.delete();</span>
+<span class="nc" id="L286">        }</span>
+<span class="nc" id="L287">    }</span>
+
+    public void tryRecover(DownloadMission mission) {
+<span class="nc" id="L290">        StoredDirectoryHelper mainStorage = getMainStorage(mission.storage.getTag());</span>
+
+<span class="nc bnc" id="L292" title="All 4 branches missed.">        if (!mission.storage.isInvalid() &amp;&amp; mission.storage.create()) return;</span>
+
+        // using javaIO cannot recreate the file
+        // using SAF in older devices (no tree available)
+        //
+        // force the user to pick again the save path
+<span class="nc" id="L298">        mission.storage.invalidate();</span>
+
+<span class="nc bnc" id="L300" title="All 2 branches missed.">        if (mainStorage == null) return;</span>
+
+        // if the user has changed the save path before this download, the original save path will be lost
+<span class="nc" id="L303">        StoredFileHelper newStorage = mainStorage.createFile(mission.storage.getName(), mission.storage.getType());</span>
+
+<span class="nc bnc" id="L305" title="All 2 branches missed.">        if (newStorage != null) mission.storage = newStorage;</span>
+<span class="nc" id="L306">    }</span>
+
+
+    /**
+     * Get a pending mission by its path
+     *
+     * @param storage where the file possible is stored
+     * @return the mission or null if no such mission exists
+     */
+    @Nullable
+    private DownloadMission getPendingMission(StoredFileHelper storage) {
+<span class="nc bnc" id="L317" title="All 2 branches missed.">        for (DownloadMission mission : mMissionsPending) {</span>
+<span class="nc bnc" id="L318" title="All 2 branches missed.">            if (mission.storage.equals(storage)) {</span>
+<span class="nc" id="L319">                return mission;</span>
+            }
+<span class="nc" id="L321">        }</span>
+<span class="nc" id="L322">        return null;</span>
+    }
+
+    /**
+     * Get a finished mission by its path
+     *
+     * @param storage where the file possible is stored
+     * @return the mission index or -1 if no such mission exists
+     */
+    private int getFinishedMissionIndex(StoredFileHelper storage) {
+<span class="nc bnc" id="L332" title="All 2 branches missed.">        for (int i = 0; i &lt; mMissionsFinished.size(); i++) {</span>
+<span class="nc bnc" id="L333" title="All 2 branches missed.">            if (mMissionsFinished.get(i).storage.equals(storage)) {</span>
+<span class="nc" id="L334">                return i;</span>
+            }
+        }
+
+<span class="nc" id="L338">        return -1;</span>
+    }
+
+    private Mission getAnyMission(StoredFileHelper storage) {
+<span class="nc" id="L342">        synchronized (this) {</span>
+<span class="nc" id="L343">            Mission mission = getPendingMission(storage);</span>
+<span class="nc bnc" id="L344" title="All 2 branches missed.">            if (mission != null) return mission;</span>
+
+<span class="nc" id="L346">            int idx = getFinishedMissionIndex(storage);</span>
+<span class="nc bnc" id="L347" title="All 2 branches missed.">            if (idx &gt;= 0) return mMissionsFinished.get(idx);</span>
+<span class="nc" id="L348">        }</span>
+
+<span class="nc" id="L350">        return null;</span>
+    }
+
+    int getRunningMissionsCount() {
+<span class="nc" id="L354">        int count = 0;</span>
+<span class="nc" id="L355">        synchronized (this) {</span>
+<span class="nc bnc" id="L356" title="All 2 branches missed.">            for (DownloadMission mission : mMissionsPending) {</span>
+<span class="nc bnc" id="L357" title="All 6 branches missed.">                if (mission.running &amp;&amp; !mission.isPsFailed() &amp;&amp; !mission.isFinished())</span>
+<span class="nc" id="L358">                    count++;</span>
+<span class="nc" id="L359">            }</span>
+<span class="nc" id="L360">        }</span>
+
+<span class="nc" id="L362">        return count;</span>
+    }
+
+    public void pauseAllMissions(boolean force) {
+<span class="nc" id="L366">        boolean flag = false;</span>
+
+<span class="nc" id="L368">        synchronized (this) {</span>
+<span class="nc bnc" id="L369" title="All 2 branches missed.">            for (DownloadMission mission : mMissionsPending) {</span>
+<span class="nc bnc" id="L370" title="All 6 branches missed.">                if (!mission.running || mission.isPsRunning() || mission.isFinished()) continue;</span>
+
+<span class="nc bnc" id="L372" title="All 2 branches missed.">                if (force) mission.threads = null;// avoid waiting for threads</span>
+
+<span class="nc" id="L374">                mission.pause();</span>
+<span class="nc" id="L375">                flag = true;</span>
+<span class="nc" id="L376">            }</span>
+<span class="nc" id="L377">        }</span>
+
+<span class="nc bnc" id="L379" title="All 2 branches missed.">        if (flag) mHandler.sendEmptyMessage(DownloadManagerService.MESSAGE_PAUSED);</span>
+<span class="nc" id="L380">    }</span>
+
+    public void startAllMissions() {
+<span class="nc" id="L383">        boolean flag = false;</span>
+
+<span class="nc" id="L385">        synchronized (this) {</span>
+<span class="nc bnc" id="L386" title="All 2 branches missed.">            for (DownloadMission mission : mMissionsPending) {</span>
+<span class="nc bnc" id="L387" title="All 4 branches missed.">                if (mission.running || mission.isCorrupt()) continue;</span>
+
+<span class="nc" id="L389">                flag = true;</span>
+<span class="nc" id="L390">                mission.start();</span>
+<span class="nc" id="L391">            }</span>
+<span class="nc" id="L392">        }</span>
+
+<span class="nc bnc" id="L394" title="All 2 branches missed.">        if (flag) mHandler.sendEmptyMessage(DownloadManagerService.MESSAGE_PROGRESS);</span>
+<span class="nc" id="L395">    }</span>
+
+    /**
+     * Set a pending download as finished
+     *
+     * @param mission the desired mission
+     */
+    void setFinished(DownloadMission mission) {
+<span class="nc" id="L403">        synchronized (this) {</span>
+<span class="nc" id="L404">            mMissionsPending.remove(mission);</span>
+<span class="nc" id="L405">            mMissionsFinished.add(0, new FinishedMission(mission));</span>
+<span class="nc" id="L406">            mFinishedMissionStore.addFinishedMission(mission);</span>
+<span class="nc" id="L407">        }</span>
+<span class="nc" id="L408">    }</span>
+
+    /**
+     * runs one or multiple missions in from queue if possible
+     *
+     * @return true if one or multiple missions are running, otherwise, false
+     */
+    boolean runMissions() {
+<span class="nc" id="L416">        synchronized (this) {</span>
+<span class="nc bnc" id="L417" title="All 2 branches missed.">            if (mMissionsPending.size() &lt; 1) return false;</span>
+<span class="nc bnc" id="L418" title="All 2 branches missed.">            if (!canDownloadInCurrentNetwork()) return false;</span>
+
+<span class="nc bnc" id="L420" title="All 2 branches missed.">            if (mPrefQueueLimit) {</span>
+<span class="nc bnc" id="L421" title="All 2 branches missed.">                for (DownloadMission mission : mMissionsPending)</span>
+<span class="nc bnc" id="L422" title="All 4 branches missed.">                    if (!mission.isFinished() &amp;&amp; mission.running) return true;</span>
+            }
+
+<span class="nc" id="L425">            boolean flag = false;</span>
+<span class="nc bnc" id="L426" title="All 2 branches missed.">            for (DownloadMission mission : mMissionsPending) {</span>
+<span class="nc bnc" id="L427" title="All 6 branches missed.">                if (mission.running || !mission.enqueued || mission.isFinished())</span>
+<span class="nc" id="L428">                    continue;</span>
+
+<span class="nc" id="L430">                resumeMission(mission);</span>
+<span class="nc bnc" id="L431" title="All 2 branches missed.">                if (mission.errCode != DownloadMission.ERROR_NOTHING) continue;</span>
+
+<span class="nc bnc" id="L433" title="All 2 branches missed.">                if (mPrefQueueLimit) return true;</span>
+<span class="nc" id="L434">                flag = true;</span>
+<span class="nc" id="L435">            }</span>
+
+<span class="nc" id="L437">            return flag;</span>
+<span class="nc" id="L438">        }</span>
+    }
+
+    public MissionIterator getIterator() {
+<span class="nc" id="L442">        mSelfMissionsControl = true;</span>
+<span class="nc" id="L443">        return new MissionIterator();</span>
+    }
+
+    /**
+     * Forget all finished downloads, but, doesn't delete any file
+     */
+    public void forgetFinishedDownloads() {
+<span class="nc" id="L450">        synchronized (this) {</span>
+<span class="nc bnc" id="L451" title="All 2 branches missed.">            for (FinishedMission mission : mMissionsFinished) {</span>
+<span class="nc" id="L452">                mFinishedMissionStore.deleteMission(mission);</span>
+<span class="nc" id="L453">            }</span>
+<span class="nc" id="L454">            mMissionsFinished.clear();</span>
+<span class="nc" id="L455">        }</span>
+<span class="nc" id="L456">    }</span>
+
+    private boolean canDownloadInCurrentNetwork() {
+<span class="nc bnc" id="L459" title="All 2 branches missed.">        if (mLastNetworkStatus == NetworkState.Unavailable) return false;</span>
+<span class="nc bnc" id="L460" title="All 4 branches missed.">        return !(mPrefMeteredDownloads &amp;&amp; mLastNetworkStatus == NetworkState.MeteredOperating);</span>
+    }
+
+    void handleConnectivityState(NetworkState currentStatus, boolean updateOnly) {
+<span class="nc bnc" id="L464" title="All 2 branches missed.">        if (currentStatus == mLastNetworkStatus) return;</span>
+
+<span class="nc" id="L466">        mLastNetworkStatus = currentStatus;</span>
+<span class="nc bnc" id="L467" title="All 2 branches missed.">        if (currentStatus == NetworkState.Unavailable) return;</span>
+
+<span class="nc bnc" id="L469" title="All 4 branches missed.">        if (!mSelfMissionsControl || updateOnly) {</span>
+<span class="nc" id="L470">            return;// don't touch anything without the user interaction</span>
+        }
+
+<span class="nc bnc" id="L473" title="All 4 branches missed.">        boolean isMetered = mPrefMeteredDownloads &amp;&amp; mLastNetworkStatus == NetworkState.MeteredOperating;</span>
+
+<span class="nc" id="L475">        int running = 0;</span>
+<span class="nc" id="L476">        int paused = 0;</span>
+<span class="nc" id="L477">        synchronized (this) {</span>
+<span class="nc bnc" id="L478" title="All 2 branches missed.">            for (DownloadMission mission : mMissionsPending) {</span>
+<span class="nc bnc" id="L479" title="All 4 branches missed.">                if (mission.isCorrupt() || mission.isPsRunning()) continue;</span>
+
+<span class="nc bnc" id="L481" title="All 4 branches missed.">                if (mission.running &amp;&amp; isMetered) {</span>
+<span class="nc" id="L482">                    paused++;</span>
+<span class="nc" id="L483">                    mission.pause();</span>
+<span class="nc bnc" id="L484" title="All 6 branches missed.">                } else if (!mission.running &amp;&amp; !isMetered &amp;&amp; mission.enqueued) {</span>
+<span class="nc" id="L485">                    running++;</span>
+<span class="nc" id="L486">                    mission.start();</span>
+<span class="nc bnc" id="L487" title="All 2 branches missed.">                    if (mPrefQueueLimit) break;</span>
+                }
+<span class="nc" id="L489">            }</span>
+<span class="nc" id="L490">        }</span>
+
+<span class="nc bnc" id="L492" title="All 2 branches missed.">        if (running &gt; 0) {</span>
+<span class="nc" id="L493">            mHandler.sendEmptyMessage(DownloadManagerService.MESSAGE_PROGRESS);</span>
+<span class="nc" id="L494">            return;</span>
+        }
+<span class="nc bnc" id="L496" title="All 2 branches missed.">        if (paused &gt; 0) mHandler.sendEmptyMessage(DownloadManagerService.MESSAGE_PAUSED);</span>
+<span class="nc" id="L497">    }</span>
+
+    void updateMaximumAttempts() {
+<span class="nc" id="L500">        synchronized (this) {</span>
+<span class="nc bnc" id="L501" title="All 2 branches missed.">            for (DownloadMission mission : mMissionsPending) mission.maxRetry = mPrefMaxRetry;</span>
+<span class="nc" id="L502">        }</span>
+<span class="nc" id="L503">    }</span>
+
+    /**
+     * Fast check for pending downloads. If exists, the user will be notified
+     * TODO: call this method in somewhere
+     *
+     * @param context the application context
+     */
+    public static void notifyUserPendingDownloads(Context context) {
+<span class="nc" id="L512">        int pending = getPendingDir(context).list().length;</span>
+<span class="nc bnc" id="L513" title="All 2 branches missed.">        if (pending &lt; 1) return;</span>
+
+<span class="nc" id="L515">        Toast.makeText(context, context.getString(</span>
+                R.string.msg_pending_downloads,
+<span class="nc" id="L517">                String.valueOf(pending)</span>
+<span class="nc" id="L518">        ), Toast.LENGTH_LONG).show();</span>
+<span class="nc" id="L519">    }</span>
+
+    public MissionState checkForExistingMission(StoredFileHelper storage) {
+<span class="nc" id="L522">        synchronized (this) {</span>
+<span class="nc" id="L523">            DownloadMission pending = getPendingMission(storage);</span>
+
+<span class="nc bnc" id="L525" title="All 2 branches missed.">            if (pending == null) {</span>
+<span class="nc bnc" id="L526" title="All 2 branches missed.">                if (getFinishedMissionIndex(storage) &gt;= 0) return MissionState.Finished;</span>
+            } else {
+<span class="nc bnc" id="L528" title="All 2 branches missed.">                if (pending.isFinished()) {</span>
+<span class="nc" id="L529">                    return MissionState.Finished;// this never should happen (race-condition)</span>
+                } else {
+<span class="nc bnc" id="L531" title="All 2 branches missed.">                    return pending.running ? MissionState.PendingRunning : MissionState.Pending;</span>
+                }
+            }
+<span class="nc" id="L534">        }</span>
+
+<span class="nc" id="L536">        return MissionState.None;</span>
+    }
+
+    private static boolean isDirectoryAvailable(File directory) {
+<span class="nc bnc" id="L540" title="All 6 branches missed.">        return directory != null &amp;&amp; directory.canWrite() &amp;&amp; directory.exists();</span>
+    }
+
+    static File pickAvailableTemporalDir(@NonNull Context ctx) {
+<span class="nc bnc" id="L544" title="All 2 branches missed.">        if (isDirectoryAvailable(ctx.getExternalFilesDir(null)))</span>
+<span class="nc" id="L545">            return ctx.getExternalFilesDir(null);</span>
+<span class="nc bnc" id="L546" title="All 2 branches missed.">        else if (isDirectoryAvailable(ctx.getFilesDir()))</span>
+<span class="nc" id="L547">            return ctx.getFilesDir();</span>
+
+        // this never should happen
+<span class="nc" id="L550">        return ctx.getDir(&quot;tmp&quot;, Context.MODE_PRIVATE);</span>
+    }
+
+    @Nullable
+    private StoredDirectoryHelper getMainStorage(@NonNull String tag) {
+<span class="nc bnc" id="L555" title="All 2 branches missed.">        if (tag.equals(TAG_AUDIO)) return mMainStorageAudio;</span>
+<span class="nc bnc" id="L556" title="All 2 branches missed.">        if (tag.equals(TAG_VIDEO)) return mMainStorageVideo;</span>
+
+<span class="nc" id="L558">        Log.w(TAG, &quot;Unknown download category, not [audio video]: &quot; + tag);</span>
+
+<span class="nc" id="L560">        return null;// this never should happen</span>
+    }
+
+    public class MissionIterator extends DiffUtil.Callback {
+<span class="nc" id="L564">        final Object FINISHED = new Object();</span>
+<span class="nc" id="L565">        final Object PENDING = new Object();</span>
+
+        ArrayList&lt;Object&gt; snapshot;
+        ArrayList&lt;Object&gt; current;
+        ArrayList&lt;Mission&gt; hidden;
+
+<span class="nc" id="L571">        boolean hasFinished = false;</span>
+
+<span class="nc" id="L573">        private MissionIterator() {</span>
+<span class="nc" id="L574">            hidden = new ArrayList&lt;&gt;(2);</span>
+<span class="nc" id="L575">            current = null;</span>
+<span class="nc" id="L576">            snapshot = getSpecialItems();</span>
+<span class="nc" id="L577">        }</span>
+
+        private ArrayList&lt;Object&gt; getSpecialItems() {
+<span class="nc" id="L580">            synchronized (DownloadManager.this) {</span>
+<span class="nc" id="L581">                ArrayList&lt;Mission&gt; pending = new ArrayList&lt;&gt;(mMissionsPending);</span>
+<span class="nc" id="L582">                ArrayList&lt;Mission&gt; finished = new ArrayList&lt;&gt;(mMissionsFinished);</span>
+<span class="nc" id="L583">                ArrayList&lt;Mission&gt; remove = new ArrayList&lt;&gt;(hidden);</span>
+
+                // hide missions (if required)
+<span class="nc" id="L586">                Iterator&lt;Mission&gt; iterator = remove.iterator();</span>
+<span class="nc bnc" id="L587" title="All 2 branches missed.">                while (iterator.hasNext()) {</span>
+<span class="nc" id="L588">                    Mission mission = iterator.next();</span>
+<span class="nc bnc" id="L589" title="All 4 branches missed.">                    if (pending.remove(mission) || finished.remove(mission)) iterator.remove();</span>
+<span class="nc" id="L590">                }</span>
+
+<span class="nc" id="L592">                int fakeTotal = pending.size();</span>
+<span class="nc bnc" id="L593" title="All 2 branches missed.">                if (fakeTotal &gt; 0) fakeTotal++;</span>
+
+<span class="nc" id="L595">                fakeTotal += finished.size();</span>
+<span class="nc bnc" id="L596" title="All 2 branches missed.">                if (finished.size() &gt; 0) fakeTotal++;</span>
+
+<span class="nc" id="L598">                ArrayList&lt;Object&gt; list = new ArrayList&lt;&gt;(fakeTotal);</span>
+<span class="nc bnc" id="L599" title="All 2 branches missed.">                if (pending.size() &gt; 0) {</span>
+<span class="nc" id="L600">                    list.add(PENDING);</span>
+<span class="nc" id="L601">                    list.addAll(pending);</span>
+                }
+<span class="nc bnc" id="L603" title="All 2 branches missed.">                if (finished.size() &gt; 0) {</span>
+<span class="nc" id="L604">                    list.add(FINISHED);</span>
+<span class="nc" id="L605">                    list.addAll(finished);</span>
+                }
+
+<span class="nc bnc" id="L608" title="All 2 branches missed.">                hasFinished = finished.size() &gt; 0;</span>
+
+<span class="nc" id="L610">                return list;</span>
+<span class="nc" id="L611">            }</span>
+        }
+
+        public MissionItem getItem(int position) {
+<span class="nc" id="L615">            Object object = snapshot.get(position);</span>
+
+<span class="nc bnc" id="L617" title="All 2 branches missed.">            if (object == PENDING) return new MissionItem(SPECIAL_PENDING);</span>
+<span class="nc bnc" id="L618" title="All 2 branches missed.">            if (object == FINISHED) return new MissionItem(SPECIAL_FINISHED);</span>
+
+<span class="nc" id="L620">            return new MissionItem(SPECIAL_NOTHING, (Mission) object);</span>
+        }
+
+        public int getSpecialAtItem(int position) {
+<span class="nc" id="L624">            Object object = snapshot.get(position);</span>
+
+<span class="nc bnc" id="L626" title="All 2 branches missed.">            if (object == PENDING) return SPECIAL_PENDING;</span>
+<span class="nc bnc" id="L627" title="All 2 branches missed.">            if (object == FINISHED) return SPECIAL_FINISHED;</span>
+
+<span class="nc" id="L629">            return SPECIAL_NOTHING;</span>
+        }
+
+
+        public void start() {
+<span class="nc" id="L634">            current = getSpecialItems();</span>
+<span class="nc" id="L635">        }</span>
+
+        public void end() {
+<span class="nc" id="L638">            snapshot = current;</span>
+<span class="nc" id="L639">            current = null;</span>
+<span class="nc" id="L640">        }</span>
+
+        public void hide(Mission mission) {
+<span class="nc" id="L643">            hidden.add(mission);</span>
+<span class="nc" id="L644">        }</span>
+
+        public void unHide(Mission mission) {
+<span class="nc" id="L647">            hidden.remove(mission);</span>
+<span class="nc" id="L648">        }</span>
+
+        public boolean hasFinishedMissions() {
+<span class="nc" id="L651">            return hasFinished;</span>
+        }
+
+        /**
+         * Check if exists missions running and paused. Corrupted and hidden missions are not counted
+         *
+         * @return two-dimensional array contains the current missions state.
+         * 1° entry: true if has at least one mission running
+         * 2° entry: true if has at least one mission paused
+         */
+        public boolean[] hasValidPendingMissions() {
+<span class="nc" id="L662">            boolean running = false;</span>
+<span class="nc" id="L663">            boolean paused = false;</span>
+
+<span class="nc" id="L665">            synchronized (DownloadManager.this) {</span>
+<span class="nc bnc" id="L666" title="All 2 branches missed.">                for (DownloadMission mission : mMissionsPending) {</span>
+<span class="nc bnc" id="L667" title="All 4 branches missed.">                    if (hidden.contains(mission) || mission.isCorrupt())</span>
+<span class="nc" id="L668">                        continue;</span>
+
+<span class="nc bnc" id="L670" title="All 2 branches missed.">                    if (mission.running)</span>
+<span class="nc" id="L671">                        running = true;</span>
+                    else
+<span class="nc" id="L673">                        paused = true;</span>
+<span class="nc" id="L674">                }</span>
+<span class="nc" id="L675">            }</span>
+
+<span class="nc" id="L677">            return new boolean[]{running, paused};</span>
+        }
+
+
+        @Override
+        public int getOldListSize() {
+<span class="nc" id="L683">            return snapshot.size();</span>
+        }
+
+        @Override
+        public int getNewListSize() {
+<span class="nc" id="L688">            return current.size();</span>
+        }
+
+        @Override
+        public boolean areItemsTheSame(int oldItemPosition, int newItemPosition) {
+<span class="nc bnc" id="L693" title="All 2 branches missed.">            return snapshot.get(oldItemPosition) == current.get(newItemPosition);</span>
+        }
+
+        @Override
+        public boolean areContentsTheSame(int oldItemPosition, int newItemPosition) {
+<span class="nc" id="L698">            Object x = snapshot.get(oldItemPosition);</span>
+<span class="nc" id="L699">            Object y = current.get(newItemPosition);</span>
+
+<span class="nc bnc" id="L701" title="All 4 branches missed.">            if (x instanceof Mission &amp;&amp; y instanceof Mission) {</span>
+<span class="nc" id="L702">                return ((Mission) x).storage.equals(((Mission) y).storage);</span>
+            }
+
+<span class="nc" id="L705">            return false;</span>
+        }
+    }
+
+    public class MissionItem {
+        public int special;
+        public Mission mission;
+
+<span class="nc" id="L713">        MissionItem(int s, Mission m) {</span>
+<span class="nc" id="L714">            special = s;</span>
+<span class="nc" id="L715">            mission = m;</span>
+<span class="nc" id="L716">        }</span>
+
+        MissionItem(int s) {
+<span class="nc" id="L719">            this(s, null);</span>
+<span class="nc" id="L720">        }</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

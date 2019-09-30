@@ -1,0 +1,459 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ErrorActivity.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.report</a> &gt; <span class="el_source">ErrorActivity.java</span></div><h1>ErrorActivity.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.report;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.Context;
+import android.content.Intent;
+import android.graphics.Color;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Parcel;
+import android.os.Parcelable;
+import android.preference.PreferenceManager;
+import android.support.annotation.Nullable;
+import android.support.annotation.StringRes;
+import android.support.design.widget.Snackbar;
+import android.support.v4.app.NavUtils;
+import android.support.v7.app.ActionBar;
+import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.Toolbar;
+import android.util.Log;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
+import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.TextView;
+
+import org.acra.ReportField;
+import org.acra.collector.CrashReportData;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.schabi.newpipe.ActivityCommunicator;
+import org.schabi.newpipe.BuildConfig;
+import org.schabi.newpipe.MainActivity;
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.util.ThemeHelper;
+
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.List;
+import java.util.TimeZone;
+import java.util.Vector;
+
+/*
+ * Created by Christian Schabesberger on 24.10.15.
+ *
+ * Copyright (C) Christian Schabesberger 2016 &lt;chris.schabesberger@mailbox.org&gt;
+ * ErrorActivity.java is part of NewPipe.
+ *
+ * NewPipe is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * &lt;
+ * NewPipe is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * &lt;
+ * You should have received a copy of the GNU General Public License
+ * along with NewPipe.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+<span class="nc" id="L69">public class ErrorActivity extends AppCompatActivity {</span>
+    // LOG TAGS
+<span class="nc" id="L71">    public static final String TAG = ErrorActivity.class.toString();</span>
+    // BUNDLE TAGS
+    public static final String ERROR_INFO = &quot;error_info&quot;;
+    public static final String ERROR_LIST = &quot;error_list&quot;;
+
+    public static final String ERROR_EMAIL_ADDRESS = &quot;crashreport@newpipe.schabi.org&quot;;
+    public static final String ERROR_EMAIL_SUBJECT = &quot;Exception in NewPipe &quot; + BuildConfig.VERSION_NAME;
+    private String[] errorList;
+    private ErrorInfo errorInfo;
+    private Class returnActivity;
+    private String currentTimeStamp;
+    private EditText userCommentBox;
+
+    public static void reportUiError(final AppCompatActivity activity, final Throwable el) {
+<span class="nc" id="L85">        reportError(activity, el, activity.getClass(), null,</span>
+<span class="nc" id="L86">                ErrorInfo.make(UserAction.UI_ERROR, &quot;none&quot;, &quot;&quot;, R.string.app_ui_crash));</span>
+<span class="nc" id="L87">    }</span>
+
+    public static void reportError(final Context context, final List&lt;Throwable&gt; el,
+                                   final Class returnActivity, View rootView, final ErrorInfo errorInfo) {
+<span class="nc bnc" id="L91" title="All 2 branches missed.">        if (rootView != null) {</span>
+<span class="nc" id="L92">            Snackbar.make(rootView, R.string.error_snackbar_message, 3 * 1000)</span>
+<span class="nc" id="L93">                    .setActionTextColor(Color.YELLOW)</span>
+<span class="nc" id="L94">                    .setAction(R.string.error_snackbar_action, v -&gt;</span>
+<span class="nc" id="L95">                            startErrorActivity(returnActivity, context, errorInfo, el)).show();</span>
+        } else {
+<span class="nc" id="L97">            startErrorActivity(returnActivity, context, errorInfo, el);</span>
+        }
+<span class="nc" id="L99">    }</span>
+
+    private static void startErrorActivity(Class returnActivity, Context context, ErrorInfo errorInfo, List&lt;Throwable&gt; el) {
+<span class="nc" id="L102">        ActivityCommunicator ac = ActivityCommunicator.getCommunicator();</span>
+<span class="nc" id="L103">        ac.returnActivity = returnActivity;</span>
+<span class="nc" id="L104">        Intent intent = new Intent(context, ErrorActivity.class);</span>
+<span class="nc" id="L105">        intent.putExtra(ERROR_INFO, errorInfo);</span>
+<span class="nc" id="L106">        intent.putExtra(ERROR_LIST, elToSl(el));</span>
+<span class="nc" id="L107">        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);</span>
+<span class="nc" id="L108">        context.startActivity(intent);</span>
+<span class="nc" id="L109">    }</span>
+
+    public static void reportError(final Context context, final Throwable e,
+                                   final Class returnActivity, View rootView, final ErrorInfo errorInfo) {
+<span class="nc" id="L113">        List&lt;Throwable&gt; el = null;</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">        if (e != null) {</span>
+<span class="nc" id="L115">            el = new Vector&lt;&gt;();</span>
+<span class="nc" id="L116">            el.add(e);</span>
+        }
+<span class="nc" id="L118">        reportError(context, el, returnActivity, rootView, errorInfo);</span>
+<span class="nc" id="L119">    }</span>
+
+    // async call
+    public static void reportError(Handler handler, final Context context, final Throwable e,
+                                   final Class returnActivity, final View rootView, final ErrorInfo errorInfo) {
+
+<span class="nc" id="L125">        List&lt;Throwable&gt; el = null;</span>
+<span class="nc bnc" id="L126" title="All 2 branches missed.">        if (e != null) {</span>
+<span class="nc" id="L127">            el = new Vector&lt;&gt;();</span>
+<span class="nc" id="L128">            el.add(e);</span>
+        }
+<span class="nc" id="L130">        reportError(handler, context, el, returnActivity, rootView, errorInfo);</span>
+<span class="nc" id="L131">    }</span>
+
+    // async call
+    public static void reportError(Handler handler, final Context context, final List&lt;Throwable&gt; el,
+                                   final Class returnActivity, final View rootView, final ErrorInfo errorInfo) {
+<span class="nc" id="L136">        handler.post(() -&gt; reportError(context, el, returnActivity, rootView, errorInfo));</span>
+<span class="nc" id="L137">    }</span>
+
+    public static void reportError(final Context context, final CrashReportData report, final ErrorInfo errorInfo) {
+        // get key first (don't ask about this solution)
+<span class="nc" id="L141">        ReportField key = null;</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">        for (ReportField k : report.keySet()) {</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">            if (k.toString().equals(&quot;STACK_TRACE&quot;)) {</span>
+<span class="nc" id="L144">                key = k;</span>
+            }
+<span class="nc" id="L146">        }</span>
+<span class="nc" id="L147">        String[] el = new String[]{report.get(key).toString()};</span>
+
+<span class="nc" id="L149">        Intent intent = new Intent(context, ErrorActivity.class);</span>
+<span class="nc" id="L150">        intent.putExtra(ERROR_INFO, errorInfo);</span>
+<span class="nc" id="L151">        intent.putExtra(ERROR_LIST, el);</span>
+<span class="nc" id="L152">        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);</span>
+<span class="nc" id="L153">        context.startActivity(intent);</span>
+<span class="nc" id="L154">    }</span>
+
+    private static String getStackTrace(final Throwable throwable) {
+<span class="nc" id="L157">        final StringWriter sw = new StringWriter();</span>
+<span class="nc" id="L158">        final PrintWriter pw = new PrintWriter(sw, true);</span>
+<span class="nc" id="L159">        throwable.printStackTrace(pw);</span>
+<span class="nc" id="L160">        return sw.getBuffer().toString();</span>
+    }
+
+    // errorList to StringList
+    private static String[] elToSl(List&lt;Throwable&gt; stackTraces) {
+<span class="nc" id="L165">        String[] out = new String[stackTraces.size()];</span>
+<span class="nc bnc" id="L166" title="All 2 branches missed.">        for (int i = 0; i &lt; stackTraces.size(); i++) {</span>
+<span class="nc" id="L167">            out[i] = getStackTrace(stackTraces.get(i));</span>
+        }
+<span class="nc" id="L169">        return out;</span>
+    }
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+<span class="nc" id="L174">        super.onCreate(savedInstanceState);</span>
+<span class="nc" id="L175">        ThemeHelper.setTheme(this);</span>
+<span class="nc" id="L176">        setContentView(R.layout.activity_error);</span>
+
+<span class="nc" id="L178">        Intent intent = getIntent();</span>
+
+<span class="nc" id="L180">        Toolbar toolbar = findViewById(R.id.toolbar);</span>
+<span class="nc" id="L181">        setSupportActionBar(toolbar);</span>
+
+<span class="nc" id="L183">        ActionBar actionBar = getSupportActionBar();</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">        if (actionBar != null) {</span>
+<span class="nc" id="L185">            actionBar.setDisplayHomeAsUpEnabled(true);</span>
+<span class="nc" id="L186">            actionBar.setTitle(R.string.error_report_title);</span>
+<span class="nc" id="L187">            actionBar.setDisplayShowTitleEnabled(true);</span>
+        }
+
+<span class="nc" id="L190">        Button reportButton = findViewById(R.id.errorReportButton);</span>
+<span class="nc" id="L191">        userCommentBox = findViewById(R.id.errorCommentBox);</span>
+<span class="nc" id="L192">        TextView errorView = findViewById(R.id.errorView);</span>
+<span class="nc" id="L193">        TextView infoView = findViewById(R.id.errorInfosView);</span>
+<span class="nc" id="L194">        TextView errorMessageView = findViewById(R.id.errorMessageView);</span>
+
+<span class="nc" id="L196">        ActivityCommunicator ac = ActivityCommunicator.getCommunicator();</span>
+<span class="nc" id="L197">        returnActivity = ac.returnActivity;</span>
+<span class="nc" id="L198">        errorInfo = intent.getParcelableExtra(ERROR_INFO);</span>
+<span class="nc" id="L199">        errorList = intent.getStringArrayExtra(ERROR_LIST);</span>
+
+        // important add guru meditation
+<span class="nc" id="L202">        addGuruMeditaion();</span>
+<span class="nc" id="L203">        currentTimeStamp = getCurrentTimeStamp();</span>
+
+<span class="nc" id="L205">        reportButton.setOnClickListener((View v) -&gt; {</span>
+<span class="nc" id="L206">            Context context = this;</span>
+<span class="nc" id="L207">            new AlertDialog.Builder(context)</span>
+<span class="nc" id="L208">                    .setIcon(android.R.drawable.ic_dialog_alert)</span>
+<span class="nc" id="L209">                    .setTitle(R.string.privacy_policy_title)</span>
+<span class="nc" id="L210">                    .setMessage(R.string.start_accept_privacy_policy)</span>
+<span class="nc" id="L211">                    .setCancelable(false)</span>
+<span class="nc" id="L212">                    .setNeutralButton(R.string.read_privacy_policy, (dialog, which) -&gt; {</span>
+<span class="nc" id="L213">                        Intent webIntent = new Intent(Intent.ACTION_VIEW,</span>
+<span class="nc" id="L214">                                Uri.parse(context.getString(R.string.privacy_policy_url))</span>
+                        );
+<span class="nc" id="L216">                        context.startActivity(webIntent);</span>
+<span class="nc" id="L217">                    })</span>
+<span class="nc" id="L218">                    .setPositiveButton(R.string.accept, (dialog, which) -&gt; {</span>
+<span class="nc" id="L219">                        Intent i = new Intent(Intent.ACTION_SENDTO);</span>
+<span class="nc" id="L220">                        i.setData(Uri.parse(&quot;mailto:&quot; + ERROR_EMAIL_ADDRESS))</span>
+<span class="nc" id="L221">                                .putExtra(Intent.EXTRA_SUBJECT, ERROR_EMAIL_SUBJECT)</span>
+<span class="nc" id="L222">                                .putExtra(Intent.EXTRA_TEXT, buildJson());</span>
+
+<span class="nc" id="L224">                        startActivity(Intent.createChooser(i, &quot;Send Email&quot;));</span>
+<span class="nc" id="L225">                    })</span>
+<span class="nc" id="L226">                    .setNegativeButton(R.string.decline, (dialog, which) -&gt; {</span>
+                        // do nothing
+<span class="nc" id="L228">                    })</span>
+<span class="nc" id="L229">                    .show();</span>
+
+<span class="nc" id="L231">        });</span>
+
+        // normal bugreport
+<span class="nc" id="L234">        buildInfo(errorInfo);</span>
+<span class="nc bnc" id="L235" title="All 2 branches missed.">        if (errorInfo.message != 0) {</span>
+<span class="nc" id="L236">            errorMessageView.setText(errorInfo.message);</span>
+        } else {
+<span class="nc" id="L238">            errorMessageView.setVisibility(View.GONE);</span>
+<span class="nc" id="L239">            findViewById(R.id.messageWhatHappenedView).setVisibility(View.GONE);</span>
+        }
+
+<span class="nc" id="L242">        errorView.setText(formErrorText(errorList));</span>
+
+        //print stack trace once again for debugging:
+<span class="nc bnc" id="L245" title="All 2 branches missed.">        for (String e : errorList) {</span>
+<span class="nc" id="L246">            Log.e(TAG, e);</span>
+        }
+<span class="nc" id="L248">    }</span>
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+<span class="nc" id="L252">        MenuInflater inflater = getMenuInflater();</span>
+<span class="nc" id="L253">        inflater.inflate(R.menu.error_menu, menu);</span>
+<span class="nc" id="L254">        return true;</span>
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+<span class="nc" id="L259">        int id = item.getItemId();</span>
+<span class="nc bnc" id="L260" title="All 3 branches missed.">        switch (id) {</span>
+            case android.R.id.home:
+<span class="nc" id="L262">                goToReturnActivity();</span>
+<span class="nc" id="L263">                break;</span>
+            case R.id.menu_item_share_error: {
+<span class="nc" id="L265">                Intent intent = new Intent();</span>
+<span class="nc" id="L266">                intent.setAction(Intent.ACTION_SEND);</span>
+<span class="nc" id="L267">                intent.putExtra(Intent.EXTRA_TEXT, buildJson());</span>
+<span class="nc" id="L268">                intent.setType(&quot;text/plain&quot;);</span>
+<span class="nc" id="L269">                startActivity(Intent.createChooser(intent, getString(R.string.share_dialog_title)));</span>
+            }
+            break;
+        }
+<span class="nc" id="L273">        return false;</span>
+    }
+
+    private String formErrorText(String[] el) {
+<span class="nc" id="L277">        StringBuilder text = new StringBuilder();</span>
+<span class="nc bnc" id="L278" title="All 2 branches missed.">        if (el != null) {</span>
+<span class="nc bnc" id="L279" title="All 2 branches missed.">            for (String e : el) {</span>
+<span class="nc" id="L280">                text.append(&quot;-------------------------------------\n&quot;).append(e);</span>
+            }
+        }
+<span class="nc" id="L283">        text.append(&quot;-------------------------------------&quot;);</span>
+<span class="nc" id="L284">        return text.toString();</span>
+    }
+
+    /**
+     * Get the checked activity.
+     *
+     * @param returnActivity the activity to return to
+     * @return the casted return activity or null
+     */
+    @Nullable
+    static Class&lt;? extends Activity&gt; getReturnActivity(Class&lt;?&gt; returnActivity) {
+<span class="nc" id="L295">        Class&lt;? extends Activity&gt; checkedReturnActivity = null;</span>
+<span class="nc bnc" id="L296" title="All 2 branches missed.">        if (returnActivity != null) {</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">            if (Activity.class.isAssignableFrom(returnActivity)) {</span>
+<span class="nc" id="L298">                checkedReturnActivity = returnActivity.asSubclass(Activity.class);</span>
+            } else {
+<span class="nc" id="L300">                checkedReturnActivity = MainActivity.class;</span>
+            }
+        }
+<span class="nc" id="L303">        return checkedReturnActivity;</span>
+    }
+
+    private void goToReturnActivity() {
+<span class="nc" id="L307">        Class&lt;? extends Activity&gt; checkedReturnActivity = getReturnActivity(returnActivity);</span>
+<span class="nc bnc" id="L308" title="All 2 branches missed.">        if (checkedReturnActivity == null) {</span>
+<span class="nc" id="L309">            super.onBackPressed();</span>
+        } else {
+<span class="nc" id="L311">            Intent intent = new Intent(this, checkedReturnActivity);</span>
+<span class="nc" id="L312">            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);</span>
+<span class="nc" id="L313">            NavUtils.navigateUpTo(this, intent);</span>
+        }
+<span class="nc" id="L315">    }</span>
+
+    private void buildInfo(ErrorInfo info) {
+<span class="nc" id="L318">        TextView infoLabelView = findViewById(R.id.errorInfoLabelsView);</span>
+<span class="nc" id="L319">        TextView infoView = findViewById(R.id.errorInfosView);</span>
+<span class="nc" id="L320">        String text = &quot;&quot;;</span>
+
+<span class="nc" id="L322">        infoLabelView.setText(getString(R.string.info_labels).replace(&quot;\\n&quot;, &quot;\n&quot;));</span>
+
+<span class="nc" id="L324">        text += getUserActionString(info.userAction)</span>
+                + &quot;\n&quot; + info.request
+<span class="nc" id="L326">                + &quot;\n&quot; + getContentLangString()</span>
+                + &quot;\n&quot; + info.serviceName
+                + &quot;\n&quot; + currentTimeStamp
+<span class="nc" id="L329">                + &quot;\n&quot; + getPackageName()</span>
+                + &quot;\n&quot; + BuildConfig.VERSION_NAME
+<span class="nc" id="L331">                + &quot;\n&quot; + getOsString();</span>
+
+<span class="nc" id="L333">        infoView.setText(text);</span>
+<span class="nc" id="L334">    }</span>
+
+    private String buildJson() {
+<span class="nc" id="L337">        JSONObject errorObject = new JSONObject();</span>
+
+        try {
+<span class="nc" id="L340">            errorObject.put(&quot;user_action&quot;, getUserActionString(errorInfo.userAction))</span>
+<span class="nc" id="L341">                    .put(&quot;request&quot;, errorInfo.request)</span>
+<span class="nc" id="L342">                    .put(&quot;content_language&quot;, getContentLangString())</span>
+<span class="nc" id="L343">                    .put(&quot;service&quot;, errorInfo.serviceName)</span>
+<span class="nc" id="L344">                    .put(&quot;package&quot;, getPackageName())</span>
+<span class="nc" id="L345">                    .put(&quot;version&quot;, BuildConfig.VERSION_NAME)</span>
+<span class="nc" id="L346">                    .put(&quot;os&quot;, getOsString())</span>
+<span class="nc" id="L347">                    .put(&quot;time&quot;, currentTimeStamp);</span>
+
+<span class="nc" id="L349">            JSONArray exceptionArray = new JSONArray();</span>
+<span class="nc bnc" id="L350" title="All 2 branches missed.">            if (errorList != null) {</span>
+<span class="nc bnc" id="L351" title="All 2 branches missed.">                for (String e : errorList) {</span>
+<span class="nc" id="L352">                    exceptionArray.put(e);</span>
+                }
+            }
+
+<span class="nc" id="L356">            errorObject.put(&quot;exceptions&quot;, exceptionArray);</span>
+<span class="nc" id="L357">            errorObject.put(&quot;user_comment&quot;, userCommentBox.getText().toString());</span>
+
+<span class="nc" id="L359">            return errorObject.toString(3);</span>
+<span class="nc" id="L360">        } catch (Throwable e) {</span>
+<span class="nc" id="L361">            Log.e(TAG, &quot;Error while erroring: Could not build json&quot;);</span>
+<span class="nc" id="L362">            e.printStackTrace();</span>
+        }
+
+<span class="nc" id="L365">        return &quot;&quot;;</span>
+    }
+
+    private String getUserActionString(UserAction userAction) {
+<span class="nc bnc" id="L369" title="All 2 branches missed.">        if (userAction == null) {</span>
+<span class="nc" id="L370">            return &quot;Your description is in another castle.&quot;;</span>
+        } else {
+<span class="nc" id="L372">            return userAction.getMessage();</span>
+        }
+    }
+
+    private String getContentLangString() {
+<span class="nc" id="L377">        return PreferenceManager.getDefaultSharedPreferences(this)</span>
+<span class="nc" id="L378">                .getString(this.getString(R.string.content_country_key), &quot;none&quot;);</span>
+    }
+
+    private String getOsString() {
+<span class="nc bnc" id="L382" title="All 2 branches missed.">        String osBase = Build.VERSION.SDK_INT &gt;= 23 ? Build.VERSION.BASE_OS : &quot;Android&quot;;</span>
+<span class="nc" id="L383">        return System.getProperty(&quot;os.name&quot;)</span>
+<span class="nc bnc" id="L384" title="All 2 branches missed.">                + &quot; &quot; + (osBase.isEmpty() ? &quot;Android&quot; : osBase)</span>
+                + &quot; &quot; + Build.VERSION.RELEASE
+<span class="nc" id="L386">                + &quot; - &quot; + Integer.toString(Build.VERSION.SDK_INT);</span>
+    }
+
+    private void addGuruMeditaion() {
+        //just an easter egg
+<span class="nc" id="L391">        TextView sorryView = findViewById(R.id.errorSorryView);</span>
+<span class="nc" id="L392">        String text = sorryView.getText().toString();</span>
+<span class="nc" id="L393">        text += &quot;\n&quot; + getString(R.string.guru_meditation);</span>
+<span class="nc" id="L394">        sorryView.setText(text);</span>
+<span class="nc" id="L395">    }</span>
+
+    @Override
+    public void onBackPressed() {
+        //super.onBackPressed();
+<span class="nc" id="L400">        goToReturnActivity();</span>
+<span class="nc" id="L401">    }</span>
+
+    public String getCurrentTimeStamp() {
+<span class="nc" id="L404">        SimpleDateFormat df = new SimpleDateFormat(&quot;yyyy-MM-dd HH:mm&quot;);</span>
+<span class="nc" id="L405">        df.setTimeZone(TimeZone.getTimeZone(&quot;GMT&quot;));</span>
+<span class="nc" id="L406">        return df.format(new Date());</span>
+    }
+
+    public static class ErrorInfo implements Parcelable {
+<span class="fc" id="L410">        public static final Parcelable.Creator&lt;ErrorInfo&gt; CREATOR = new Parcelable.Creator&lt;ErrorInfo&gt;() {</span>
+            @Override
+            public ErrorInfo createFromParcel(Parcel source) {
+<span class="fc" id="L413">                return new ErrorInfo(source);</span>
+            }
+
+            @Override
+            public ErrorInfo[] newArray(int size) {
+<span class="nc" id="L418">                return new ErrorInfo[size];</span>
+            }
+        };
+        final public UserAction userAction;
+        final public String request;
+        final public String serviceName;
+        @StringRes
+        final public int message;
+
+<span class="fc" id="L427">        private ErrorInfo(UserAction userAction, String serviceName, String request, @StringRes int message) {</span>
+<span class="fc" id="L428">            this.userAction = userAction;</span>
+<span class="fc" id="L429">            this.serviceName = serviceName;</span>
+<span class="fc" id="L430">            this.request = request;</span>
+<span class="fc" id="L431">            this.message = message;</span>
+<span class="fc" id="L432">        }</span>
+
+<span class="fc" id="L434">        protected ErrorInfo(Parcel in) {</span>
+<span class="fc" id="L435">            this.userAction = UserAction.valueOf(in.readString());</span>
+<span class="fc" id="L436">            this.request = in.readString();</span>
+<span class="fc" id="L437">            this.serviceName = in.readString();</span>
+<span class="fc" id="L438">            this.message = in.readInt();</span>
+<span class="fc" id="L439">        }</span>
+
+        public static ErrorInfo make(UserAction userAction, String serviceName, String request, @StringRes int message) {
+<span class="fc" id="L442">            return new ErrorInfo(userAction, serviceName, request, message);</span>
+        }
+
+        @Override
+        public int describeContents() {
+<span class="nc" id="L447">            return 0;</span>
+        }
+
+        @Override
+        public void writeToParcel(Parcel dest, int flags) {
+<span class="fc" id="L452">            dest.writeString(this.userAction.name());</span>
+<span class="fc" id="L453">            dest.writeString(this.request);</span>
+<span class="fc" id="L454">            dest.writeString(this.serviceName);</span>
+<span class="fc" id="L455">            dest.writeInt(this.message);</span>
+<span class="fc" id="L456">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

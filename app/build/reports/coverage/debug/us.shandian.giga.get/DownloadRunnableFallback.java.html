@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DownloadRunnableFallback.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">us.shandian.giga.get</a> &gt; <span class="el_source">DownloadRunnableFallback.java</span></div><h1>DownloadRunnableFallback.java</h1><pre class="source lang-java linenums">package us.shandian.giga.get;
+
+import android.support.annotation.NonNull;
+import android.util.Log;
+
+import org.schabi.newpipe.streams.io.SharpStream;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.nio.channels.ClosedByInterruptException;
+
+import us.shandian.giga.util.Utility;
+
+import static org.schabi.newpipe.BuildConfig.DEBUG;
+
+/**
+ * Single-threaded fallback mode
+ */
+public class DownloadRunnableFallback extends Thread {
+    private static final String TAG = &quot;DownloadRunnableFallbac&quot;;
+
+    private final DownloadMission mMission;
+
+<span class="nc" id="L25">    private int mRetryCount = 0;</span>
+    private InputStream mIs;
+    private SharpStream mF;
+    private HttpURLConnection mConn;
+
+<span class="nc" id="L30">    DownloadRunnableFallback(@NonNull DownloadMission mission) {</span>
+<span class="nc" id="L31">        mMission = mission;</span>
+<span class="nc" id="L32">    }</span>
+
+    private void dispose() {
+        try {
+<span class="nc bnc" id="L36" title="All 2 branches missed.">            if (mIs != null) mIs.close();</span>
+<span class="nc" id="L37">        } catch (IOException e) {</span>
+            // nothing to do
+<span class="nc" id="L39">        }</span>
+
+<span class="nc bnc" id="L41" title="All 2 branches missed.">        if (mF != null) mF.close();</span>
+<span class="nc" id="L42">    }</span>
+
+    private long loadPosition() {
+<span class="nc" id="L45">        synchronized (mMission.LOCK) {</span>
+<span class="nc" id="L46">            return mMission.fallbackResumeOffset;</span>
+<span class="nc" id="L47">        }</span>
+    }
+
+    private void savePosition(long position) {
+<span class="nc" id="L51">        synchronized (mMission.LOCK) {</span>
+<span class="nc" id="L52">            mMission.fallbackResumeOffset = position;</span>
+<span class="nc" id="L53">        }</span>
+<span class="nc" id="L54">    }</span>
+
+    @Override
+    public void run() {
+        boolean done;
+<span class="nc" id="L59">        long start = loadPosition();</span>
+
+<span class="nc bnc" id="L61" title="All 6 branches missed.">        if (DEBUG &amp;&amp; !mMission.unknownLength &amp;&amp; start &gt; 0) {</span>
+<span class="nc" id="L62">            Log.i(TAG, &quot;Resuming a single-thread download at &quot; + start);</span>
+        }
+
+        try {
+<span class="nc bnc" id="L66" title="All 4 branches missed.">            long rangeStart = (mMission.unknownLength || start &lt; 1) ? -1 : start;</span>
+
+<span class="nc" id="L68">            int mId = 1;</span>
+<span class="nc" id="L69">            mConn = mMission.openConnection(mId, rangeStart, -1);</span>
+<span class="nc" id="L70">            mMission.establishConnection(mId, mConn);</span>
+
+            // check if the download can be resumed
+<span class="nc bnc" id="L73" title="All 4 branches missed.">            if (mConn.getResponseCode() == 416 &amp;&amp; start &gt; 0) {</span>
+<span class="nc" id="L74">                start = 0;</span>
+<span class="nc" id="L75">                mRetryCount--;</span>
+<span class="nc" id="L76">                throw new DownloadMission.HttpError(416);</span>
+            }
+
+            // secondary check for the file length
+<span class="nc bnc" id="L80" title="All 2 branches missed.">            if (!mMission.unknownLength)</span>
+<span class="nc bnc" id="L81" title="All 2 branches missed.">                mMission.unknownLength = Utility.getContentLength(mConn) == -1;</span>
+
+<span class="nc" id="L83">            mF = mMission.storage.getStream();</span>
+<span class="nc" id="L84">            mF.seek(mMission.offsets[mMission.current] + start);</span>
+
+<span class="nc" id="L86">            mIs = mConn.getInputStream();</span>
+
+<span class="nc" id="L88">            byte[] buf = new byte[64 * 1024];</span>
+<span class="nc" id="L89">            int len = 0;</span>
+
+<span class="nc bnc" id="L91" title="All 4 branches missed.">            while (mMission.running &amp;&amp; (len = mIs.read(buf, 0, buf.length)) != -1) {</span>
+<span class="nc" id="L92">                mF.write(buf, 0, len);</span>
+<span class="nc" id="L93">                start += len;</span>
+<span class="nc" id="L94">                mMission.notifyProgress(len);</span>
+            }
+
+            // if thread goes interrupted check if the last part is written. This avoid re-download the whole file
+<span class="nc bnc" id="L98" title="All 2 branches missed.">            done = len == -1;</span>
+<span class="nc" id="L99">        } catch (Exception e) {</span>
+<span class="nc" id="L100">            dispose();</span>
+
+<span class="nc" id="L102">            savePosition(start);</span>
+
+<span class="nc bnc" id="L104" title="All 4 branches missed.">            if (!mMission.running || e instanceof ClosedByInterruptException) return;</span>
+
+<span class="nc bnc" id="L106" title="All 2 branches missed.">            if (mRetryCount++ &gt;= mMission.maxRetry) {</span>
+<span class="nc" id="L107">                mMission.notifyError(e);</span>
+<span class="nc" id="L108">                return;</span>
+            }
+
+<span class="nc bnc" id="L111" title="All 2 branches missed.">            if (DEBUG) {</span>
+<span class="nc" id="L112">                Log.e(TAG, &quot;got exception, retrying...&quot;, e);</span>
+            }
+
+<span class="nc" id="L115">            run();// try again</span>
+<span class="nc" id="L116">            return;</span>
+<span class="nc" id="L117">        }</span>
+
+<span class="nc" id="L119">        dispose();</span>
+
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        if (done) {</span>
+<span class="nc" id="L122">            mMission.notifyFinished();</span>
+        } else {
+<span class="nc" id="L124">            savePosition(start);</span>
+        }
+<span class="nc" id="L126">    }</span>
+
+    @Override
+    public void interrupt() {
+<span class="nc" id="L130">        super.interrupt();</span>
+
+<span class="nc bnc" id="L132" title="All 2 branches missed.">        if (mConn != null) {</span>
+            try {
+<span class="nc" id="L134">                mConn.disconnect();</span>
+<span class="nc" id="L135">            } catch (Exception e) {</span>
+                // nothing to do
+<span class="nc" id="L137">            }</span>
+
+        }
+<span class="nc" id="L140">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

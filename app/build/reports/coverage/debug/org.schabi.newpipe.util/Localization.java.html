@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Localization.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.util</a> &gt; <span class="el_source">Localization.java</span></div><h1>Localization.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.util;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.content.res.Resources;
+import android.preference.PreferenceManager;
+import android.support.annotation.NonNull;
+import android.support.annotation.PluralsRes;
+import android.support.annotation.StringRes;
+import android.text.TextUtils;
+
+import org.schabi.newpipe.R;
+
+import java.text.DateFormat;
+import java.text.NumberFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
+
+/*
+ * Created by chschtsch on 12/29/15.
+ *
+ * Copyright (C) Gregory Arkhipov 2015
+ * Localization.java is part of NewPipe.
+ *
+ * NewPipe is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * NewPipe is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NewPipe.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+public class Localization {
+
+    public final static String DOT_SEPARATOR = &quot; • &quot;;
+
+<span class="nc" id="L47">    private Localization() {</span>
+<span class="nc" id="L48">    }</span>
+
+    @NonNull
+    public static String concatenateStrings(final String... strings) {
+<span class="nc" id="L52">        return concatenateStrings(Arrays.asList(strings));</span>
+    }
+
+    @NonNull
+    public static String concatenateStrings(final List&lt;String&gt; strings) {
+<span class="nc bnc" id="L57" title="All 2 branches missed.">        if (strings.isEmpty()) return &quot;&quot;;</span>
+
+<span class="nc" id="L59">        final StringBuilder stringBuilder = new StringBuilder();</span>
+<span class="nc" id="L60">        stringBuilder.append(strings.get(0));</span>
+
+<span class="nc bnc" id="L62" title="All 2 branches missed.">        for (int i = 1; i &lt; strings.size(); i++) {</span>
+<span class="nc" id="L63">            final String string = strings.get(i);</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">            if (!TextUtils.isEmpty(string)) {</span>
+<span class="nc" id="L65">                stringBuilder.append(DOT_SEPARATOR).append(strings.get(i));</span>
+            }
+        }
+
+<span class="nc" id="L69">        return stringBuilder.toString();</span>
+    }
+
+    public static org.schabi.newpipe.extractor.utils.Localization getPreferredExtractorLocal(Context context) {
+<span class="fc" id="L73">        SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(context);</span>
+
+<span class="fc" id="L75">        String languageCode = sp.getString(context.getString(R.string.content_language_key),</span>
+<span class="fc" id="L76">                context.getString(R.string.default_language_value));</span>
+
+<span class="fc" id="L78">        String countryCode = sp.getString(context.getString(R.string.content_country_key),</span>
+<span class="fc" id="L79">                context.getString(R.string.default_country_value));</span>
+
+<span class="fc" id="L81">        return new org.schabi.newpipe.extractor.utils.Localization(countryCode, languageCode);</span>
+    }
+
+    public static Locale getPreferredLocale(Context context) {
+<span class="nc" id="L85">        SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(context);</span>
+
+<span class="nc" id="L87">        String languageCode = sp.getString(context.getString(R.string.content_language_key),</span>
+<span class="nc" id="L88">                context.getString(R.string.default_language_value));</span>
+
+        try {
+<span class="nc bnc" id="L91" title="All 2 branches missed.">            if (languageCode.length() == 2) {</span>
+<span class="nc" id="L92">                return new Locale(languageCode);</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">            } else if (languageCode.contains(&quot;_&quot;)) {</span>
+<span class="nc" id="L94">                String country = languageCode.substring(languageCode.indexOf(&quot;_&quot;), languageCode.length());</span>
+<span class="nc" id="L95">                return new Locale(languageCode.substring(0, 2), country);</span>
+            }
+<span class="nc" id="L97">        } catch (Exception ignored) {</span>
+<span class="nc" id="L98">        }</span>
+
+<span class="nc" id="L100">        return Locale.getDefault();</span>
+    }
+
+    public static String localizeNumber(Context context, long number) {
+<span class="nc" id="L104">        Locale locale = getPreferredLocale(context);</span>
+<span class="nc" id="L105">        NumberFormat nf = NumberFormat.getInstance(locale);</span>
+<span class="nc" id="L106">        return nf.format(number);</span>
+    }
+
+    private static String formatDate(Context context, String date) {
+<span class="nc" id="L110">        Locale locale = getPreferredLocale(context);</span>
+<span class="nc" id="L111">        SimpleDateFormat formatter = new SimpleDateFormat(&quot;yyyy-MM-dd&quot;);</span>
+<span class="nc" id="L112">        Date datum = null;</span>
+        try {
+<span class="nc" id="L114">            datum = formatter.parse(date);</span>
+<span class="nc" id="L115">        } catch (ParseException e) {</span>
+<span class="nc" id="L116">            e.printStackTrace();</span>
+<span class="nc" id="L117">        }</span>
+
+<span class="nc" id="L119">        DateFormat df = DateFormat.getDateInstance(DateFormat.MEDIUM, locale);</span>
+
+<span class="nc" id="L121">        return df.format(datum);</span>
+    }
+
+    public static String localizeDate(Context context, String date) {
+<span class="nc" id="L125">        Resources res = context.getResources();</span>
+<span class="nc" id="L126">        String dateString = res.getString(R.string.upload_date_text);</span>
+
+<span class="nc" id="L128">        String formattedDate = formatDate(context, date);</span>
+<span class="nc" id="L129">        return String.format(dateString, formattedDate);</span>
+    }
+
+    public static String localizeViewCount(Context context, long viewCount) {
+<span class="nc" id="L133">        return getQuantity(context, R.plurals.views, R.string.no_views, viewCount, localizeNumber(context, viewCount));</span>
+    }
+
+    public static String localizeSubscribersCount(Context context, long subscriberCount) {
+<span class="nc" id="L137">        return getQuantity(context, R.plurals.subscribers, R.string.no_subscribers, subscriberCount, localizeNumber(context, subscriberCount));</span>
+    }
+
+    public static String localizeStreamCount(Context context, long streamCount) {
+<span class="nc" id="L141">        return getQuantity(context, R.plurals.videos, R.string.no_videos, streamCount, localizeNumber(context, streamCount));</span>
+    }
+
+    public static String shortCount(Context context, long count) {
+<span class="nc bnc" id="L145" title="All 2 branches missed.">        if (count &gt;= 1000000000) {</span>
+<span class="nc" id="L146">            return Long.toString(count / 1000000000) + context.getString(R.string.short_billion);</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">        } else if (count &gt;= 1000000) {</span>
+<span class="nc" id="L148">            return Long.toString(count / 1000000) + context.getString(R.string.short_million);</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">        } else if (count &gt;= 1000) {</span>
+<span class="nc" id="L150">            return Long.toString(count / 1000) + context.getString(R.string.short_thousand);</span>
+        } else {
+<span class="nc" id="L152">            return Long.toString(count);</span>
+        }
+    }
+
+    public static String shortViewCount(Context context, long viewCount) {
+<span class="nc" id="L157">        return getQuantity(context, R.plurals.views, R.string.no_views, viewCount, shortCount(context, viewCount));</span>
+    }
+
+    public static String shortSubscriberCount(Context context, long subscriberCount) {
+<span class="nc" id="L161">        return getQuantity(context, R.plurals.subscribers, R.string.no_subscribers, subscriberCount, shortCount(context, subscriberCount));</span>
+    }
+
+    private static String getQuantity(Context context, @PluralsRes int pluralId, @StringRes int zeroCaseStringId, long count, String formattedCount) {
+<span class="nc bnc" id="L165" title="All 2 branches missed.">        if (count == 0) return context.getString(zeroCaseStringId);</span>
+
+        // As we use the already formatted count, is not the responsibility of this method handle long numbers
+        // (it probably will fall in the &quot;other&quot; category, or some language have some specific rule... then we have to change it)
+<span class="nc bnc" id="L169" title="All 4 branches missed.">        int safeCount = count &gt; Integer.MAX_VALUE ? Integer.MAX_VALUE : count &lt; Integer.MIN_VALUE ? Integer.MIN_VALUE : (int) count;</span>
+<span class="nc" id="L170">        return context.getResources().getQuantityString(pluralId, safeCount, formattedCount);</span>
+    }
+
+    public static String getDurationString(long duration) {
+<span class="nc bnc" id="L174" title="All 2 branches missed.">        if (duration &lt; 0) {</span>
+<span class="nc" id="L175">            duration = 0;</span>
+        }
+        String output;
+<span class="nc" id="L178">        long days = duration / (24 * 60 * 60L); /* greater than a day */</span>
+<span class="nc" id="L179">        duration %= (24 * 60 * 60L);</span>
+<span class="nc" id="L180">        long hours = duration / (60 * 60L); /* greater than an hour */</span>
+<span class="nc" id="L181">        duration %= (60 * 60L);</span>
+<span class="nc" id="L182">        long minutes = duration / 60L;</span>
+<span class="nc" id="L183">        long seconds = duration % 60L;</span>
+
+        //handle days
+<span class="nc bnc" id="L186" title="All 2 branches missed.">        if (days &gt; 0) {</span>
+<span class="nc" id="L187">            output = String.format(Locale.US, &quot;%d:%02d:%02d:%02d&quot;, days, hours, minutes, seconds);</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">        } else if (hours &gt; 0) {</span>
+<span class="nc" id="L189">            output = String.format(Locale.US, &quot;%d:%02d:%02d&quot;, hours, minutes, seconds);</span>
+        } else {
+<span class="nc" id="L191">            output = String.format(Locale.US, &quot;%d:%02d&quot;, minutes, seconds);</span>
+        }
+<span class="nc" id="L193">        return output;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

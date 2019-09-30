@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StreamDAO.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.database.stream.dao</a> &gt; <span class="el_source">StreamDAO.java</span></div><h1>StreamDAO.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.database.stream.dao;
+
+import android.arch.persistence.room.Dao;
+import android.arch.persistence.room.Insert;
+import android.arch.persistence.room.OnConflictStrategy;
+import android.arch.persistence.room.Query;
+import android.arch.persistence.room.Transaction;
+
+import org.schabi.newpipe.database.BasicDAO;
+import org.schabi.newpipe.database.playlist.model.PlaylistStreamEntity;
+import org.schabi.newpipe.database.stream.model.StreamEntity;
+import org.schabi.newpipe.database.history.model.StreamHistoryEntity;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import io.reactivex.Flowable;
+
+import static org.schabi.newpipe.database.playlist.model.PlaylistStreamEntity.PLAYLIST_STREAM_JOIN_TABLE;
+import static org.schabi.newpipe.database.stream.model.StreamEntity.STREAM_ID;
+import static org.schabi.newpipe.database.stream.model.StreamEntity.STREAM_SERVICE_ID;
+import static org.schabi.newpipe.database.stream.model.StreamEntity.STREAM_TABLE;
+import static org.schabi.newpipe.database.stream.model.StreamEntity.STREAM_URL;
+import static org.schabi.newpipe.database.history.model.StreamHistoryEntity.STREAM_HISTORY_TABLE;
+
+@Dao
+<span class="nc" id="L27">public abstract class StreamDAO implements BasicDAO&lt;StreamEntity&gt; {</span>
+    @Override
+    @Query(&quot;SELECT * FROM &quot; + STREAM_TABLE)
+    public abstract Flowable&lt;List&lt;StreamEntity&gt;&gt; getAll();
+
+    @Override
+    @Query(&quot;DELETE FROM &quot; + STREAM_TABLE)
+    public abstract int deleteAll();
+
+    @Override
+    @Query(&quot;SELECT * FROM &quot; + STREAM_TABLE + &quot; WHERE &quot; + STREAM_SERVICE_ID + &quot; = :serviceId&quot;)
+    public abstract Flowable&lt;List&lt;StreamEntity&gt;&gt; listByService(int serviceId);
+
+    @Query(&quot;SELECT * FROM &quot; + STREAM_TABLE + &quot; WHERE &quot; +
+            STREAM_URL + &quot; = :url AND &quot; +
+            STREAM_SERVICE_ID + &quot; = :serviceId&quot;)
+    public abstract Flowable&lt;List&lt;StreamEntity&gt;&gt; getStream(long serviceId, String url);
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    abstract void silentInsertAllInternal(final List&lt;StreamEntity&gt; streams);
+
+    @Query(&quot;SELECT &quot; + STREAM_ID + &quot; FROM &quot; + STREAM_TABLE + &quot; WHERE &quot; +
+            STREAM_URL + &quot; = :url AND &quot; +
+            STREAM_SERVICE_ID + &quot; = :serviceId&quot;)
+    abstract Long getStreamIdInternal(long serviceId, String url);
+
+    @Transaction
+    public long upsert(StreamEntity stream) {
+<span class="nc" id="L55">        final Long streamIdCandidate = getStreamIdInternal(stream.getServiceId(), stream.getUrl());</span>
+
+<span class="nc bnc" id="L57" title="All 2 branches missed.">        if (streamIdCandidate == null) {</span>
+<span class="nc" id="L58">            return insert(stream);</span>
+        } else {
+<span class="nc" id="L60">            stream.setUid(streamIdCandidate);</span>
+<span class="nc" id="L61">            update(stream);</span>
+<span class="nc" id="L62">            return streamIdCandidate;</span>
+        }
+    }
+
+    @Transaction
+    public List&lt;Long&gt; upsertAll(List&lt;StreamEntity&gt; streams) {
+<span class="nc" id="L68">        silentInsertAllInternal(streams);</span>
+
+<span class="nc" id="L70">        final List&lt;Long&gt; streamIds = new ArrayList&lt;&gt;(streams.size());</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">        for (StreamEntity stream : streams) {</span>
+<span class="nc" id="L72">            final Long streamId = getStreamIdInternal(stream.getServiceId(), stream.getUrl());</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">            if (streamId == null) {</span>
+<span class="nc" id="L74">                throw new IllegalStateException(&quot;StreamID cannot be null just after insertion.&quot;);</span>
+            }
+
+<span class="nc" id="L77">            streamIds.add(streamId);</span>
+<span class="nc" id="L78">            stream.setUid(streamId);</span>
+<span class="nc" id="L79">        }</span>
+
+<span class="nc" id="L81">        update(streams);</span>
+<span class="nc" id="L82">        return streamIds;</span>
+    }
+
+    @Query(&quot;DELETE FROM &quot; + STREAM_TABLE + &quot; WHERE &quot; + STREAM_ID +
+            &quot; NOT IN &quot; +
+            &quot;(SELECT DISTINCT &quot; + STREAM_ID + &quot; FROM &quot; + STREAM_TABLE +
+
+            &quot; LEFT JOIN &quot; + STREAM_HISTORY_TABLE +
+            &quot; ON &quot; + STREAM_ID + &quot; = &quot; +
+            StreamHistoryEntity.STREAM_HISTORY_TABLE + &quot;.&quot; + StreamHistoryEntity.JOIN_STREAM_ID +
+
+            &quot; LEFT JOIN &quot; + PLAYLIST_STREAM_JOIN_TABLE +
+            &quot; ON &quot; + STREAM_ID + &quot; = &quot; +
+            PlaylistStreamEntity.PLAYLIST_STREAM_JOIN_TABLE + &quot;.&quot; + PlaylistStreamEntity.JOIN_STREAM_ID +
+            &quot;)&quot;)
+    public abstract int deleteOrphans();
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

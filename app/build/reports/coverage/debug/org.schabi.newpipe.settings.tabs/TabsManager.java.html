@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TabsManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.settings.tabs</a> &gt; <span class="el_source">TabsManager.java</span></div><h1>TabsManager.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.settings.tabs;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.preference.PreferenceManager;
+import android.widget.Toast;
+
+import org.schabi.newpipe.R;
+
+import java.util.List;
+
+public class TabsManager {
+    private final SharedPreferences sharedPreferences;
+    private final String savedTabsKey;
+    private final Context context;
+
+    public static TabsManager getManager(Context context) {
+<span class="nc" id="L18">        return new TabsManager(context);</span>
+    }
+
+<span class="nc" id="L21">    private TabsManager(Context context) {</span>
+<span class="nc" id="L22">        this.context = context;</span>
+<span class="nc" id="L23">        this.sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);</span>
+<span class="nc" id="L24">        this.savedTabsKey = context.getString(R.string.saved_tabs_key);</span>
+<span class="nc" id="L25">    }</span>
+
+    public List&lt;Tab&gt; getTabs() {
+<span class="nc" id="L28">        final String savedJson = sharedPreferences.getString(savedTabsKey, null);</span>
+        try {
+<span class="nc" id="L30">            return TabsJsonHelper.getTabsFromJson(savedJson);</span>
+<span class="nc" id="L31">        } catch (TabsJsonHelper.InvalidJsonException e) {</span>
+<span class="nc" id="L32">            Toast.makeText(context, R.string.saved_tabs_invalid_json, Toast.LENGTH_SHORT).show();</span>
+<span class="nc" id="L33">            return getDefaultTabs();</span>
+        }
+    }
+
+    public void saveTabs(List&lt;Tab&gt; tabList) {
+<span class="nc" id="L38">        final String jsonToSave = TabsJsonHelper.getJsonToSave(tabList);</span>
+<span class="nc" id="L39">        sharedPreferences.edit().putString(savedTabsKey, jsonToSave).apply();</span>
+<span class="nc" id="L40">    }</span>
+
+    public void resetTabs() {
+<span class="nc" id="L43">        sharedPreferences.edit().remove(savedTabsKey).apply();</span>
+<span class="nc" id="L44">    }</span>
+
+    public List&lt;Tab&gt; getDefaultTabs() {
+<span class="nc" id="L47">        return TabsJsonHelper.getDefaultTabs();</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Listener
+    //////////////////////////////////////////////////////////////////////////*/
+
+    public interface SavedTabsChangeListener {
+        void onTabsChanged();
+    }
+
+    private SavedTabsChangeListener savedTabsChangeListener;
+    private SharedPreferences.OnSharedPreferenceChangeListener preferenceChangeListener;
+
+    public void setSavedTabsListener(SavedTabsChangeListener listener) {
+<span class="nc bnc" id="L62" title="All 2 branches missed.">        if (preferenceChangeListener != null) {</span>
+<span class="nc" id="L63">            sharedPreferences.unregisterOnSharedPreferenceChangeListener(preferenceChangeListener);</span>
+        }
+<span class="nc" id="L65">        savedTabsChangeListener = listener;</span>
+<span class="nc" id="L66">        preferenceChangeListener = getPreferenceChangeListener();</span>
+<span class="nc" id="L67">        sharedPreferences.registerOnSharedPreferenceChangeListener(preferenceChangeListener);</span>
+<span class="nc" id="L68">    }</span>
+
+    public void unsetSavedTabsListener() {
+<span class="nc bnc" id="L71" title="All 2 branches missed.">        if (preferenceChangeListener != null) {</span>
+<span class="nc" id="L72">            sharedPreferences.unregisterOnSharedPreferenceChangeListener(preferenceChangeListener);</span>
+        }
+<span class="nc" id="L74">        preferenceChangeListener = null;</span>
+<span class="nc" id="L75">        savedTabsChangeListener = null;</span>
+<span class="nc" id="L76">    }</span>
+
+    private SharedPreferences.OnSharedPreferenceChangeListener getPreferenceChangeListener() {
+<span class="nc" id="L79">        return (sharedPreferences, key) -&gt; {</span>
+<span class="nc bnc" id="L80" title="All 2 branches missed.">            if (key.equals(savedTabsKey)) {</span>
+<span class="nc bnc" id="L81" title="All 2 branches missed.">                if (savedTabsChangeListener != null) savedTabsChangeListener.onTabsChanged();</span>
+            }
+<span class="nc" id="L83">        };</span>
+    }
+
+}
+
+
+
+
+
+
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

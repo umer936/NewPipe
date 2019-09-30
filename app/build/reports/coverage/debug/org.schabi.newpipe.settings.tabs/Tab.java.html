@@ -1,0 +1,479 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Tab.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.settings.tabs</a> &gt; <span class="el_source">Tab.java</span></div><h1>Tab.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.settings.tabs;
+
+import android.content.Context;
+import android.support.annotation.DrawableRes;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v4.app.Fragment;
+
+import com.grack.nanojson.JsonObject;
+import com.grack.nanojson.JsonSink;
+
+import org.jsoup.helper.StringUtil;
+import org.schabi.newpipe.App;
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.extractor.NewPipe;
+import org.schabi.newpipe.extractor.exceptions.ExtractionException;
+import org.schabi.newpipe.fragments.BlankFragment;
+import org.schabi.newpipe.fragments.list.channel.ChannelFragment;
+import org.schabi.newpipe.fragments.list.kiosk.KioskFragment;
+import org.schabi.newpipe.local.bookmark.BookmarkFragment;
+import org.schabi.newpipe.local.feed.FeedFragment;
+import org.schabi.newpipe.local.history.StatisticsPlaylistFragment;
+import org.schabi.newpipe.local.subscription.SubscriptionFragment;
+import org.schabi.newpipe.util.KioskTranslator;
+import org.schabi.newpipe.util.ServiceHelper;
+import org.schabi.newpipe.util.ThemeHelper;
+
+public abstract class Tab {
+<span class="nc" id="L29">    Tab() {</span>
+<span class="nc" id="L30">    }</span>
+
+<span class="nc" id="L32">    Tab(@NonNull JsonObject jsonObject) {</span>
+<span class="nc" id="L33">        readDataFromJson(jsonObject);</span>
+<span class="nc" id="L34">    }</span>
+
+    public abstract int getTabId();
+    public abstract String getTabName(Context context);
+    @DrawableRes public abstract int getTabIconRes(Context context);
+
+    /**
+     * Return a instance of the fragment that this tab represent.
+     */
+    public abstract Fragment getFragment() throws ExtractionException;
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="nc bnc" id="L47" title="All 4 branches missed.">        return obj instanceof Tab &amp;&amp; obj.getClass().equals(this.getClass())</span>
+<span class="nc bnc" id="L48" title="All 2 branches missed.">                &amp;&amp; ((Tab) obj).getTabId() == this.getTabId();</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // JSON Handling
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private static final String JSON_TAB_ID_KEY = &quot;tab_id&quot;;
+
+    public void writeJsonOn(JsonSink jsonSink) {
+<span class="nc" id="L58">        jsonSink.object();</span>
+
+<span class="nc" id="L60">        jsonSink.value(JSON_TAB_ID_KEY, getTabId());</span>
+<span class="nc" id="L61">        writeDataToJson(jsonSink);</span>
+
+<span class="nc" id="L63">        jsonSink.end();</span>
+<span class="nc" id="L64">    }</span>
+
+    protected void writeDataToJson(JsonSink writerSink) {
+        // No-op
+<span class="nc" id="L68">    }</span>
+
+    protected void readDataFromJson(JsonObject jsonObject) {
+        // No-op
+<span class="nc" id="L72">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Tab Handling
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Nullable
+    public static Tab from(@NonNull JsonObject jsonObject) {
+<span class="nc" id="L80">        final int tabId = jsonObject.getInt(Tab.JSON_TAB_ID_KEY, -1);</span>
+
+<span class="nc bnc" id="L82" title="All 2 branches missed.">        if (tabId == -1) {</span>
+<span class="nc" id="L83">            return null;</span>
+        }
+
+<span class="nc" id="L86">        return from(tabId, jsonObject);</span>
+    }
+
+    @Nullable
+    public static Tab from(final int tabId) {
+<span class="nc" id="L91">        return from(tabId, null);</span>
+    }
+
+    @Nullable
+    public static Type typeFrom(int tabId) {
+<span class="nc bnc" id="L96" title="All 2 branches missed.">        for (Type available : Type.values()) {</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">            if (available.getTabId() == tabId) {</span>
+<span class="nc" id="L98">                return available;</span>
+            }
+        }
+<span class="nc" id="L101">        return null;</span>
+    }
+
+    @Nullable
+    private static Tab from(final int tabId, @Nullable JsonObject jsonObject) {
+<span class="nc" id="L106">        final Type type = typeFrom(tabId);</span>
+
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        if (type == null) {</span>
+<span class="nc" id="L109">            return null;</span>
+        }
+
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        if (jsonObject != null) {</span>
+<span class="nc bnc" id="L113" title="All 4 branches missed.">            switch (type) {</span>
+                case KIOSK:
+<span class="nc" id="L115">                    return new KioskTab(jsonObject);</span>
+                case CHANNEL:
+<span class="nc" id="L117">                    return new ChannelTab(jsonObject);</span>
+                case DEFAULT_KIOSK:
+<span class="nc" id="L119">                    DefaultKioskTab tab = new DefaultKioskTab();</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">                    if(!StringUtil.isBlank(tab.getKioskId())){</span>
+<span class="nc" id="L121">                        return tab;</span>
+                    }
+<span class="nc" id="L123">                    return null;</span>
+            }
+        }
+
+<span class="nc" id="L127">        return type.getTab();</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Implementations
+    //////////////////////////////////////////////////////////////////////////*/
+
+<span class="nc" id="L134">    public enum Type {</span>
+<span class="nc" id="L135">        BLANK(new BlankTab()),</span>
+<span class="nc" id="L136">        SUBSCRIPTIONS(new SubscriptionsTab()),</span>
+<span class="nc" id="L137">        FEED(new FeedTab()),</span>
+<span class="nc" id="L138">        BOOKMARKS(new BookmarksTab()),</span>
+<span class="nc" id="L139">        HISTORY(new HistoryTab()),</span>
+<span class="nc" id="L140">        KIOSK(new KioskTab()),</span>
+<span class="nc" id="L141">        CHANNEL(new ChannelTab()),</span>
+<span class="nc" id="L142">        DEFAULT_KIOSK(new DefaultKioskTab());</span>
+
+        private Tab tab;
+
+<span class="nc" id="L146">        Type(Tab tab) {</span>
+<span class="nc" id="L147">            this.tab = tab;</span>
+<span class="nc" id="L148">        }</span>
+
+        public int getTabId() {
+<span class="nc" id="L151">            return tab.getTabId();</span>
+        }
+
+        public Tab getTab() {
+<span class="nc" id="L155">            return tab;</span>
+        }
+    }
+
+<span class="nc" id="L159">    public static class BlankTab extends Tab {</span>
+        public static final int ID = 0;
+
+        @Override
+        public int getTabId() {
+<span class="nc" id="L164">            return ID;</span>
+        }
+
+        @Override
+        public String getTabName(Context context) {
+<span class="nc" id="L169">            return &quot;NewPipe&quot;; //context.getString(R.string.blank_page_summary);</span>
+        }
+
+        @DrawableRes
+        @Override
+        public int getTabIconRes(Context context) {
+<span class="nc" id="L175">            return ThemeHelper.resolveResourceIdFromAttr(context, R.attr.ic_blank_page);</span>
+        }
+
+        @Override
+        public BlankFragment getFragment() {
+<span class="nc" id="L180">            return new BlankFragment();</span>
+        }
+    }
+
+<span class="nc" id="L184">    public static class SubscriptionsTab extends Tab {</span>
+        public static final int ID = 1;
+
+        @Override
+        public int getTabId() {
+<span class="nc" id="L189">            return ID;</span>
+        }
+
+        @Override
+        public String getTabName(Context context) {
+<span class="nc" id="L194">            return context.getString(R.string.tab_subscriptions);</span>
+        }
+
+        @DrawableRes
+        @Override
+        public int getTabIconRes(Context context) {
+<span class="nc" id="L200">            return ThemeHelper.resolveResourceIdFromAttr(context, R.attr.ic_channel);</span>
+        }
+
+        @Override
+        public SubscriptionFragment getFragment() {
+<span class="nc" id="L205">            return new SubscriptionFragment();</span>
+        }
+
+    }
+
+<span class="nc" id="L210">    public static class FeedTab extends Tab {</span>
+        public static final int ID = 2;
+
+        @Override
+        public int getTabId() {
+<span class="nc" id="L215">            return ID;</span>
+        }
+
+        @Override
+        public String getTabName(Context context) {
+<span class="nc" id="L220">            return context.getString(R.string.fragment_whats_new);</span>
+        }
+
+        @DrawableRes
+        @Override
+        public int getTabIconRes(Context context) {
+<span class="nc" id="L226">            return ThemeHelper.resolveResourceIdFromAttr(context, R.attr.rss);</span>
+        }
+
+        @Override
+        public FeedFragment getFragment() {
+<span class="nc" id="L231">            return new FeedFragment();</span>
+        }
+    }
+
+<span class="nc" id="L235">    public static class BookmarksTab extends Tab {</span>
+        public static final int ID = 3;
+
+        @Override
+        public int getTabId() {
+<span class="nc" id="L240">            return ID;</span>
+        }
+
+        @Override
+        public String getTabName(Context context) {
+<span class="nc" id="L245">            return context.getString(R.string.tab_bookmarks);</span>
+        }
+
+        @DrawableRes
+        @Override
+        public int getTabIconRes(Context context) {
+<span class="nc" id="L251">            return ThemeHelper.resolveResourceIdFromAttr(context, R.attr.ic_bookmark);</span>
+        }
+
+        @Override
+        public BookmarkFragment getFragment() {
+<span class="nc" id="L256">            return new BookmarkFragment();</span>
+        }
+    }
+
+<span class="nc" id="L260">    public static class HistoryTab extends Tab {</span>
+        public static final int ID = 4;
+
+        @Override
+        public int getTabId() {
+<span class="nc" id="L265">            return ID;</span>
+        }
+
+        @Override
+        public String getTabName(Context context) {
+<span class="nc" id="L270">            return context.getString(R.string.title_activity_history);</span>
+        }
+
+        @DrawableRes
+        @Override
+        public int getTabIconRes(Context context) {
+<span class="nc" id="L276">            return ThemeHelper.resolveResourceIdFromAttr(context, R.attr.history);</span>
+        }
+
+        @Override
+        public StatisticsPlaylistFragment getFragment() {
+<span class="nc" id="L281">            return new StatisticsPlaylistFragment();</span>
+        }
+    }
+
+    public static class KioskTab extends Tab {
+        public static final int ID = 5;
+
+        private int kioskServiceId;
+        private String kioskId;
+
+        private static final String JSON_KIOSK_SERVICE_ID_KEY = &quot;service_id&quot;;
+        private static final String JSON_KIOSK_ID_KEY = &quot;kiosk_id&quot;;
+
+        private KioskTab() {
+<span class="nc" id="L295">            this(-1, &quot;&lt;no-id&gt;&quot;);</span>
+<span class="nc" id="L296">        }</span>
+
+<span class="nc" id="L298">        public KioskTab(int kioskServiceId, String kioskId) {</span>
+<span class="nc" id="L299">            this.kioskServiceId = kioskServiceId;</span>
+<span class="nc" id="L300">            this.kioskId = kioskId;</span>
+<span class="nc" id="L301">        }</span>
+
+        public KioskTab(JsonObject jsonObject) {
+<span class="nc" id="L304">            super(jsonObject);</span>
+<span class="nc" id="L305">        }</span>
+
+        @Override
+        public int getTabId() {
+<span class="nc" id="L309">            return ID;</span>
+        }
+
+        @Override
+        public String getTabName(Context context) {
+<span class="nc" id="L314">            return KioskTranslator.getTranslatedKioskName(kioskId, context);</span>
+        }
+
+        @DrawableRes
+        @Override
+        public int getTabIconRes(Context context) {
+<span class="nc" id="L320">            final int kioskIcon = KioskTranslator.getKioskIcons(kioskId, context);</span>
+
+<span class="nc bnc" id="L322" title="All 2 branches missed.">            if (kioskIcon &lt;= 0) {</span>
+<span class="nc" id="L323">                throw new IllegalStateException(&quot;Kiosk ID is not valid: \&quot;&quot; + kioskId + &quot;\&quot;&quot;);</span>
+            }
+
+<span class="nc" id="L326">            return kioskIcon;</span>
+        }
+
+        @Override
+        public KioskFragment getFragment() throws ExtractionException {
+<span class="nc" id="L331">            return KioskFragment.getInstance(kioskServiceId, kioskId);</span>
+        }
+
+        @Override
+        protected void writeDataToJson(JsonSink writerSink) {
+<span class="nc" id="L336">            writerSink.value(JSON_KIOSK_SERVICE_ID_KEY, kioskServiceId)</span>
+<span class="nc" id="L337">                    .value(JSON_KIOSK_ID_KEY, kioskId);</span>
+<span class="nc" id="L338">        }</span>
+
+        @Override
+        protected void readDataFromJson(JsonObject jsonObject) {
+<span class="nc" id="L342">            kioskServiceId = jsonObject.getInt(JSON_KIOSK_SERVICE_ID_KEY, -1);</span>
+<span class="nc" id="L343">            kioskId = jsonObject.getString(JSON_KIOSK_ID_KEY, &quot;&lt;no-id&gt;&quot;);</span>
+<span class="nc" id="L344">        }</span>
+
+        public int getKioskServiceId() {
+<span class="nc" id="L347">            return kioskServiceId;</span>
+        }
+
+        public String getKioskId() {
+<span class="nc" id="L351">            return kioskId;</span>
+        }
+    }
+
+    public static class ChannelTab extends Tab {
+        public static final int ID = 6;
+
+        private int channelServiceId;
+        private String channelUrl;
+        private String channelName;
+
+        private static final String JSON_CHANNEL_SERVICE_ID_KEY = &quot;channel_service_id&quot;;
+        private static final String JSON_CHANNEL_URL_KEY = &quot;channel_url&quot;;
+        private static final String JSON_CHANNEL_NAME_KEY = &quot;channel_name&quot;;
+
+        private ChannelTab() {
+<span class="nc" id="L367">            this(-1, &quot;&lt;no-url&gt;&quot;, &quot;&lt;no-name&gt;&quot;);</span>
+<span class="nc" id="L368">        }</span>
+
+<span class="nc" id="L370">        public ChannelTab(int channelServiceId, String channelUrl, String channelName) {</span>
+<span class="nc" id="L371">            this.channelServiceId = channelServiceId;</span>
+<span class="nc" id="L372">            this.channelUrl = channelUrl;</span>
+<span class="nc" id="L373">            this.channelName = channelName;</span>
+<span class="nc" id="L374">        }</span>
+
+        public ChannelTab(JsonObject jsonObject) {
+<span class="nc" id="L377">            super(jsonObject);</span>
+<span class="nc" id="L378">        }</span>
+
+        @Override
+        public int getTabId() {
+<span class="nc" id="L382">            return ID;</span>
+        }
+
+        @Override
+        public String getTabName(Context context) {
+<span class="nc" id="L387">            return channelName;</span>
+        }
+
+        @DrawableRes
+        @Override
+        public int getTabIconRes(Context context) {
+<span class="nc" id="L393">            return ThemeHelper.resolveResourceIdFromAttr(context, R.attr.ic_channel);</span>
+        }
+
+        @Override
+        public ChannelFragment getFragment() {
+<span class="nc" id="L398">            return ChannelFragment.getInstance(channelServiceId, channelUrl, channelName);</span>
+        }
+
+        @Override
+        protected void writeDataToJson(JsonSink writerSink) {
+<span class="nc" id="L403">            writerSink.value(JSON_CHANNEL_SERVICE_ID_KEY, channelServiceId)</span>
+<span class="nc" id="L404">                    .value(JSON_CHANNEL_URL_KEY, channelUrl)</span>
+<span class="nc" id="L405">                    .value(JSON_CHANNEL_NAME_KEY, channelName);</span>
+<span class="nc" id="L406">        }</span>
+
+        @Override
+        protected void readDataFromJson(JsonObject jsonObject) {
+<span class="nc" id="L410">            channelServiceId = jsonObject.getInt(JSON_CHANNEL_SERVICE_ID_KEY, -1);</span>
+<span class="nc" id="L411">            channelUrl = jsonObject.getString(JSON_CHANNEL_URL_KEY, &quot;&lt;no-url&gt;&quot;);</span>
+<span class="nc" id="L412">            channelName = jsonObject.getString(JSON_CHANNEL_NAME_KEY, &quot;&lt;no-name&gt;&quot;);</span>
+<span class="nc" id="L413">        }</span>
+
+        public int getChannelServiceId() {
+<span class="nc" id="L416">            return channelServiceId;</span>
+        }
+
+        public String getChannelUrl() {
+<span class="nc" id="L420">            return channelUrl;</span>
+        }
+
+        public String getChannelName() {
+<span class="nc" id="L424">            return channelName;</span>
+        }
+    }
+
+    public static class DefaultKioskTab extends Tab {
+        public static final int ID = 7;
+
+        private int kioskServiceId;
+        private String kioskId;
+
+<span class="nc" id="L434">        protected DefaultKioskTab() {</span>
+<span class="nc" id="L435">            initKiosk();</span>
+<span class="nc" id="L436">        }</span>
+
+        public void initKiosk() {
+<span class="nc" id="L439">            this.kioskServiceId = ServiceHelper.getSelectedServiceId(App.getApp());</span>
+            try {
+<span class="nc" id="L441">                this.kioskId = NewPipe.getService(this.kioskServiceId).getKioskList().getDefaultKioskId();</span>
+<span class="nc" id="L442">            } catch (ExtractionException e) {</span>
+<span class="nc" id="L443">                this.kioskId = &quot;&quot;;</span>
+<span class="nc" id="L444">            }</span>
+<span class="nc" id="L445">        }</span>
+
+        @Override
+        public int getTabId() {
+<span class="nc" id="L449">            return ID;</span>
+        }
+
+        @Override
+        public String getTabName(Context context) {
+<span class="nc" id="L454">            return KioskTranslator.getTranslatedKioskName(kioskId, context);</span>
+        }
+
+        @DrawableRes
+        @Override
+        public int getTabIconRes(Context context) {
+<span class="nc" id="L460">            final int kioskIcon = KioskTranslator.getKioskIcons(kioskId, context);</span>
+
+<span class="nc bnc" id="L462" title="All 2 branches missed.">            if (kioskIcon &lt;= 0) {</span>
+<span class="nc" id="L463">                throw new IllegalStateException(&quot;Kiosk ID is not valid: \&quot;&quot; + kioskId + &quot;\&quot;&quot;);</span>
+            }
+
+<span class="nc" id="L466">            return kioskIcon;</span>
+        }
+
+        @Override
+        public KioskFragment getFragment() throws ExtractionException {
+<span class="nc" id="L471">            return KioskFragment.getInstance(kioskServiceId, kioskId);</span>
+        }
+
+        public String getKioskId() {
+<span class="nc" id="L475">            return kioskId;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

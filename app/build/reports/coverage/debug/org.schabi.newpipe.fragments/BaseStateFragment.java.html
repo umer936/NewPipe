@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BaseStateFragment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.fragments</a> &gt; <span class="el_source">BaseStateFragment.java</span></div><h1>BaseStateFragment.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.fragments;
+
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Bundle;
+import android.support.annotation.Nullable;
+import android.support.annotation.StringRes;
+import android.util.Log;
+import android.view.View;
+import android.widget.Button;
+import android.widget.ProgressBar;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import com.jakewharton.rxbinding2.view.RxView;
+
+import org.schabi.newpipe.BaseFragment;
+import org.schabi.newpipe.MainActivity;
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.ReCaptchaActivity;
+import org.schabi.newpipe.extractor.exceptions.ReCaptchaException;
+import org.schabi.newpipe.report.ErrorActivity;
+import org.schabi.newpipe.report.UserAction;
+import org.schabi.newpipe.util.ExtractorHelper;
+import org.schabi.newpipe.util.InfoCache;
+
+import java.io.IOException;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import icepick.State;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+
+import static org.schabi.newpipe.util.AnimationUtils.animateView;
+
+<span class="nc" id="L38">public abstract class BaseStateFragment&lt;I&gt; extends BaseFragment implements ViewContract&lt;I&gt; {</span>
+
+<span class="nc" id="L40">    @State</span>
+    protected AtomicBoolean wasLoading = new AtomicBoolean();
+<span class="nc" id="L42">    protected AtomicBoolean isLoading = new AtomicBoolean();</span>
+
+    @Nullable
+    protected View emptyStateView;
+    @Nullable
+    protected ProgressBar loadingProgressBar;
+
+    protected View errorPanelRoot;
+    protected Button errorButtonRetry;
+    protected TextView errorTextView;
+
+    @Override
+    public void onViewCreated(View rootView, Bundle savedInstanceState) {
+<span class="nc" id="L55">        super.onViewCreated(rootView, savedInstanceState);</span>
+<span class="nc" id="L56">        doInitialLoadLogic();</span>
+<span class="nc" id="L57">    }</span>
+
+    @Override
+    public void onPause() {
+<span class="nc" id="L61">        super.onPause();</span>
+<span class="nc" id="L62">        wasLoading.set(isLoading.get());</span>
+<span class="nc" id="L63">    }</span>
+
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Init
+    //////////////////////////////////////////////////////////////////////////*/
+
+
+    @Override
+    protected void initViews(View rootView, Bundle savedInstanceState) {
+<span class="nc" id="L73">        super.initViews(rootView, savedInstanceState);</span>
+
+<span class="nc" id="L75">        emptyStateView = rootView.findViewById(R.id.empty_state_view);</span>
+<span class="nc" id="L76">        loadingProgressBar = rootView.findViewById(R.id.loading_progress_bar);</span>
+
+<span class="nc" id="L78">        errorPanelRoot = rootView.findViewById(R.id.error_panel);</span>
+<span class="nc" id="L79">        errorButtonRetry = rootView.findViewById(R.id.error_button_retry);</span>
+<span class="nc" id="L80">        errorTextView = rootView.findViewById(R.id.error_message_view);</span>
+<span class="nc" id="L81">    }</span>
+
+    @Override
+    protected void initListeners() {
+<span class="nc" id="L85">        super.initListeners();</span>
+<span class="nc" id="L86">        RxView.clicks(errorButtonRetry)</span>
+<span class="nc" id="L87">                .debounce(300, TimeUnit.MILLISECONDS)</span>
+<span class="nc" id="L88">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L89">                .subscribe(o -&gt; onRetryButtonClicked());</span>
+<span class="nc" id="L90">    }</span>
+
+    protected void onRetryButtonClicked() {
+<span class="nc" id="L93">        reloadContent();</span>
+<span class="nc" id="L94">    }</span>
+
+    public void reloadContent() {
+<span class="nc" id="L97">        startLoading(true);</span>
+<span class="nc" id="L98">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Load
+    //////////////////////////////////////////////////////////////////////////*/
+
+    protected void doInitialLoadLogic() {
+<span class="nc" id="L105">        startLoading(true);</span>
+<span class="nc" id="L106">    }</span>
+
+    protected void startLoading(boolean forceLoad) {
+<span class="nc bnc" id="L109" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;startLoading() called with: forceLoad = [&quot; + forceLoad + &quot;]&quot;);</span>
+<span class="nc" id="L110">        showLoading();</span>
+<span class="nc" id="L111">        isLoading.set(true);</span>
+<span class="nc" id="L112">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Contract
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void showLoading() {
+<span class="nc bnc" id="L120" title="All 2 branches missed.">        if (emptyStateView != null) animateView(emptyStateView, false, 150);</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        if (loadingProgressBar != null) animateView(loadingProgressBar, true, 400);</span>
+<span class="nc" id="L122">        animateView(errorPanelRoot, false, 150);</span>
+<span class="nc" id="L123">    }</span>
+
+    @Override
+    public void hideLoading() {
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (emptyStateView != null) animateView(emptyStateView, false, 150);</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        if (loadingProgressBar != null) animateView(loadingProgressBar, false, 0);</span>
+<span class="nc" id="L129">        animateView(errorPanelRoot, false, 150);</span>
+<span class="nc" id="L130">    }</span>
+
+    @Override
+    public void showEmptyState() {
+<span class="nc" id="L134">        isLoading.set(false);</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">        if (emptyStateView != null) animateView(emptyStateView, true, 200);</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        if (loadingProgressBar != null) animateView(loadingProgressBar, false, 0);</span>
+<span class="nc" id="L137">        animateView(errorPanelRoot, false, 150);</span>
+<span class="nc" id="L138">    }</span>
+
+    @Override
+    public void showError(String message, boolean showRetryButton) {
+<span class="nc bnc" id="L142" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;showError() called with: message = [&quot; + message + &quot;], showRetryButton = [&quot; + showRetryButton + &quot;]&quot;);</span>
+<span class="nc" id="L143">        isLoading.set(false);</span>
+<span class="nc" id="L144">        InfoCache.getInstance().clearCache();</span>
+<span class="nc" id="L145">        hideLoading();</span>
+
+<span class="nc" id="L147">        errorTextView.setText(message);</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">        if (showRetryButton) animateView(errorButtonRetry, true, 600);</span>
+<span class="nc" id="L149">        else animateView(errorButtonRetry, false, 0);</span>
+<span class="nc" id="L150">        animateView(errorPanelRoot, true, 300);</span>
+<span class="nc" id="L151">    }</span>
+
+    @Override
+    public void handleResult(I result) {
+<span class="nc bnc" id="L155" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;handleResult() called with: result = [&quot; + result + &quot;]&quot;);</span>
+<span class="nc" id="L156">        hideLoading();</span>
+<span class="nc" id="L157">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Error handling
+    //////////////////////////////////////////////////////////////////////////*/
+
+    /**
+     * Default implementation handles some general exceptions
+     *
+     * @return if the exception was handled
+     */
+    protected boolean onError(Throwable exception) {
+<span class="nc bnc" id="L169" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onError() called with: exception = [&quot; + exception + &quot;]&quot;);</span>
+<span class="nc" id="L170">        isLoading.set(false);</span>
+
+<span class="nc bnc" id="L172" title="All 4 branches missed.">        if (isDetached() || isRemoving()) {</span>
+<span class="nc bnc" id="L173" title="All 2 branches missed.">            if (DEBUG) Log.w(TAG, &quot;onError() is detached or removing = [&quot; + exception + &quot;]&quot;);</span>
+<span class="nc" id="L174">            return true;</span>
+        }
+
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        if (ExtractorHelper.isInterruptedCaused(exception)) {</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">            if (DEBUG) Log.w(TAG, &quot;onError() isInterruptedCaused! = [&quot; + exception + &quot;]&quot;);</span>
+<span class="nc" id="L179">            return true;</span>
+        }
+
+<span class="nc bnc" id="L182" title="All 2 branches missed.">        if (exception instanceof ReCaptchaException) {</span>
+<span class="nc" id="L183">            onReCaptchaException((ReCaptchaException) exception);</span>
+<span class="nc" id="L184">            return true;</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">        } else if (exception instanceof IOException) {</span>
+<span class="nc" id="L186">            showError(getString(R.string.network_error), true);</span>
+<span class="nc" id="L187">            return true;</span>
+        }
+
+<span class="nc" id="L190">        return false;</span>
+    }
+
+    public void onReCaptchaException(ReCaptchaException exception) {
+<span class="nc bnc" id="L194" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onReCaptchaException() called&quot;);</span>
+<span class="nc" id="L195">        Toast.makeText(activity, R.string.recaptcha_request_toast, Toast.LENGTH_LONG).show();</span>
+        // Starting ReCaptcha Challenge Activity
+<span class="nc" id="L197">        Intent intent = new Intent(activity, ReCaptchaActivity.class);</span>
+<span class="nc" id="L198">        intent.putExtra(ReCaptchaActivity.RECAPTCHA_URL_EXTRA, exception.getUrl());</span>
+<span class="nc" id="L199">        startActivityForResult(intent, ReCaptchaActivity.RECAPTCHA_REQUEST);</span>
+
+<span class="nc" id="L201">        showError(getString(R.string.recaptcha_request_toast), false);</span>
+<span class="nc" id="L202">    }</span>
+
+    public void onUnrecoverableError(Throwable exception, UserAction userAction, String serviceName, String request, @StringRes int errorId) {
+<span class="nc" id="L205">        onUnrecoverableError(Collections.singletonList(exception), userAction, serviceName, request, errorId);</span>
+<span class="nc" id="L206">    }</span>
+
+    public void onUnrecoverableError(List&lt;Throwable&gt; exception, UserAction userAction, String serviceName, String request, @StringRes int errorId) {
+<span class="nc bnc" id="L209" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onUnrecoverableError() called with: exception = [&quot; + exception + &quot;]&quot;);</span>
+
+<span class="nc bnc" id="L211" title="All 2 branches missed.">        if (serviceName == null) serviceName = &quot;none&quot;;</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">        if (request == null) request = &quot;none&quot;;</span>
+
+<span class="nc" id="L214">        ErrorActivity.reportError(getContext(), exception, MainActivity.class, null, ErrorActivity.ErrorInfo.make(userAction, serviceName, request, errorId));</span>
+<span class="nc" id="L215">    }</span>
+
+    public void showSnackBarError(Throwable exception, UserAction userAction, String serviceName, String request, @StringRes int errorId) {
+<span class="nc" id="L218">        showSnackBarError(Collections.singletonList(exception), userAction, serviceName, request, errorId);</span>
+<span class="nc" id="L219">    }</span>
+
+    /**
+     * Show a SnackBar and only call ErrorActivity#reportError IF we a find a valid view (otherwise the error screen appears)
+     */
+    public void showSnackBarError(List&lt;Throwable&gt; exception, UserAction userAction, String serviceName, String request, @StringRes int errorId) {
+<span class="nc bnc" id="L225" title="All 2 branches missed.">        if (DEBUG) {</span>
+<span class="nc" id="L226">            Log.d(TAG, &quot;showSnackBarError() called with: exception = [&quot; + exception + &quot;], userAction = [&quot; + userAction + &quot;], request = [&quot; + request + &quot;], errorId = [&quot; + errorId + &quot;]&quot;);</span>
+        }
+<span class="nc bnc" id="L228" title="All 2 branches missed.">        View rootView = activity != null ? activity.findViewById(android.R.id.content) : null;</span>
+<span class="nc bnc" id="L229" title="All 4 branches missed.">        if (rootView == null &amp;&amp; getView() != null) rootView = getView();</span>
+<span class="nc bnc" id="L230" title="All 2 branches missed.">        if (rootView == null) return;</span>
+
+<span class="nc" id="L232">        ErrorActivity.reportError(getContext(), exception, MainActivity.class, rootView,</span>
+<span class="nc" id="L233">                ErrorActivity.ErrorInfo.make(userAction, serviceName, request, errorId));</span>
+<span class="nc" id="L234">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

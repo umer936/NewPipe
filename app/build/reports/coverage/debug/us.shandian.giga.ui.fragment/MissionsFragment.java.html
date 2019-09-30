@@ -1,0 +1,334 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MissionsFragment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">us.shandian.giga.ui.fragment</a> &gt; <span class="el_source">MissionsFragment.java</span></div><h1>MissionsFragment.java</h1><pre class="source lang-java linenums">package us.shandian.giga.ui.fragment;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
+import android.content.SharedPreferences;
+import android.net.Uri;
+import android.os.Bundle;
+import android.os.Environment;
+import android.os.IBinder;
+import android.preference.PreferenceManager;
+import android.support.annotation.NonNull;
+import android.support.v4.app.Fragment;
+import android.support.v7.widget.GridLayoutManager;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Toast;
+
+import com.nononsenseapps.filepicker.Utils;
+
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.settings.NewPipeSettings;
+import org.schabi.newpipe.util.FilePickerActivityHelper;
+import org.schabi.newpipe.util.ThemeHelper;
+
+import java.io.File;
+import java.io.IOException;
+
+import us.shandian.giga.get.DownloadMission;
+import us.shandian.giga.io.StoredFileHelper;
+import us.shandian.giga.service.DownloadManager;
+import us.shandian.giga.service.DownloadManagerService;
+import us.shandian.giga.service.DownloadManagerService.DownloadManagerBinder;
+import us.shandian.giga.ui.adapter.MissionAdapter;
+
+<span class="nc" id="L44">public class MissionsFragment extends Fragment {</span>
+
+    private static final int SPAN_SIZE = 2;
+    private static final int REQUEST_DOWNLOAD_SAVE_AS = 0x1230;
+
+    private SharedPreferences mPrefs;
+    private boolean mLinear;
+    private MenuItem mSwitch;
+<span class="nc" id="L52">    private MenuItem mClear = null;</span>
+<span class="nc" id="L53">    private MenuItem mStart = null;</span>
+<span class="nc" id="L54">    private MenuItem mPause = null;</span>
+
+    private RecyclerView mList;
+    private View mEmpty;
+    private MissionAdapter mAdapter;
+    private GridLayoutManager mGridManager;
+    private LinearLayoutManager mLinearManager;
+    private Context mContext;
+
+    private DownloadManagerBinder mBinder;
+    private boolean mForceUpdate;
+
+<span class="nc" id="L66">    private DownloadMission unsafeMissionTarget = null;</span>
+
+<span class="nc" id="L68">    private ServiceConnection mConnection = new ServiceConnection() {</span>
+
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder binder) {
+<span class="nc" id="L72">            mBinder = (DownloadManagerBinder) binder;</span>
+<span class="nc" id="L73">            mBinder.clearDownloadNotifications();</span>
+
+<span class="nc" id="L75">            mAdapter = new MissionAdapter(mContext, mBinder.getDownloadManager(), mEmpty);</span>
+<span class="nc" id="L76">            mAdapter.deleterLoad(getView());</span>
+
+<span class="nc" id="L78">            mAdapter.setRecover(MissionsFragment.this::recoverMission);</span>
+
+<span class="nc" id="L80">            setAdapterButtons();</span>
+
+<span class="nc" id="L82">            mBinder.addMissionEventListener(mAdapter);</span>
+<span class="nc" id="L83">            mBinder.enableNotifications(false);</span>
+
+<span class="nc" id="L85">            updateList();</span>
+<span class="nc" id="L86">        }</span>
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            // What to do?
+<span class="nc" id="L91">        }</span>
+
+
+    };
+
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+<span class="nc" id="L98">        View v = inflater.inflate(R.layout.missions, container, false);</span>
+
+<span class="nc" id="L100">        mPrefs = PreferenceManager.getDefaultSharedPreferences(getActivity());</span>
+<span class="nc" id="L101">        mLinear = mPrefs.getBoolean(&quot;linear&quot;, false);</span>
+
+        // Bind the service
+<span class="nc" id="L104">        mContext.bindService(new Intent(mContext, DownloadManagerService.class), mConnection, Context.BIND_AUTO_CREATE);</span>
+
+        // Views
+<span class="nc" id="L107">        mEmpty = v.findViewById(R.id.list_empty_view);</span>
+<span class="nc" id="L108">        mList = v.findViewById(R.id.mission_recycler);</span>
+
+        // Init layouts managers
+<span class="nc" id="L111">        mGridManager = new GridLayoutManager(getActivity(), SPAN_SIZE);</span>
+<span class="nc" id="L112">        mGridManager.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {</span>
+            @Override
+            public int getSpanSize(int position) {
+<span class="nc bnc" id="L115" title="All 2 branches missed.">                switch (mAdapter.getItemViewType(position)) {</span>
+                    case DownloadManager.SPECIAL_PENDING:
+                    case DownloadManager.SPECIAL_FINISHED:
+<span class="nc" id="L118">                        return SPAN_SIZE;</span>
+                    default:
+<span class="nc" id="L120">                        return 1;</span>
+                }
+            }
+        });
+<span class="nc" id="L124">        mLinearManager = new LinearLayoutManager(getActivity());</span>
+
+<span class="nc" id="L126">        setHasOptionsMenu(true);</span>
+
+<span class="nc" id="L128">        return v;</span>
+    }
+
+    /**
+     * Added in API level 23.
+     */
+    @Override
+    public void onAttach(Context context) {
+<span class="nc" id="L136">        super.onAttach(context);</span>
+
+        // Bug: in api&lt; 23 this is never called
+        // so mActivity=null
+        // so app crashes with null-pointer exception
+<span class="nc" id="L141">        mContext = context;</span>
+<span class="nc" id="L142">    }</span>
+
+    /**
+     * deprecated in API level 23,
+     * but must remain to allow compatibility with api&lt;23
+     */
+    @SuppressWarnings(&quot;deprecation&quot;)
+    @Override
+    public void onAttach(Activity activity) {
+<span class="nc" id="L151">        super.onAttach(activity);</span>
+
+<span class="nc" id="L153">        mContext = activity;</span>
+<span class="nc" id="L154">    }</span>
+
+
+    @Override
+    public void onDestroy() {
+<span class="nc" id="L159">        super.onDestroy();</span>
+<span class="nc bnc" id="L160" title="All 4 branches missed.">        if (mBinder == null || mAdapter == null) return;</span>
+
+<span class="nc" id="L162">        mBinder.removeMissionEventListener(mAdapter);</span>
+<span class="nc" id="L163">        mBinder.enableNotifications(true);</span>
+<span class="nc" id="L164">        mContext.unbindService(mConnection);</span>
+<span class="nc" id="L165">        mAdapter.deleterDispose(true);</span>
+
+<span class="nc" id="L167">        mBinder = null;</span>
+<span class="nc" id="L168">        mAdapter = null;</span>
+<span class="nc" id="L169">    }</span>
+
+    @Override
+    public void onPrepareOptionsMenu(Menu menu) {
+<span class="nc" id="L173">        mSwitch = menu.findItem(R.id.switch_mode);</span>
+<span class="nc" id="L174">        mClear = menu.findItem(R.id.clear_list);</span>
+<span class="nc" id="L175">        mStart = menu.findItem(R.id.start_downloads);</span>
+<span class="nc" id="L176">        mPause = menu.findItem(R.id.pause_downloads);</span>
+
+<span class="nc bnc" id="L178" title="All 2 branches missed.">        if (mAdapter != null) setAdapterButtons();</span>
+
+<span class="nc" id="L180">        super.onPrepareOptionsMenu(menu);</span>
+<span class="nc" id="L181">    }</span>
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+<span class="nc bnc" id="L185" title="All 5 branches missed.">        switch (item.getItemId()) {</span>
+            case R.id.switch_mode:
+<span class="nc bnc" id="L187" title="All 2 branches missed.">                mLinear = !mLinear;</span>
+<span class="nc" id="L188">                updateList();</span>
+<span class="nc" id="L189">                return true;</span>
+            case R.id.clear_list:
+<span class="nc" id="L191">                AlertDialog.Builder prompt = new AlertDialog.Builder(mContext);</span>
+<span class="nc" id="L192">                prompt.setTitle(R.string.clear_finished_download);</span>
+<span class="nc" id="L193">                prompt.setMessage(R.string.confirm_prompt);</span>
+<span class="nc" id="L194">                prompt.setPositiveButton(android.R.string.ok, (dialog, which) -&gt; mAdapter.clearFinishedDownloads());</span>
+<span class="nc" id="L195">                prompt.setNegativeButton(R.string.cancel, null);</span>
+<span class="nc" id="L196">                prompt.create().show();</span>
+<span class="nc" id="L197">                return true;</span>
+            case R.id.start_downloads:
+<span class="nc" id="L199">                item.setVisible(false);</span>
+<span class="nc" id="L200">                mBinder.getDownloadManager().startAllMissions();</span>
+<span class="nc" id="L201">                return true;</span>
+            case R.id.pause_downloads:
+<span class="nc" id="L203">                item.setVisible(false);</span>
+<span class="nc" id="L204">                mBinder.getDownloadManager().pauseAllMissions(false);</span>
+<span class="nc" id="L205">                mAdapter.ensurePausedMissions();// update items view</span>
+            default:
+<span class="nc" id="L207">                return super.onOptionsItemSelected(item);</span>
+        }
+    }
+
+    private void updateList() {
+<span class="nc bnc" id="L212" title="All 2 branches missed.">        if (mLinear) {</span>
+<span class="nc" id="L213">            mList.setLayoutManager(mLinearManager);</span>
+        } else {
+<span class="nc" id="L215">            mList.setLayoutManager(mGridManager);</span>
+        }
+
+        // destroy all created views in the recycler
+<span class="nc" id="L219">        mList.setAdapter(null);</span>
+<span class="nc" id="L220">        mAdapter.notifyDataSetChanged();</span>
+
+        // re-attach the adapter in grid/lineal mode
+<span class="nc" id="L223">        mAdapter.setLinear(mLinear);</span>
+<span class="nc" id="L224">        mList.setAdapter(mAdapter);</span>
+
+<span class="nc bnc" id="L226" title="All 2 branches missed.">        if (mSwitch != null) {</span>
+<span class="nc" id="L227">            boolean isLight = ThemeHelper.isLightThemeSelected(mContext);</span>
+            int icon;
+
+<span class="nc bnc" id="L230" title="All 2 branches missed.">            if (mLinear)</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">                icon = isLight ? R.drawable.ic_grid_black_24dp : R.drawable.ic_grid_white_24dp;</span>
+            else
+<span class="nc bnc" id="L233" title="All 2 branches missed.">                icon = isLight ? R.drawable.ic_list_black_24dp : R.drawable.ic_list_white_24dp;</span>
+
+<span class="nc" id="L235">            mSwitch.setIcon(icon);</span>
+<span class="nc bnc" id="L236" title="All 2 branches missed.">            mSwitch.setTitle(mLinear ? R.string.grid : R.string.list);</span>
+<span class="nc" id="L237">            mPrefs.edit().putBoolean(&quot;linear&quot;, mLinear).apply();</span>
+        }
+<span class="nc" id="L239">    }</span>
+
+    private void setAdapterButtons() {
+<span class="nc bnc" id="L242" title="All 6 branches missed.">        if (mClear == null || mStart == null || mPause == null) return;</span>
+
+<span class="nc" id="L244">        mAdapter.setClearButton(mClear);</span>
+<span class="nc" id="L245">        mAdapter.setMasterButtons(mStart, mPause);</span>
+<span class="nc" id="L246">    }</span>
+
+    private void recoverMission(@NonNull DownloadMission mission) {
+<span class="nc" id="L249">        unsafeMissionTarget = mission;</span>
+
+<span class="nc bnc" id="L251" title="All 2 branches missed.">        if (NewPipeSettings.useStorageAccessFramework(mContext)) {</span>
+<span class="nc" id="L252">            StoredFileHelper.requestSafWithFileCreation(</span>
+                    MissionsFragment.this,
+                    REQUEST_DOWNLOAD_SAVE_AS,
+<span class="nc" id="L255">                    mission.storage.getName(),</span>
+<span class="nc" id="L256">                    mission.storage.getType()</span>
+            );
+
+        } else {
+            File initialSavePath;
+<span class="nc bnc" id="L261" title="All 2 branches missed.">            if (DownloadManager.TAG_VIDEO.equals(mission.storage.getType()))</span>
+<span class="nc" id="L262">                initialSavePath = NewPipeSettings.getDir(Environment.DIRECTORY_MOVIES);</span>
+            else
+<span class="nc" id="L264">                initialSavePath = NewPipeSettings.getDir(Environment.DIRECTORY_MUSIC);</span>
+
+<span class="nc" id="L266">            initialSavePath = new File(initialSavePath, mission.storage.getName());</span>
+<span class="nc" id="L267">            startActivityForResult(</span>
+<span class="nc" id="L268">                    FilePickerActivityHelper.chooseFileToSave(mContext, initialSavePath.getAbsolutePath()),</span>
+                    REQUEST_DOWNLOAD_SAVE_AS
+            );
+        }
+<span class="nc" id="L272">    }</span>
+
+    @Override
+    public void onSaveInstanceState(@NonNull Bundle outState) {
+<span class="nc" id="L276">        super.onSaveInstanceState(outState);</span>
+
+<span class="nc bnc" id="L278" title="All 2 branches missed.">        if (mAdapter != null) {</span>
+<span class="nc" id="L279">            mAdapter.deleterDispose(false);</span>
+<span class="nc" id="L280">            mForceUpdate = true;</span>
+<span class="nc" id="L281">            mBinder.removeMissionEventListener(mAdapter);</span>
+        }
+<span class="nc" id="L283">    }</span>
+
+    @Override
+    public void onResume() {
+<span class="nc" id="L287">        super.onResume();</span>
+
+<span class="nc bnc" id="L289" title="All 2 branches missed.">        if (mAdapter != null) {</span>
+<span class="nc" id="L290">            mAdapter.deleterResume();</span>
+
+<span class="nc bnc" id="L292" title="All 2 branches missed.">            if (mForceUpdate) {</span>
+<span class="nc" id="L293">                mForceUpdate = false;</span>
+<span class="nc" id="L294">                mAdapter.forceUpdate();</span>
+            }
+
+<span class="nc" id="L297">            mBinder.addMissionEventListener(mAdapter);</span>
+<span class="nc" id="L298">            mAdapter.checkMasterButtonsVisibility();</span>
+        }
+<span class="nc bnc" id="L300" title="All 2 branches missed.">        if (mBinder != null) mBinder.enableNotifications(false);</span>
+<span class="nc" id="L301">    }</span>
+
+    @Override
+    public void onPause() {
+<span class="nc" id="L305">        super.onPause();</span>
+<span class="nc bnc" id="L306" title="All 2 branches missed.">        if (mAdapter != null) mAdapter.onPaused();</span>
+<span class="nc bnc" id="L307" title="All 2 branches missed.">        if (mBinder != null) mBinder.enableNotifications(true);</span>
+<span class="nc" id="L308">    }</span>
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+<span class="nc" id="L312">        super.onActivityResult(requestCode, resultCode, data);</span>
+
+<span class="nc bnc" id="L314" title="All 4 branches missed.">        if (requestCode != REQUEST_DOWNLOAD_SAVE_AS || resultCode != Activity.RESULT_OK) return;</span>
+
+<span class="nc bnc" id="L316" title="All 4 branches missed.">        if (unsafeMissionTarget == null || data.getData() == null) {</span>
+<span class="nc" id="L317">            return;</span>
+        }
+
+        try {
+<span class="nc" id="L321">            Uri fileUri = data.getData();</span>
+<span class="nc bnc" id="L322" title="All 4 branches missed.">            if (fileUri.getAuthority() != null &amp;&amp; FilePickerActivityHelper.isOwnFileUri(mContext, fileUri)) {</span>
+<span class="nc" id="L323">                fileUri = Uri.fromFile(Utils.getFileForUri(fileUri));</span>
+            }
+
+<span class="nc" id="L326">            String tag = unsafeMissionTarget.storage.getTag();</span>
+<span class="nc" id="L327">            unsafeMissionTarget.storage = new StoredFileHelper(mContext, null, fileUri, tag);</span>
+<span class="nc" id="L328">            mAdapter.recoverMission(unsafeMissionTarget);</span>
+<span class="nc" id="L329">        } catch (IOException e) {</span>
+<span class="nc" id="L330">            Toast.makeText(mContext, R.string.general_error, Toast.LENGTH_LONG).show();</span>
+<span class="nc" id="L331">        }</span>
+<span class="nc" id="L332">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

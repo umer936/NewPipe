@@ -1,0 +1,449 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PlaylistFragment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.fragments.list.playlist</a> &gt; <span class="el_source">PlaylistFragment.java</span></div><h1>PlaylistFragment.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.fragments.list.playlist;
+
+import android.app.Activity;
+import android.content.Context;
+import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v4.app.Fragment;
+import android.support.v7.app.AppCompatActivity;
+import android.text.TextUtils;
+import android.util.Log;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ImageView;
+import android.widget.TextView;
+
+import org.reactivestreams.Subscriber;
+import org.reactivestreams.Subscription;
+import org.schabi.newpipe.NewPipeDatabase;
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.database.playlist.model.PlaylistRemoteEntity;
+import org.schabi.newpipe.extractor.InfoItem;
+import org.schabi.newpipe.extractor.ListExtractor;
+import org.schabi.newpipe.extractor.NewPipe;
+import org.schabi.newpipe.extractor.exceptions.ExtractionException;
+import org.schabi.newpipe.extractor.playlist.PlaylistInfo;
+import org.schabi.newpipe.extractor.stream.StreamInfoItem;
+import org.schabi.newpipe.extractor.stream.StreamType;
+import org.schabi.newpipe.fragments.list.BaseListInfoFragment;
+import org.schabi.newpipe.info_list.InfoItemDialog;
+import org.schabi.newpipe.local.playlist.RemotePlaylistManager;
+import org.schabi.newpipe.player.playqueue.PlayQueue;
+import org.schabi.newpipe.player.playqueue.PlaylistPlayQueue;
+import org.schabi.newpipe.report.ErrorActivity;
+import org.schabi.newpipe.report.UserAction;
+import org.schabi.newpipe.util.ExtractorHelper;
+import org.schabi.newpipe.util.ImageDisplayConstants;
+import org.schabi.newpipe.util.NavigationHelper;
+import org.schabi.newpipe.util.ShareUtils;
+import org.schabi.newpipe.util.StreamDialogEntry;
+import org.schabi.newpipe.util.ThemeHelper;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import io.reactivex.Flowable;
+import io.reactivex.Single;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.disposables.Disposables;
+
+import static org.schabi.newpipe.util.AnimationUtils.animateView;
+
+<span class="nc" id="L60">public class PlaylistFragment extends BaseListInfoFragment&lt;PlaylistInfo&gt; {</span>
+
+    private CompositeDisposable disposables;
+    private Subscription bookmarkReactor;
+    private AtomicBoolean isBookmarkButtonReady;
+
+    private RemotePlaylistManager remotePlaylistManager;
+    private PlaylistRemoteEntity playlistEntity;
+    /*//////////////////////////////////////////////////////////////////////////
+    // Views
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private View headerRootLayout;
+    private TextView headerTitleView;
+    private View headerUploaderLayout;
+    private TextView headerUploaderName;
+    private ImageView headerUploaderAvatar;
+    private TextView headerStreamCount;
+    private View playlistCtrl;
+
+    private View headerPlayAllButton;
+    private View headerPopupButton;
+    private View headerBackgroundButton;
+
+    private MenuItem playlistBookmarkButton;
+
+    public static PlaylistFragment getInstance(int serviceId, String url, String name) {
+<span class="nc" id="L87">        PlaylistFragment instance = new PlaylistFragment();</span>
+<span class="nc" id="L88">        instance.setInitialData(serviceId, url, name);</span>
+<span class="nc" id="L89">        return instance;</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // LifeCycle
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+<span class="nc" id="L98">        super.onCreate(savedInstanceState);</span>
+<span class="nc" id="L99">        disposables = new CompositeDisposable();</span>
+<span class="nc" id="L100">        isBookmarkButtonReady = new AtomicBoolean(false);</span>
+<span class="nc" id="L101">        remotePlaylistManager = new RemotePlaylistManager(NewPipeDatabase.getInstance(</span>
+<span class="nc" id="L102">                requireContext()));</span>
+<span class="nc" id="L103">    }</span>
+
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
+                             @Nullable Bundle savedInstanceState) {
+<span class="nc" id="L108">        return inflater.inflate(R.layout.fragment_playlist, container, false);</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Init
+    //////////////////////////////////////////////////////////////////////////*/
+
+    protected View getListHeader() {
+<span class="nc" id="L116">        headerRootLayout = activity.getLayoutInflater().inflate(R.layout.playlist_header, itemsList, false);</span>
+<span class="nc" id="L117">        headerTitleView = headerRootLayout.findViewById(R.id.playlist_title_view);</span>
+<span class="nc" id="L118">        headerUploaderLayout = headerRootLayout.findViewById(R.id.uploader_layout);</span>
+<span class="nc" id="L119">        headerUploaderName = headerRootLayout.findViewById(R.id.uploader_name);</span>
+<span class="nc" id="L120">        headerUploaderAvatar = headerRootLayout.findViewById(R.id.uploader_avatar_view);</span>
+<span class="nc" id="L121">        headerStreamCount = headerRootLayout.findViewById(R.id.playlist_stream_count);</span>
+<span class="nc" id="L122">        playlistCtrl = headerRootLayout.findViewById(R.id.playlist_control);</span>
+
+<span class="nc" id="L124">        headerPlayAllButton = headerRootLayout.findViewById(R.id.playlist_ctrl_play_all_button);</span>
+<span class="nc" id="L125">        headerPopupButton = headerRootLayout.findViewById(R.id.playlist_ctrl_play_popup_button);</span>
+<span class="nc" id="L126">        headerBackgroundButton = headerRootLayout.findViewById(R.id.playlist_ctrl_play_bg_button);</span>
+
+
+<span class="nc" id="L129">        return headerRootLayout;</span>
+    }
+
+    @Override
+    protected void initViews(View rootView, Bundle savedInstanceState) {
+<span class="nc" id="L134">        super.initViews(rootView, savedInstanceState);</span>
+
+<span class="nc" id="L136">        infoListAdapter.useMiniItemVariants(true);</span>
+<span class="nc" id="L137">    }</span>
+
+    private PlayQueue getPlayQueueStartingAt(StreamInfoItem infoItem) {
+<span class="nc" id="L140">        return getPlayQueue(Math.max(infoListAdapter.getItemsList().indexOf(infoItem), 0));</span>
+    }
+
+    @Override
+    protected void showStreamDialog(StreamInfoItem item) {
+<span class="nc" id="L145">        final Context context = getContext();</span>
+<span class="nc" id="L146">        final Activity activity = getActivity();</span>
+<span class="nc bnc" id="L147" title="All 6 branches missed.">        if (context == null || context.getResources() == null || activity == null) return;</span>
+
+<span class="nc bnc" id="L149" title="All 2 branches missed.">        if (item.getStreamType() == StreamType.AUDIO_STREAM) {</span>
+<span class="nc" id="L150">            StreamDialogEntry.setEnabledEntries(</span>
+                    StreamDialogEntry.enqueue_on_background,
+                    StreamDialogEntry.start_here_on_background,
+                    StreamDialogEntry.append_playlist,
+                    StreamDialogEntry.share);
+        } else {
+<span class="nc" id="L156">            StreamDialogEntry.setEnabledEntries(</span>
+                    StreamDialogEntry.enqueue_on_background,
+                    StreamDialogEntry.enqueue_on_popup,
+                    StreamDialogEntry.start_here_on_background,
+                    StreamDialogEntry.start_here_on_popup,
+                    StreamDialogEntry.append_playlist,
+                    StreamDialogEntry.share);
+
+<span class="nc" id="L164">            StreamDialogEntry.start_here_on_popup.setCustomAction(</span>
+<span class="nc" id="L165">                    (fragment, infoItem) -&gt; NavigationHelper.playOnPopupPlayer(context, getPlayQueueStartingAt(infoItem), true));</span>
+        }
+
+<span class="nc" id="L168">        StreamDialogEntry.start_here_on_background.setCustomAction(</span>
+<span class="nc" id="L169">                (fragment, infoItem) -&gt; NavigationHelper.playOnBackgroundPlayer(context, getPlayQueueStartingAt(infoItem), true));</span>
+
+<span class="nc" id="L171">        new InfoItemDialog(activity, item, StreamDialogEntry.getCommands(context), (dialog, which) -&gt;</span>
+<span class="nc" id="L172">                StreamDialogEntry.clickOn(which, this, item)).show();</span>
+<span class="nc" id="L173">    }</span>
+
+    @Override
+    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onCreateOptionsMenu() called with: menu = [&quot; + menu +</span>
+                &quot;], inflater = [&quot; + inflater + &quot;]&quot;);
+<span class="nc" id="L179">        super.onCreateOptionsMenu(menu, inflater);</span>
+<span class="nc" id="L180">        inflater.inflate(R.menu.menu_playlist, menu);</span>
+
+<span class="nc" id="L182">        playlistBookmarkButton = menu.findItem(R.id.menu_item_bookmark);</span>
+<span class="nc" id="L183">        updateBookmarkButtons();</span>
+<span class="nc" id="L184">    }</span>
+
+    @Override
+    public void onDestroyView() {
+<span class="nc" id="L188">        super.onDestroyView();</span>
+<span class="nc bnc" id="L189" title="All 2 branches missed.">        if (isBookmarkButtonReady != null) isBookmarkButtonReady.set(false);</span>
+
+<span class="nc bnc" id="L191" title="All 2 branches missed.">        if (disposables != null) disposables.clear();</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">        if (bookmarkReactor != null) bookmarkReactor.cancel();</span>
+
+<span class="nc" id="L194">        bookmarkReactor = null;</span>
+<span class="nc" id="L195">    }</span>
+
+    @Override
+    public void onDestroy() {
+<span class="nc" id="L199">        super.onDestroy();</span>
+
+<span class="nc bnc" id="L201" title="All 2 branches missed.">        if (disposables != null) disposables.dispose();</span>
+
+<span class="nc" id="L203">        disposables = null;</span>
+<span class="nc" id="L204">        remotePlaylistManager = null;</span>
+<span class="nc" id="L205">        playlistEntity = null;</span>
+<span class="nc" id="L206">        isBookmarkButtonReady = null;</span>
+<span class="nc" id="L207">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Load and handle
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    protected Single&lt;ListExtractor.InfoItemsPage&gt; loadMoreItemsLogic() {
+<span class="nc" id="L215">        return ExtractorHelper.getMorePlaylistItems(serviceId, url, currentNextPageUrl);</span>
+    }
+
+    @Override
+    protected Single&lt;PlaylistInfo&gt; loadResult(boolean forceLoad) {
+<span class="nc" id="L220">        return ExtractorHelper.getPlaylistInfo(serviceId, url, forceLoad);</span>
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+<span class="nc bnc" id="L225" title="All 4 branches missed.">        switch (item.getItemId()) {</span>
+            case R.id.menu_item_openInBrowser:
+<span class="nc" id="L227">                ShareUtils.openUrlInBrowser(this.getContext(), url);</span>
+<span class="nc" id="L228">                break;</span>
+            case R.id.menu_item_share:
+<span class="nc" id="L230">                ShareUtils.shareUrl(this.getContext(), name, url);</span>
+<span class="nc" id="L231">                break;</span>
+            case R.id.menu_item_bookmark:
+<span class="nc" id="L233">                onBookmarkClicked();</span>
+<span class="nc" id="L234">                break;</span>
+            default:
+<span class="nc" id="L236">                return super.onOptionsItemSelected(item);</span>
+        }
+<span class="nc" id="L238">        return true;</span>
+    }
+
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Contract
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void showLoading() {
+<span class="nc" id="L248">        super.showLoading();</span>
+<span class="nc" id="L249">        animateView(headerRootLayout, false, 200);</span>
+<span class="nc" id="L250">        animateView(itemsList, false, 100);</span>
+
+<span class="nc" id="L252">        imageLoader.cancelDisplayTask(headerUploaderAvatar);</span>
+<span class="nc" id="L253">        animateView(headerUploaderLayout, false, 200);</span>
+<span class="nc" id="L254">    }</span>
+
+    @Override
+    public void handleResult(@NonNull final PlaylistInfo result) {
+<span class="nc" id="L258">        super.handleResult(result);</span>
+
+<span class="nc" id="L260">        animateView(headerRootLayout, true, 100);</span>
+<span class="nc" id="L261">        animateView(headerUploaderLayout, true, 300);</span>
+<span class="nc" id="L262">        headerUploaderLayout.setOnClickListener(null);</span>
+<span class="nc bnc" id="L263" title="All 2 branches missed.">        if (!TextUtils.isEmpty(result.getUploaderName())) {</span>
+<span class="nc" id="L264">            headerUploaderName.setText(result.getUploaderName());</span>
+<span class="nc bnc" id="L265" title="All 2 branches missed.">            if (!TextUtils.isEmpty(result.getUploaderUrl())) {</span>
+<span class="nc" id="L266">                headerUploaderLayout.setOnClickListener(v -&gt; {</span>
+                    try {
+<span class="nc" id="L268">                        NavigationHelper.openChannelFragment(getFragmentManager(),</span>
+<span class="nc" id="L269">                                result.getServiceId(),</span>
+<span class="nc" id="L270">                                result.getUploaderUrl(),</span>
+<span class="nc" id="L271">                                result.getUploaderName());</span>
+<span class="nc" id="L272">                    } catch (Exception e) {</span>
+<span class="nc" id="L273">                        ErrorActivity.reportUiError((AppCompatActivity) getActivity(), e);</span>
+<span class="nc" id="L274">                    }</span>
+<span class="nc" id="L275">                });</span>
+            }
+        }
+
+<span class="nc" id="L279">        playlistCtrl.setVisibility(View.VISIBLE);</span>
+
+<span class="nc" id="L281">        imageLoader.displayImage(result.getUploaderAvatarUrl(), headerUploaderAvatar,</span>
+                ImageDisplayConstants.DISPLAY_AVATAR_OPTIONS);
+<span class="nc" id="L283">        headerStreamCount.setText(getResources().getQuantityString(R.plurals.videos,</span>
+<span class="nc" id="L284">                (int) result.getStreamCount(), (int) result.getStreamCount()));</span>
+
+<span class="nc bnc" id="L286" title="All 2 branches missed.">        if (!result.getErrors().isEmpty()) {</span>
+<span class="nc" id="L287">            showSnackBarError(result.getErrors(), UserAction.REQUESTED_PLAYLIST, NewPipe.getNameOfService(result.getServiceId()), result.getUrl(), 0);</span>
+        }
+
+<span class="nc" id="L290">        remotePlaylistManager.getPlaylist(result)</span>
+<span class="nc" id="L291">                .flatMap(lists -&gt; getUpdateProcessor(lists, result), (lists, id) -&gt; lists)</span>
+<span class="nc" id="L292">                .onBackpressureLatest()</span>
+<span class="nc" id="L293">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L294">                .subscribe(getPlaylistBookmarkSubscriber());</span>
+
+<span class="nc" id="L296">        headerPlayAllButton.setOnClickListener(view -&gt;</span>
+<span class="nc" id="L297">                NavigationHelper.playOnMainPlayer(activity, getPlayQueue(), false));</span>
+<span class="nc" id="L298">        headerPopupButton.setOnClickListener(view -&gt;</span>
+<span class="nc" id="L299">                NavigationHelper.playOnPopupPlayer(activity, getPlayQueue(), false));</span>
+<span class="nc" id="L300">        headerBackgroundButton.setOnClickListener(view -&gt;</span>
+<span class="nc" id="L301">                NavigationHelper.playOnBackgroundPlayer(activity, getPlayQueue(), false));</span>
+
+<span class="nc" id="L303">        headerPopupButton.setOnLongClickListener(view -&gt; {</span>
+<span class="nc" id="L304">            NavigationHelper.enqueueOnPopupPlayer(activity, getPlayQueue(), true);</span>
+<span class="nc" id="L305">            return true;</span>
+        });
+
+<span class="nc" id="L308">        headerBackgroundButton.setOnLongClickListener(view -&gt; {</span>
+<span class="nc" id="L309">            NavigationHelper.enqueueOnBackgroundPlayer(activity, getPlayQueue(), true);</span>
+<span class="nc" id="L310">            return true;</span>
+        });
+<span class="nc" id="L312">    }</span>
+
+    private PlayQueue getPlayQueue() {
+<span class="nc" id="L315">        return getPlayQueue(0);</span>
+    }
+
+    private PlayQueue getPlayQueue(final int index) {
+<span class="nc" id="L319">        final List&lt;StreamInfoItem&gt; infoItems = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L320" title="All 2 branches missed.">        for(InfoItem i : infoListAdapter.getItemsList()) {</span>
+<span class="nc bnc" id="L321" title="All 2 branches missed.">            if(i instanceof StreamInfoItem) {</span>
+<span class="nc" id="L322">                infoItems.add((StreamInfoItem) i);</span>
+            }
+<span class="nc" id="L324">        }</span>
+<span class="nc" id="L325">        return new PlaylistPlayQueue(</span>
+<span class="nc" id="L326">                currentInfo.getServiceId(),</span>
+<span class="nc" id="L327">                currentInfo.getUrl(),</span>
+<span class="nc" id="L328">                currentInfo.getNextPageUrl(),</span>
+                infoItems,
+                index
+        );
+    }
+
+    @Override
+    public void handleNextItems(ListExtractor.InfoItemsPage result) {
+<span class="nc" id="L336">        super.handleNextItems(result);</span>
+
+<span class="nc bnc" id="L338" title="All 2 branches missed.">        if (!result.getErrors().isEmpty()) {</span>
+<span class="nc" id="L339">            showSnackBarError(result.getErrors(), UserAction.REQUESTED_PLAYLIST, NewPipe.getNameOfService(serviceId)</span>
+                    , &quot;Get next page of: &quot; + url, 0);
+        }
+<span class="nc" id="L342">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // OnError
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    protected boolean onError(Throwable exception) {
+<span class="nc bnc" id="L350" title="All 2 branches missed.">        if (super.onError(exception)) return true;</span>
+
+<span class="nc bnc" id="L352" title="All 2 branches missed.">        int errorId = exception instanceof ExtractionException ? R.string.parsing_error : R.string.general_error;</span>
+<span class="nc" id="L353">        onUnrecoverableError(exception,</span>
+                UserAction.REQUESTED_PLAYLIST,
+<span class="nc" id="L355">                NewPipe.getNameOfService(serviceId),</span>
+                url,
+                errorId);
+<span class="nc" id="L358">        return true;</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Utils
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private Flowable&lt;Integer&gt; getUpdateProcessor(@NonNull List&lt;PlaylistRemoteEntity&gt; playlists,
+                                                 @NonNull PlaylistInfo result) {
+<span class="nc" id="L367">        final Flowable&lt;Integer&gt; noItemToUpdate = Flowable.just(/*noItemToUpdate=*/-1);</span>
+<span class="nc bnc" id="L368" title="All 2 branches missed.">        if (playlists.isEmpty()) return noItemToUpdate;</span>
+
+<span class="nc" id="L370">        final PlaylistRemoteEntity playlistEntity = playlists.get(0);</span>
+<span class="nc bnc" id="L371" title="All 2 branches missed.">        if (playlistEntity.isIdenticalTo(result)) return noItemToUpdate;</span>
+
+<span class="nc" id="L373">        return remotePlaylistManager.onUpdate(playlists.get(0).getUid(), result).toFlowable();</span>
+    }
+
+    private Subscriber&lt;List&lt;PlaylistRemoteEntity&gt;&gt; getPlaylistBookmarkSubscriber() {
+<span class="nc" id="L377">        return new Subscriber&lt;List&lt;PlaylistRemoteEntity&gt;&gt;() {</span>
+            @Override
+            public void onSubscribe(Subscription s) {
+<span class="nc bnc" id="L380" title="All 2 branches missed.">                if (bookmarkReactor != null) bookmarkReactor.cancel();</span>
+<span class="nc" id="L381">                bookmarkReactor = s;</span>
+<span class="nc" id="L382">                bookmarkReactor.request(1);</span>
+<span class="nc" id="L383">            }</span>
+
+            @Override
+            public void onNext(List&lt;PlaylistRemoteEntity&gt; playlist) {
+<span class="nc bnc" id="L387" title="All 2 branches missed.">                playlistEntity = playlist.isEmpty() ? null : playlist.get(0);</span>
+
+<span class="nc" id="L389">                updateBookmarkButtons();</span>
+<span class="nc" id="L390">                isBookmarkButtonReady.set(true);</span>
+
+<span class="nc bnc" id="L392" title="All 2 branches missed.">                if (bookmarkReactor != null) bookmarkReactor.request(1);</span>
+<span class="nc" id="L393">            }</span>
+
+            @Override
+            public void onError(Throwable t) {
+<span class="nc" id="L397">                PlaylistFragment.this.onError(t);</span>
+<span class="nc" id="L398">            }</span>
+
+            @Override
+            public void onComplete() {
+
+<span class="nc" id="L403">            }</span>
+        };
+    }
+
+    @Override
+    public void setTitle(String title) {
+<span class="nc" id="L409">        super.setTitle(title);</span>
+<span class="nc" id="L410">        headerTitleView.setText(title);</span>
+<span class="nc" id="L411">    }</span>
+
+    private void onBookmarkClicked() {
+<span class="nc bnc" id="L414" title="All 6 branches missed.">        if (isBookmarkButtonReady == null || !isBookmarkButtonReady.get() ||</span>
+                remotePlaylistManager == null)
+<span class="nc" id="L416">            return;</span>
+
+        final Disposable action;
+
+<span class="nc bnc" id="L420" title="All 4 branches missed.">        if (currentInfo != null &amp;&amp; playlistEntity == null) {</span>
+<span class="nc" id="L421">            action = remotePlaylistManager.onBookmark(currentInfo)</span>
+<span class="nc" id="L422">                    .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L423">                    .subscribe(ignored -&gt; {/* Do nothing */}, this::onError);</span>
+<span class="nc bnc" id="L424" title="All 2 branches missed.">        } else if (playlistEntity != null) {</span>
+<span class="nc" id="L425">            action = remotePlaylistManager.deletePlaylist(playlistEntity.getUid())</span>
+<span class="nc" id="L426">                    .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L427">                    .doFinally(() -&gt; playlistEntity = null)</span>
+<span class="nc" id="L428">                    .subscribe(ignored -&gt; {/* Do nothing */}, this::onError);</span>
+        } else {
+<span class="nc" id="L430">            action = Disposables.empty();</span>
+        }
+
+<span class="nc" id="L433">        disposables.add(action);</span>
+<span class="nc" id="L434">    }</span>
+
+    private void updateBookmarkButtons() {
+<span class="nc bnc" id="L437" title="All 4 branches missed.">        if (playlistBookmarkButton == null || activity == null) return;</span>
+
+<span class="nc bnc" id="L439" title="All 2 branches missed.">        final int iconAttr = playlistEntity == null ?</span>
+                R.attr.ic_playlist_add : R.attr.ic_playlist_check;
+
+<span class="nc bnc" id="L442" title="All 2 branches missed.">        final int titleRes = playlistEntity == null ?</span>
+                R.string.bookmark_playlist : R.string.unbookmark_playlist;
+
+<span class="nc" id="L445">        playlistBookmarkButton.setIcon(ThemeHelper.resolveResourceIdFromAttr(activity, iconAttr));</span>
+<span class="nc" id="L446">        playlistBookmarkButton.setTitle(titleRes);</span>
+<span class="nc" id="L447">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

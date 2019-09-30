@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CommentTextOnTouchListener.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.util</a> &gt; <span class="el_source">CommentTextOnTouchListener.java</span></div><h1>CommentTextOnTouchListener.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.util;
+
+import android.content.Context;
+import android.text.Layout;
+import android.text.Selection;
+import android.text.Spannable;
+import android.text.Spanned;
+import android.text.style.ClickableSpan;
+import android.text.style.URLSpan;
+import android.view.MotionEvent;
+import android.view.View;
+import android.widget.TextView;
+
+import org.schabi.newpipe.extractor.NewPipe;
+import org.schabi.newpipe.extractor.StreamingService;
+import org.schabi.newpipe.extractor.exceptions.ExtractionException;
+import org.schabi.newpipe.extractor.exceptions.ParsingException;
+import org.schabi.newpipe.extractor.linkhandler.LinkHandlerFactory;
+import org.schabi.newpipe.extractor.stream.StreamInfo;
+import org.schabi.newpipe.player.playqueue.PlayQueue;
+import org.schabi.newpipe.player.playqueue.SinglePlayQueue;
+
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import io.reactivex.Single;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.schedulers.Schedulers;
+
+<span class="nc" id="L30">public class CommentTextOnTouchListener implements View.OnTouchListener {</span>
+
+<span class="nc" id="L32">    public static final CommentTextOnTouchListener INSTANCE = new CommentTextOnTouchListener();</span>
+
+<span class="nc" id="L34">    private static final Pattern timestampPattern = Pattern.compile(&quot;(.*)#timestamp=(\\d+)&quot;);</span>
+
+    @Override
+    public boolean onTouch(View v, MotionEvent event) {
+<span class="nc bnc" id="L38" title="All 2 branches missed.">        if(!(v instanceof TextView)){</span>
+<span class="nc" id="L39">            return false;</span>
+        }
+<span class="nc" id="L41">        TextView widget = (TextView) v;</span>
+<span class="nc" id="L42">        Object text = widget.getText();</span>
+<span class="nc bnc" id="L43" title="All 2 branches missed.">        if (text instanceof Spanned) {</span>
+<span class="nc" id="L44">            Spannable buffer = (Spannable) text;</span>
+
+<span class="nc" id="L46">            int action = event.getAction();</span>
+
+<span class="nc bnc" id="L48" title="All 4 branches missed.">            if (action == MotionEvent.ACTION_UP</span>
+                    || action == MotionEvent.ACTION_DOWN) {
+<span class="nc" id="L50">                int x = (int) event.getX();</span>
+<span class="nc" id="L51">                int y = (int) event.getY();</span>
+
+<span class="nc" id="L53">                x -= widget.getTotalPaddingLeft();</span>
+<span class="nc" id="L54">                y -= widget.getTotalPaddingTop();</span>
+
+<span class="nc" id="L56">                x += widget.getScrollX();</span>
+<span class="nc" id="L57">                y += widget.getScrollY();</span>
+
+<span class="nc" id="L59">                Layout layout = widget.getLayout();</span>
+<span class="nc" id="L60">                int line = layout.getLineForVertical(y);</span>
+<span class="nc" id="L61">                int off = layout.getOffsetForHorizontal(line, x);</span>
+
+<span class="nc" id="L63">                ClickableSpan[] link = buffer.getSpans(off, off,</span>
+                        ClickableSpan.class);
+
+<span class="nc bnc" id="L66" title="All 2 branches missed.">                if (link.length != 0) {</span>
+<span class="nc bnc" id="L67" title="All 2 branches missed.">                    if (action == MotionEvent.ACTION_UP) {</span>
+<span class="nc" id="L68">                        boolean handled = false;</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">                        if(link[0] instanceof URLSpan){</span>
+<span class="nc" id="L70">                            handled = handleUrl(v.getContext(), (URLSpan) link[0]);</span>
+                        }
+<span class="nc bnc" id="L72" title="All 2 branches missed.">                        if(!handled) link[0].onClick(widget);</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">                    } else if (action == MotionEvent.ACTION_DOWN) {</span>
+<span class="nc" id="L74">                        Selection.setSelection(buffer,</span>
+<span class="nc" id="L75">                                buffer.getSpanStart(link[0]),</span>
+<span class="nc" id="L76">                                buffer.getSpanEnd(link[0]));</span>
+                    }
+<span class="nc" id="L78">                    return true;</span>
+                }
+            }
+
+        }
+
+<span class="nc" id="L84">        return false;</span>
+    }
+
+    private boolean handleUrl(Context context, URLSpan urlSpan) {
+<span class="nc" id="L88">        String url = urlSpan.getURL();</span>
+<span class="nc" id="L89">        int seconds = -1;</span>
+<span class="nc" id="L90">        Matcher matcher = timestampPattern.matcher(url);</span>
+<span class="nc bnc" id="L91" title="All 2 branches missed.">        if(matcher.matches()){</span>
+<span class="nc" id="L92">            url = matcher.group(1);</span>
+<span class="nc" id="L93">            seconds = Integer.parseInt(matcher.group(2));</span>
+        }
+        StreamingService service;
+        StreamingService.LinkType linkType;
+        try {
+<span class="nc" id="L98">            service = NewPipe.getServiceByUrl(url);</span>
+<span class="nc" id="L99">            linkType = service.getLinkTypeByUrl(url);</span>
+<span class="nc" id="L100">        } catch (ExtractionException e) {</span>
+<span class="nc" id="L101">            return false;</span>
+<span class="nc" id="L102">        }</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        if(linkType == StreamingService.LinkType.NONE){</span>
+<span class="nc" id="L104">            return false;</span>
+        }
+<span class="nc bnc" id="L106" title="All 4 branches missed.">        if(linkType == StreamingService.LinkType.STREAM &amp;&amp; seconds != -1){</span>
+<span class="nc" id="L107">            return playOnPopup(context, url, service, seconds);</span>
+        }else{
+<span class="nc" id="L109">            NavigationHelper.openRouterActivity(context, url);</span>
+<span class="nc" id="L110">            return true;</span>
+        }
+    }
+
+    private boolean playOnPopup(Context context, String url, StreamingService service, int seconds) {
+<span class="nc" id="L115">        LinkHandlerFactory factory = service.getStreamLHFactory();</span>
+<span class="nc" id="L116">        String cleanUrl = null;</span>
+        try {
+<span class="nc" id="L118">            cleanUrl = factory.getUrl(factory.getId(url));</span>
+<span class="nc" id="L119">        } catch (ParsingException e) {</span>
+<span class="nc" id="L120">            return false;</span>
+<span class="nc" id="L121">        }</span>
+<span class="nc" id="L122">        Single single = ExtractorHelper.getStreamInfo(service.getServiceId(), cleanUrl, false);</span>
+<span class="nc" id="L123">        single.subscribeOn(Schedulers.io())</span>
+<span class="nc" id="L124">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L125">                .subscribe(info -&gt; {</span>
+<span class="nc" id="L126">                    PlayQueue playQueue = new SinglePlayQueue((StreamInfo) info, seconds*1000);</span>
+<span class="nc" id="L127">                    NavigationHelper.playOnPopupPlayer(context, playQueue, false);</span>
+<span class="nc" id="L128">                });</span>
+<span class="nc" id="L129">        return true;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

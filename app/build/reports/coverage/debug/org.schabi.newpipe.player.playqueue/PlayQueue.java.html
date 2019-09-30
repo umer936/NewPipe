@@ -1,0 +1,438 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PlayQueue.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.player.playqueue</a> &gt; <span class="el_source">PlayQueue.java</span></div><h1>PlayQueue.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.player.playqueue;
+
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.util.Log;
+
+import org.reactivestreams.Subscriber;
+import org.reactivestreams.Subscription;
+import org.schabi.newpipe.BuildConfig;
+import org.schabi.newpipe.player.playqueue.events.AppendEvent;
+import org.schabi.newpipe.player.playqueue.events.ErrorEvent;
+import org.schabi.newpipe.player.playqueue.events.InitEvent;
+import org.schabi.newpipe.player.playqueue.events.MoveEvent;
+import org.schabi.newpipe.player.playqueue.events.PlayQueueEvent;
+import org.schabi.newpipe.player.playqueue.events.RecoveryEvent;
+import org.schabi.newpipe.player.playqueue.events.RemoveEvent;
+import org.schabi.newpipe.player.playqueue.events.ReorderEvent;
+import org.schabi.newpipe.player.playqueue.events.SelectEvent;
+
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import io.reactivex.BackpressureStrategy;
+import io.reactivex.Flowable;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.subjects.BehaviorSubject;
+
+/**
+ * PlayQueue is responsible for keeping track of a list of streams and the index of
+ * the stream that should be currently playing.
+ *
+ * This class contains basic manipulation of a playlist while also functions as a
+ * message bus, providing all listeners with new updates to the play queue.
+ *
+ * This class can be serialized for passing intents, but in order to start the
+ * message bus, it must be initialized.
+ * */
+public abstract class PlayQueue implements Serializable {
+<span class="nc" id="L43">    private final String TAG = &quot;PlayQueue@&quot; + Integer.toHexString(hashCode());</span>
+
+<span class="nc bnc" id="L45" title="All 2 branches missed.">    public static final boolean DEBUG = !BuildConfig.BUILD_TYPE.equals(&quot;release&quot;);</span>
+
+    private ArrayList&lt;PlayQueueItem&gt; backup;
+    private ArrayList&lt;PlayQueueItem&gt; streams;
+    @NonNull private final AtomicInteger queueIndex;
+
+    private transient BehaviorSubject&lt;PlayQueueEvent&gt; eventBroadcast;
+    private transient Flowable&lt;PlayQueueEvent&gt; broadcastReceiver;
+    private transient Subscription reportingReactor;
+
+<span class="nc" id="L55">    PlayQueue(final int index, final List&lt;PlayQueueItem&gt; startWith) {</span>
+<span class="nc" id="L56">        streams = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L57">        streams.addAll(startWith);</span>
+
+<span class="nc" id="L59">        queueIndex = new AtomicInteger(index);</span>
+<span class="nc" id="L60">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Playlist actions
+    //////////////////////////////////////////////////////////////////////////*/
+
+    /**
+     * Initializes the play queue message buses.
+     *
+     * Also starts a self reporter for logging if debug mode is enabled.
+     * */
+    public void init() {
+<span class="nc" id="L72">        eventBroadcast = BehaviorSubject.create();</span>
+
+<span class="nc" id="L74">        broadcastReceiver = eventBroadcast.toFlowable(BackpressureStrategy.BUFFER)</span>
+<span class="nc" id="L75">                .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L76">                .startWith(new InitEvent());</span>
+
+<span class="nc bnc" id="L78" title="All 2 branches missed.">        if (DEBUG) broadcastReceiver.subscribe(getSelfReporter());</span>
+<span class="nc" id="L79">    }</span>
+
+    /**
+     * Dispose the play queue by stopping all message buses.
+     * */
+    public void dispose() {
+<span class="nc bnc" id="L85" title="All 2 branches missed.">        if (eventBroadcast != null) eventBroadcast.onComplete();</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">        if (reportingReactor != null) reportingReactor.cancel();</span>
+
+<span class="nc" id="L88">        eventBroadcast = null;</span>
+<span class="nc" id="L89">        broadcastReceiver = null;</span>
+<span class="nc" id="L90">        reportingReactor = null;</span>
+<span class="nc" id="L91">    }</span>
+
+    /**
+     * Checks if the queue is complete.
+     *
+     * A queue is complete if it has loaded all items in an external playlist
+     * single stream or local queues are always complete.
+     * */
+    public abstract boolean isComplete();
+
+    /**
+     * Load partial queue in the background, does nothing if the queue is complete.
+     * */
+    public abstract void fetch();
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Readonly ops
+    //////////////////////////////////////////////////////////////////////////*/
+
+    /**
+     * Returns the current index that should be played.
+     * */
+    public int getIndex() {
+<span class="nc" id="L114">        return queueIndex.get();</span>
+    }
+
+    /**
+     * Returns the current item that should be played.
+     * */
+    public PlayQueueItem getItem() {
+<span class="nc" id="L121">        return getItem(getIndex());</span>
+    }
+
+    /**
+     * Returns the item at the given index.
+     * May throw {@link IndexOutOfBoundsException}.
+     * */
+    public PlayQueueItem getItem(int index) {
+<span class="nc bnc" id="L129" title="All 6 branches missed.">        if (index &lt; 0 || index &gt;= streams.size() || streams.get(index) == null) return null;</span>
+<span class="nc" id="L130">        return streams.get(index);</span>
+    }
+
+    /**
+     * Returns the index of the given item using referential equality.
+     * May be null despite play queue contains identical item.
+     * */
+    public int indexOf(@NonNull final PlayQueueItem item) {
+        // referential equality, can't think of a better way to do this
+        // todo: better than this
+<span class="nc" id="L140">        return streams.indexOf(item);</span>
+    }
+
+    /**
+     * Returns the current size of play queue.
+     * */
+    public int size() {
+<span class="nc" id="L147">        return streams.size();</span>
+    }
+
+    /**
+     * Checks if the play queue is empty.
+     * */
+    public boolean isEmpty() {
+<span class="nc" id="L154">        return streams.isEmpty();</span>
+    }
+
+    /**
+     * Determines if the current play queue is shuffled.
+     * */
+    public boolean isShuffled() {
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        return backup != null;</span>
+    }
+
+    /**
+     * Returns an immutable view of the play queue.
+     * */
+    @NonNull
+    public List&lt;PlayQueueItem&gt; getStreams() {
+<span class="nc" id="L169">        return Collections.unmodifiableList(streams);</span>
+    }
+
+    /**
+     * Returns the play queue's update broadcast.
+     * May be null if the play queue message bus is not initialized.
+     * */
+    @Nullable
+    public Flowable&lt;PlayQueueEvent&gt; getBroadcastReceiver() {
+<span class="nc" id="L178">        return broadcastReceiver;</span>
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Write ops
+    //////////////////////////////////////////////////////////////////////////*/
+
+    /**
+     * Changes the current playing index to a new index.
+     *
+     * This method is guarded using in a circular manner for index exceeding the play queue size.
+     *
+     * Will emit a {@link SelectEvent} if the index is not the current playing index.
+     * */
+    public synchronized void setIndex(final int index) {
+<span class="nc" id="L193">        final int oldIndex = getIndex();</span>
+
+<span class="nc" id="L195">        int newIndex = index;</span>
+<span class="nc bnc" id="L196" title="All 2 branches missed.">        if (index &lt; 0) newIndex = 0;</span>
+<span class="nc bnc" id="L197" title="All 4 branches missed.">        if (index &gt;= streams.size()) newIndex = isComplete() ? index % streams.size() : streams.size() - 1;</span>
+
+<span class="nc" id="L199">        queueIndex.set(newIndex);</span>
+<span class="nc" id="L200">        broadcast(new SelectEvent(oldIndex, newIndex));</span>
+<span class="nc" id="L201">    }</span>
+
+    /**
+     * Changes the current playing index by an offset amount.
+     *
+     * Will emit a {@link SelectEvent} if offset is non-zero.
+     * */
+    public synchronized void offsetIndex(final int offset) {
+<span class="nc" id="L209">        setIndex(getIndex() + offset);</span>
+<span class="nc" id="L210">    }</span>
+
+    /**
+     * Appends the given {@link PlayQueueItem}s to the current play queue.
+     *
+     * @see #append(List items)
+     * */
+    public synchronized void append(@NonNull final PlayQueueItem... items) {
+<span class="nc" id="L218">        append(Arrays.asList(items));</span>
+<span class="nc" id="L219">    }</span>
+
+    /**
+     * Appends the given {@link PlayQueueItem}s to the current play queue.
+     *
+     * If the play queue is shuffled, then append the items to the backup queue as is and
+     * append the shuffle items to the play queue.
+     *
+     * Will emit a {@link AppendEvent} on any given context.
+     * */
+    public synchronized void append(@NonNull final List&lt;PlayQueueItem&gt; items) {
+<span class="nc" id="L230">        List&lt;PlayQueueItem&gt; itemList = new ArrayList&lt;&gt;(items);</span>
+
+<span class="nc bnc" id="L232" title="All 2 branches missed.">        if (isShuffled()) {</span>
+<span class="nc" id="L233">            backup.addAll(itemList);</span>
+<span class="nc" id="L234">            Collections.shuffle(itemList);</span>
+        }
+<span class="nc bnc" id="L236" title="All 6 branches missed.">        if (!streams.isEmpty() &amp;&amp; streams.get(streams.size() - 1).isAutoQueued() &amp;&amp; !itemList.get(0).isAutoQueued()) {</span>
+<span class="nc" id="L237">            streams.remove(streams.size() - 1);</span>
+        }
+<span class="nc" id="L239">        streams.addAll(itemList);</span>
+
+<span class="nc" id="L241">        broadcast(new AppendEvent(itemList.size()));</span>
+<span class="nc" id="L242">    }</span>
+
+    /**
+     * Removes the item at the given index from the play queue.
+     *
+     * The current playing index will decrement if it is greater than the index being removed.
+     * On cases where the current playing index exceeds the playlist range, it is set to 0.
+     *
+     * Will emit a {@link RemoveEvent} if the index is within the play queue index range.
+     * */
+    public synchronized void remove(final int index) {
+<span class="nc bnc" id="L253" title="All 4 branches missed.">        if (index &gt;= streams.size() || index &lt; 0) return;</span>
+<span class="nc" id="L254">        removeInternal(index);</span>
+<span class="nc" id="L255">        broadcast(new RemoveEvent(index, getIndex()));</span>
+<span class="nc" id="L256">    }</span>
+
+    /**
+     * Report an exception for the item at the current index in order and the course of action:
+     * if the error can be skipped or the current item should be removed.
+     *
+     * This is done as a separate event as the underlying manager may have
+     * different implementation regarding exceptions.
+     * */
+    public synchronized void error(final boolean skippable) {
+<span class="nc" id="L266">        final int index = getIndex();</span>
+
+<span class="nc bnc" id="L268" title="All 2 branches missed.">        if (skippable) {</span>
+<span class="nc" id="L269">            queueIndex.incrementAndGet();</span>
+        } else {
+<span class="nc" id="L271">            removeInternal(index);</span>
+        }
+
+<span class="nc" id="L274">        broadcast(new ErrorEvent(index, getIndex(), skippable));</span>
+<span class="nc" id="L275">    }</span>
+
+    private synchronized void removeInternal(final int removeIndex) {
+<span class="nc" id="L278">        final int currentIndex = queueIndex.get();</span>
+<span class="nc" id="L279">        final int size = size();</span>
+
+<span class="nc bnc" id="L281" title="All 2 branches missed.">        if (currentIndex &gt; removeIndex) {</span>
+<span class="nc" id="L282">            queueIndex.decrementAndGet();</span>
+
+<span class="nc bnc" id="L284" title="All 2 branches missed.">        } else if (currentIndex &gt;= size) {</span>
+<span class="nc" id="L285">            queueIndex.set(currentIndex % (size - 1));</span>
+
+<span class="nc bnc" id="L287" title="All 4 branches missed.">        } else if (currentIndex == removeIndex &amp;&amp; currentIndex == size - 1){</span>
+<span class="nc" id="L288">            queueIndex.set(0);</span>
+        }
+
+<span class="nc bnc" id="L291" title="All 2 branches missed.">        if (backup != null) {</span>
+<span class="nc" id="L292">            final int backupIndex = backup.indexOf(getItem(removeIndex));</span>
+<span class="nc" id="L293">            backup.remove(backupIndex);</span>
+        }
+<span class="nc" id="L295">        streams.remove(removeIndex);</span>
+<span class="nc" id="L296">    }</span>
+
+    /**
+     * Moves a queue item at the source index to the target index.
+     *
+     * If the item being moved is the currently playing, then the current playing index is set
+     * to that of the target.
+     * If the moved item is not the currently playing and moves to an index &lt;b&gt;AFTER&lt;/b&gt; the
+     * current playing index, then the current playing index is decremented.
+     * Vice versa if the an item after the currently playing is moved &lt;b&gt;BEFORE&lt;/b&gt;.
+     * */
+    public synchronized void move(final int source, final int target) {
+<span class="nc bnc" id="L308" title="All 4 branches missed.">        if (source &lt; 0 || target &lt; 0) return;</span>
+<span class="nc bnc" id="L309" title="All 4 branches missed.">        if (source &gt;= streams.size() || target &gt;= streams.size()) return;</span>
+
+<span class="nc" id="L311">        final int current = getIndex();</span>
+<span class="nc bnc" id="L312" title="All 2 branches missed.">        if (source == current) {</span>
+<span class="nc" id="L313">            queueIndex.set(target);</span>
+<span class="nc bnc" id="L314" title="All 4 branches missed.">        } else if (source &lt; current &amp;&amp; target &gt;= current) {</span>
+<span class="nc" id="L315">            queueIndex.decrementAndGet();</span>
+<span class="nc bnc" id="L316" title="All 4 branches missed.">        } else if (source &gt; current &amp;&amp; target &lt;= current) {</span>
+<span class="nc" id="L317">            queueIndex.incrementAndGet();</span>
+        }
+
+<span class="nc" id="L320">        PlayQueueItem playQueueItem = streams.remove(source);</span>
+<span class="nc" id="L321">        playQueueItem.setAutoQueued(false);</span>
+<span class="nc" id="L322">        streams.add(target, playQueueItem);</span>
+<span class="nc" id="L323">        broadcast(new MoveEvent(source, target));</span>
+<span class="nc" id="L324">    }</span>
+
+    /**
+     * Sets the recovery record of the item at the index.
+     *
+     * Broadcasts a recovery event.
+     * */
+    public synchronized void setRecovery(final int index, final long position) {
+<span class="nc bnc" id="L332" title="All 4 branches missed.">        if (index &lt; 0 || index &gt;= streams.size()) return;</span>
+
+<span class="nc" id="L334">        streams.get(index).setRecoveryPosition(position);</span>
+<span class="nc" id="L335">        broadcast(new RecoveryEvent(index, position));</span>
+<span class="nc" id="L336">    }</span>
+
+    /**
+     * Revoke the recovery record of the item at the index.
+     *
+     * Broadcasts a recovery event.
+     * */
+    public synchronized void unsetRecovery(final int index) {
+<span class="nc" id="L344">        setRecovery(index, PlayQueueItem.RECOVERY_UNSET);</span>
+<span class="nc" id="L345">    }</span>
+
+    /**
+     * Shuffles the current play queue.
+     *
+     * This method first backs up the existing play queue and item being played.
+     * Then a newly shuffled play queue will be generated along with currently
+     * playing item placed at the beginning of the queue.
+     *
+     * Will emit a {@link ReorderEvent} in any context.
+     * */
+    public synchronized void shuffle() {
+<span class="nc bnc" id="L357" title="All 2 branches missed.">        if (backup == null) {</span>
+<span class="nc" id="L358">            backup = new ArrayList&lt;&gt;(streams);</span>
+        }
+<span class="nc" id="L360">        final int originIndex = getIndex();</span>
+<span class="nc" id="L361">        final PlayQueueItem current = getItem();</span>
+<span class="nc" id="L362">        Collections.shuffle(streams);</span>
+
+<span class="nc" id="L364">        final int newIndex = streams.indexOf(current);</span>
+<span class="nc bnc" id="L365" title="All 2 branches missed.">        if (newIndex != -1) {</span>
+<span class="nc" id="L366">            streams.add(0, streams.remove(newIndex));</span>
+        }
+<span class="nc" id="L368">        queueIndex.set(0);</span>
+
+<span class="nc" id="L370">        broadcast(new ReorderEvent(originIndex, queueIndex.get()));</span>
+<span class="nc" id="L371">    }</span>
+
+    /**
+     * Unshuffles the current play queue if a backup play queue exists.
+     *
+     * This method undoes shuffling and index will be set to the previously playing item if found,
+     * otherwise, the index will reset to 0.
+     *
+     * Will emit a {@link ReorderEvent} if a backup exists.
+     * */
+    public synchronized void unshuffle() {
+<span class="nc bnc" id="L382" title="All 2 branches missed.">        if (backup == null) return;</span>
+<span class="nc" id="L383">        final int originIndex = getIndex();</span>
+<span class="nc" id="L384">        final PlayQueueItem current = getItem();</span>
+
+<span class="nc" id="L386">        streams.clear();</span>
+<span class="nc" id="L387">        streams = backup;</span>
+<span class="nc" id="L388">        backup = null;</span>
+
+<span class="nc" id="L390">        final int newIndex = streams.indexOf(current);</span>
+<span class="nc bnc" id="L391" title="All 2 branches missed.">        if (newIndex != -1) {</span>
+<span class="nc" id="L392">            queueIndex.set(newIndex);</span>
+        } else {
+<span class="nc" id="L394">            queueIndex.set(0);</span>
+        }
+
+<span class="nc" id="L397">        broadcast(new ReorderEvent(originIndex, queueIndex.get()));</span>
+<span class="nc" id="L398">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Rx Broadcast
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private void broadcast(@NonNull final PlayQueueEvent event) {
+<span class="nc bnc" id="L405" title="All 2 branches missed.">        if (eventBroadcast != null) {</span>
+<span class="nc" id="L406">            eventBroadcast.onNext(event);</span>
+        }
+<span class="nc" id="L408">    }</span>
+
+    private Subscriber&lt;PlayQueueEvent&gt; getSelfReporter() {
+<span class="nc" id="L411">        return new Subscriber&lt;PlayQueueEvent&gt;() {</span>
+            @Override
+            public void onSubscribe(Subscription s) {
+<span class="nc bnc" id="L414" title="All 2 branches missed.">                if (reportingReactor != null) reportingReactor.cancel();</span>
+<span class="nc" id="L415">                reportingReactor = s;</span>
+<span class="nc" id="L416">                reportingReactor.request(1);</span>
+<span class="nc" id="L417">            }</span>
+
+            @Override
+            public void onNext(PlayQueueEvent event) {
+<span class="nc" id="L421">                Log.d(TAG, &quot;Received broadcast: &quot; + event.type().name() + &quot;. Current index: &quot; + getIndex() + &quot;, play queue length: &quot; + size() + &quot;.&quot;);</span>
+<span class="nc" id="L422">                reportingReactor.request(1);</span>
+<span class="nc" id="L423">            }</span>
+
+            @Override
+            public void onError(Throwable t) {
+<span class="nc" id="L427">                Log.e(TAG, &quot;Received broadcast error&quot;, t);</span>
+<span class="nc" id="L428">            }</span>
+
+            @Override
+            public void onComplete() {
+<span class="nc" id="L432">                Log.d(TAG, &quot;Broadcast is shutting down.&quot;);</span>
+<span class="nc" id="L433">            }</span>
+        };
+    }
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

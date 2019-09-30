@@ -1,0 +1,1183 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MainVideoPlayer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.player</a> &gt; <span class="el_source">MainVideoPlayer.java</span></div><h1>MainVideoPlayer.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2017 Mauricio Colli &lt;mauriciocolli@outlook.com&gt;
+ * MainVideoPlayer.java is part of NewPipe
+ *
+ * License: GPL-3.0+
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package org.schabi.newpipe.player;
+
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.ActivityInfo;
+import android.content.res.Configuration;
+import android.database.ContentObserver;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.media.AudioManager;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.preference.PreferenceManager;
+import android.provider.Settings;
+import android.support.annotation.ColorInt;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v4.app.ActivityCompat;
+import android.support.v7.app.AppCompatActivity;
+import android.support.v7.content.res.AppCompatResources;
+import android.support.v7.widget.RecyclerView;
+import android.support.v7.widget.helper.ItemTouchHelper;
+import android.util.DisplayMetrics;
+import android.util.Log;
+import android.util.TypedValue;
+import android.view.GestureDetector;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.WindowManager;
+import android.widget.Button;
+import android.widget.ImageButton;
+import android.widget.ImageView;
+import android.widget.PopupMenu;
+import android.widget.ProgressBar;
+import android.widget.RelativeLayout;
+import android.widget.SeekBar;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import com.google.android.exoplayer2.Player;
+import com.google.android.exoplayer2.text.CaptionStyleCompat;
+import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
+import com.google.android.exoplayer2.ui.SubtitleView;
+
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.extractor.stream.VideoStream;
+import org.schabi.newpipe.fragments.OnScrollBelowItemsListener;
+import org.schabi.newpipe.player.helper.PlaybackParameterDialog;
+import org.schabi.newpipe.player.helper.PlayerHelper;
+import org.schabi.newpipe.player.playqueue.PlayQueueItem;
+import org.schabi.newpipe.player.playqueue.PlayQueueItemBuilder;
+import org.schabi.newpipe.player.playqueue.PlayQueueItemHolder;
+import org.schabi.newpipe.player.playqueue.PlayQueueItemTouchCallback;
+import org.schabi.newpipe.player.resolver.MediaSourceTag;
+import org.schabi.newpipe.player.resolver.VideoPlaybackResolver;
+import org.schabi.newpipe.util.AnimationUtils;
+import org.schabi.newpipe.util.ListHelper;
+import org.schabi.newpipe.util.NavigationHelper;
+import org.schabi.newpipe.util.PermissionHelper;
+import org.schabi.newpipe.util.ShareUtils;
+import org.schabi.newpipe.util.StateSaver;
+import org.schabi.newpipe.util.ThemeHelper;
+
+import java.util.List;
+import java.util.Queue;
+import java.util.UUID;
+
+import static org.schabi.newpipe.player.BasePlayer.STATE_PLAYING;
+import static org.schabi.newpipe.player.VideoPlayer.DEFAULT_CONTROLS_DURATION;
+import static org.schabi.newpipe.player.VideoPlayer.DEFAULT_CONTROLS_HIDE_TIME;
+import static org.schabi.newpipe.util.AnimationUtils.Type.SCALE_AND_ALPHA;
+import static org.schabi.newpipe.util.AnimationUtils.Type.SLIDE_AND_ALPHA;
+import static org.schabi.newpipe.util.AnimationUtils.animateRotation;
+import static org.schabi.newpipe.util.AnimationUtils.animateView;
+import static org.schabi.newpipe.util.StateSaver.KEY_SAVED_STATE;
+
+/**
+ * Activity Player implementing VideoPlayer
+ *
+ * @author mauriciocolli
+ */
+<span class="nc" id="L103">public final class MainVideoPlayer extends AppCompatActivity</span>
+        implements StateSaver.WriteRead, PlaybackParameterDialog.Callback {
+    private static final String TAG = &quot;.MainVideoPlayer&quot;;
+<span class="nc" id="L106">    private static final boolean DEBUG = BasePlayer.DEBUG;</span>
+
+    private GestureDetector gestureDetector;
+
+    private VideoPlayerImpl playerImpl;
+
+    private SharedPreferences defaultPreferences;
+
+    @Nullable private PlayerState playerState;
+    private boolean isInMultiWindow;
+    private boolean isBackPressed;
+
+    private ContentObserver rotationObserver;
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Activity LifeCycle
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    protected void onCreate(@Nullable Bundle savedInstanceState) {
+<span class="nc" id="L126">        super.onCreate(savedInstanceState);</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onCreate() called with: savedInstanceState = [&quot; + savedInstanceState + &quot;]&quot;);</span>
+<span class="nc" id="L128">        defaultPreferences = PreferenceManager.getDefaultSharedPreferences(this);</span>
+<span class="nc" id="L129">        ThemeHelper.setTheme(this);</span>
+<span class="nc" id="L130">        getWindow().setBackgroundDrawable(new ColorDrawable(Color.BLACK));</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        if (Build.VERSION.SDK_INT &gt;= Build.VERSION_CODES.LOLLIPOP) getWindow().setStatusBarColor(Color.BLACK);</span>
+<span class="nc" id="L132">        setVolumeControlStream(AudioManager.STREAM_MUSIC);</span>
+
+<span class="nc" id="L134">        WindowManager.LayoutParams lp = getWindow().getAttributes();</span>
+<span class="nc" id="L135">        lp.screenBrightness = PlayerHelper.getScreenBrightness(getApplicationContext());</span>
+<span class="nc" id="L136">        getWindow().setAttributes(lp);</span>
+
+<span class="nc" id="L138">        hideSystemUi();</span>
+<span class="nc" id="L139">        setContentView(R.layout.activity_main_player);</span>
+<span class="nc" id="L140">        playerImpl = new  VideoPlayerImpl(this);</span>
+<span class="nc" id="L141">        playerImpl.setup(findViewById(android.R.id.content));</span>
+
+<span class="nc bnc" id="L143" title="All 4 branches missed.">        if (savedInstanceState != null &amp;&amp; savedInstanceState.get(KEY_SAVED_STATE) != null) {</span>
+<span class="nc" id="L144">            return; // We have saved states, stop here to restore it</span>
+        }
+
+<span class="nc" id="L147">        final Intent intent = getIntent();</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">        if (intent != null) {</span>
+<span class="nc" id="L149">            playerImpl.handleIntent(intent);</span>
+        } else {
+<span class="nc" id="L151">            Toast.makeText(this, R.string.general_error, Toast.LENGTH_SHORT).show();</span>
+<span class="nc" id="L152">            finish();</span>
+        }
+
+<span class="nc" id="L155">        rotationObserver = new ContentObserver(new Handler()) {</span>
+            @Override
+            public void onChange(boolean selfChange) {
+<span class="nc" id="L158">                super.onChange(selfChange);</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">                if (globalScreenOrientationLocked()) {</span>
+<span class="nc" id="L160">                    final boolean lastOrientationWasLandscape = defaultPreferences.getBoolean(</span>
+<span class="nc" id="L161">                            getString(R.string.last_orientation_landscape_key), false);</span>
+<span class="nc" id="L162">                    setLandscape(lastOrientationWasLandscape);</span>
+<span class="nc" id="L163">                } else {</span>
+<span class="nc" id="L164">                    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);</span>
+                }
+<span class="nc" id="L166">            }</span>
+        };
+<span class="nc" id="L168">        getContentResolver().registerContentObserver(</span>
+<span class="nc" id="L169">                Settings.System.getUriFor(Settings.System.ACCELEROMETER_ROTATION),</span>
+                false, rotationObserver);
+<span class="nc" id="L171">    }</span>
+
+    @Override
+    protected void onRestoreInstanceState(@NonNull Bundle bundle) {
+<span class="nc bnc" id="L175" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onRestoreInstanceState() called&quot;);</span>
+<span class="nc" id="L176">        super.onRestoreInstanceState(bundle);</span>
+<span class="nc" id="L177">        StateSaver.tryToRestore(bundle, this);</span>
+<span class="nc" id="L178">    }</span>
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+<span class="nc bnc" id="L182" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onNewIntent() called with: intent = [&quot; + intent + &quot;]&quot;);</span>
+<span class="nc" id="L183">        super.onNewIntent(intent);</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">        if (intent != null) {</span>
+<span class="nc" id="L185">            playerState = null;</span>
+<span class="nc" id="L186">            playerImpl.handleIntent(intent);</span>
+        }
+<span class="nc" id="L188">    }</span>
+
+    @Override
+    protected void onResume() {
+<span class="nc bnc" id="L192" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onResume() called&quot;);</span>
+<span class="nc" id="L193">        super.onResume();</span>
+
+<span class="nc bnc" id="L195" title="All 2 branches missed.">        if (globalScreenOrientationLocked()) {</span>
+<span class="nc" id="L196">            boolean lastOrientationWasLandscape = defaultPreferences.getBoolean(</span>
+<span class="nc" id="L197">                    getString(R.string.last_orientation_landscape_key), false);</span>
+<span class="nc" id="L198">            setLandscape(lastOrientationWasLandscape);</span>
+        }
+
+<span class="nc" id="L201">        final int lastResizeMode = defaultPreferences.getInt(</span>
+<span class="nc" id="L202">                getString(R.string.last_resize_mode), AspectRatioFrameLayout.RESIZE_MODE_FIT);</span>
+<span class="nc" id="L203">        playerImpl.setResizeMode(lastResizeMode);</span>
+
+        // Upon going in or out of multiwindow mode, isInMultiWindow will always be false,
+        // since the first onResume needs to restore the player.
+        // Subsequent onResume calls while multiwindow mode remains the same and the player is
+        // prepared should be ignored.
+<span class="nc bnc" id="L209" title="All 2 branches missed.">        if (isInMultiWindow) return;</span>
+<span class="nc" id="L210">        isInMultiWindow = isInMultiWindow();</span>
+
+<span class="nc bnc" id="L212" title="All 2 branches missed.">        if (playerState != null) {</span>
+<span class="nc" id="L213">            playerImpl.setPlaybackQuality(playerState.getPlaybackQuality());</span>
+<span class="nc" id="L214">            playerImpl.initPlayback(playerState.getPlayQueue(), playerState.getRepeatMode(),</span>
+<span class="nc" id="L215">                    playerState.getPlaybackSpeed(), playerState.getPlaybackPitch(),</span>
+<span class="nc" id="L216">                    playerState.isPlaybackSkipSilence(), playerState.wasPlaying());</span>
+        }
+<span class="nc" id="L218">    }</span>
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+<span class="nc" id="L222">        super.onConfigurationChanged(newConfig);</span>
+
+<span class="nc bnc" id="L224" title="All 2 branches missed.">        if (playerImpl.isSomePopupMenuVisible()) {</span>
+<span class="nc" id="L225">            playerImpl.getQualityPopupMenu().dismiss();</span>
+<span class="nc" id="L226">            playerImpl.getPlaybackSpeedPopupMenu().dismiss();</span>
+        }
+<span class="nc" id="L228">    }</span>
+
+    @Override
+    public void onBackPressed() {
+<span class="nc" id="L232">        super.onBackPressed();</span>
+<span class="nc" id="L233">        isBackPressed = true;</span>
+<span class="nc" id="L234">    }</span>
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+<span class="nc bnc" id="L238" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onSaveInstanceState() called&quot;);</span>
+<span class="nc" id="L239">        super.onSaveInstanceState(outState);</span>
+<span class="nc bnc" id="L240" title="All 2 branches missed.">        if (playerImpl == null) return;</span>
+
+<span class="nc" id="L242">        playerImpl.setRecovery();</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">        if(!playerImpl.gotDestroyed()) {</span>
+<span class="nc" id="L244">            playerState = createPlayerState();</span>
+        }
+<span class="nc" id="L246">        StateSaver.tryToSave(isChangingConfigurations(), null, outState, this);</span>
+<span class="nc" id="L247">    }</span>
+
+    @Override
+    protected void onStop() {
+<span class="nc bnc" id="L251" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;onStop() called&quot;);</span>
+<span class="nc" id="L252">        super.onStop();</span>
+<span class="nc" id="L253">        PlayerHelper.setScreenBrightness(getApplicationContext(),</span>
+<span class="nc" id="L254">                getWindow().getAttributes().screenBrightness);</span>
+
+<span class="nc bnc" id="L256" title="All 2 branches missed.">        if (playerImpl == null) return;</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">        if (!isBackPressed) {</span>
+<span class="nc" id="L258">            playerImpl.minimize();</span>
+        }
+<span class="nc" id="L260">        playerState = createPlayerState();</span>
+<span class="nc" id="L261">        playerImpl.destroy();</span>
+
+<span class="nc bnc" id="L263" title="All 2 branches missed.">        if (rotationObserver != null)</span>
+<span class="nc" id="L264">            getContentResolver().unregisterContentObserver(rotationObserver);</span>
+
+<span class="nc" id="L266">        isInMultiWindow = false;</span>
+<span class="nc" id="L267">        isBackPressed = false;</span>
+<span class="nc" id="L268">    }</span>
+
+    @Override
+    protected void attachBaseContext(Context newBase) {
+<span class="nc" id="L272">        super.attachBaseContext(AudioServiceLeakFix.preventLeakOf(newBase));</span>
+<span class="nc" id="L273">    }</span>
+
+    @Override
+    protected void onPause() {
+<span class="nc" id="L277">        playerImpl.savePlaybackState();</span>
+<span class="nc" id="L278">        super.onPause();</span>
+<span class="nc" id="L279">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // State Saving
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private PlayerState createPlayerState() {
+<span class="nc" id="L286">        return new PlayerState(playerImpl.getPlayQueue(), playerImpl.getRepeatMode(),</span>
+<span class="nc" id="L287">                playerImpl.getPlaybackSpeed(), playerImpl.getPlaybackPitch(),</span>
+<span class="nc" id="L288">                playerImpl.getPlaybackQuality(), playerImpl.getPlaybackSkipSilence(),</span>
+<span class="nc" id="L289">                playerImpl.isPlaying());</span>
+    }
+
+    @Override
+    public String generateSuffix() {
+<span class="nc" id="L294">        return &quot;.&quot; + UUID.randomUUID().toString() + &quot;.player&quot;;</span>
+    }
+
+    @Override
+    public void writeTo(Queue&lt;Object&gt; objectsToSave) {
+<span class="nc bnc" id="L299" title="All 2 branches missed.">        if (objectsToSave == null) return;</span>
+<span class="nc" id="L300">        objectsToSave.add(playerState);</span>
+<span class="nc" id="L301">    }</span>
+
+    @Override
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void readFrom(@NonNull Queue&lt;Object&gt; savedObjects) {
+<span class="nc" id="L306">        playerState = (PlayerState) savedObjects.poll();</span>
+<span class="nc" id="L307">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // View
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private void showSystemUi() {
+<span class="nc bnc" id="L314" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;showSystemUi() called&quot;);</span>
+<span class="nc bnc" id="L315" title="All 4 branches missed.">        if (playerImpl != null &amp;&amp; playerImpl.queueVisible) return;</span>
+
+<span class="nc" id="L317">        final int visibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE</span>
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
+
+<span class="nc bnc" id="L321" title="All 2 branches missed.">        if (Build.VERSION.SDK_INT &gt;= Build.VERSION_CODES.LOLLIPOP) {</span>
+<span class="nc" id="L322">            @ColorInt final int systenUiColor =</span>
+<span class="nc" id="L323">                    ActivityCompat.getColor(getApplicationContext(), R.color.video_overlay_color);</span>
+<span class="nc" id="L324">            getWindow().setStatusBarColor(systenUiColor);</span>
+<span class="nc" id="L325">            getWindow().setNavigationBarColor(systenUiColor);</span>
+        }
+
+<span class="nc" id="L328">        getWindow().getDecorView().setSystemUiVisibility(visibility);</span>
+<span class="nc" id="L329">        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);</span>
+<span class="nc" id="L330">    }</span>
+
+    private void hideSystemUi() {
+<span class="nc bnc" id="L333" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;hideSystemUi() called&quot;);</span>
+<span class="nc bnc" id="L334" title="All 2 branches missed.">        if (Build.VERSION.SDK_INT &gt;= Build.VERSION_CODES.JELLY_BEAN) {</span>
+<span class="nc" id="L335">            int visibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE</span>
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION;
+<span class="nc bnc" id="L340" title="All 2 branches missed.">            if (Build.VERSION.SDK_INT &gt;= Build.VERSION_CODES.KITKAT) {</span>
+<span class="nc" id="L341">                visibility |= View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;</span>
+            }
+<span class="nc" id="L343">            getWindow().getDecorView().setSystemUiVisibility(visibility);</span>
+        }
+<span class="nc" id="L345">        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,</span>
+                WindowManager.LayoutParams.FLAG_FULLSCREEN);
+<span class="nc" id="L347">    }</span>
+
+    private void toggleOrientation() {
+<span class="nc bnc" id="L350" title="All 2 branches missed.">        setLandscape(!isLandscape());</span>
+<span class="nc" id="L351">        defaultPreferences.edit()</span>
+<span class="nc bnc" id="L352" title="All 2 branches missed.">                .putBoolean(getString(R.string.last_orientation_landscape_key), !isLandscape())</span>
+<span class="nc" id="L353">                .apply();</span>
+<span class="nc" id="L354">    }</span>
+
+    private boolean isLandscape() {
+<span class="nc bnc" id="L357" title="All 2 branches missed.">        return getResources().getDisplayMetrics().heightPixels &lt; getResources().getDisplayMetrics().widthPixels;</span>
+    }
+
+    private void setLandscape(boolean v) {
+<span class="nc bnc" id="L361" title="All 2 branches missed.">        setRequestedOrientation(v</span>
+                ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                : ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+<span class="nc" id="L364">    }</span>
+
+    private boolean globalScreenOrientationLocked() {
+        // 1: Screen orientation changes using acelerometer
+        // 0: Screen orientatino is locked
+<span class="nc bnc" id="L369" title="All 2 branches missed.">        return !(android.provider.Settings.System.getInt(getContentResolver(), Settings.System.ACCELEROMETER_ROTATION, 0) == 1);</span>
+    }
+
+    protected void setRepeatModeButton(final ImageButton imageButton, final int repeatMode) {
+<span class="nc bnc" id="L373" title="All 4 branches missed.">        switch (repeatMode) {</span>
+            case Player.REPEAT_MODE_OFF:
+<span class="nc" id="L375">                imageButton.setImageResource(R.drawable.exo_controls_repeat_off);</span>
+<span class="nc" id="L376">                break;</span>
+            case Player.REPEAT_MODE_ONE:
+<span class="nc" id="L378">                imageButton.setImageResource(R.drawable.exo_controls_repeat_one);</span>
+<span class="nc" id="L379">                break;</span>
+            case Player.REPEAT_MODE_ALL:
+<span class="nc" id="L381">                imageButton.setImageResource(R.drawable.exo_controls_repeat_all);</span>
+                break;
+        }
+<span class="nc" id="L384">    }</span>
+
+    protected void setShuffleButton(final ImageButton shuffleButton, final boolean shuffled) {
+<span class="nc bnc" id="L387" title="All 2 branches missed.">        final int shuffleAlpha = shuffled ? 255 : 77;</span>
+<span class="nc" id="L388">        shuffleButton.setImageAlpha(shuffleAlpha);</span>
+<span class="nc" id="L389">    }</span>
+
+    private boolean isInMultiWindow() {
+<span class="nc bnc" id="L392" title="All 4 branches missed.">        return Build.VERSION.SDK_INT &gt;= Build.VERSION_CODES.N &amp;&amp; isInMultiWindowMode();</span>
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Playback Parameters Listener
+    ////////////////////////////////////////////////////////////////////////////
+
+    @Override
+    public void onPlaybackParameterChanged(float playbackTempo, float playbackPitch,
+                                           boolean playbackSkipSilence) {
+<span class="nc bnc" id="L402" title="All 2 branches missed.">        if (playerImpl != null) {</span>
+<span class="nc" id="L403">            playerImpl.setPlaybackParameters(playbackTempo, playbackPitch, playbackSkipSilence);</span>
+        }
+<span class="nc" id="L405">    }</span>
+
+    ///////////////////////////////////////////////////////////////////////////
+
+    @SuppressWarnings({&quot;unused&quot;, &quot;WeakerAccess&quot;})
+    private class VideoPlayerImpl extends VideoPlayer {
+<span class="nc" id="L411">        private final float MAX_GESTURE_LENGTH = 0.75f;</span>
+
+        private TextView titleTextView;
+        private TextView channelTextView;
+        private RelativeLayout volumeRelativeLayout;
+        private ProgressBar volumeProgressBar;
+        private ImageView volumeImageView;
+        private RelativeLayout brightnessRelativeLayout;
+        private ProgressBar brightnessProgressBar;
+        private ImageView brightnessImageView;
+        private ImageButton queueButton;
+        private ImageButton repeatButton;
+        private ImageButton shuffleButton;
+
+        private ImageButton playPauseButton;
+        private ImageButton playPreviousButton;
+        private ImageButton playNextButton;
+        private Button closeButton;
+
+        private RelativeLayout queueLayout;
+        private ImageButton itemsListCloseButton;
+        private RecyclerView itemsList;
+        private ItemTouchHelper itemTouchHelper;
+
+        private boolean queueVisible;
+
+        private ImageButton moreOptionsButton;
+        private ImageButton shareButton;
+        private ImageButton toggleOrientationButton;
+        private ImageButton switchPopupButton;
+        private ImageButton switchBackgroundButton;
+
+        private RelativeLayout windowRootLayout;
+        private View secondaryControls;
+
+        private int maxGestureLength;
+
+<span class="nc" id="L448">        VideoPlayerImpl(final Context context) {</span>
+<span class="nc" id="L449">            super(&quot;VideoPlayerImpl&quot; + MainVideoPlayer.TAG, context);</span>
+<span class="nc" id="L450">        }</span>
+
+        @Override
+        public void initViews(View rootView) {
+<span class="nc" id="L454">            super.initViews(rootView);</span>
+<span class="nc" id="L455">            this.titleTextView = rootView.findViewById(R.id.titleTextView);</span>
+<span class="nc" id="L456">            this.channelTextView = rootView.findViewById(R.id.channelTextView);</span>
+<span class="nc" id="L457">            this.volumeRelativeLayout = rootView.findViewById(R.id.volumeRelativeLayout);</span>
+<span class="nc" id="L458">            this.volumeProgressBar = rootView.findViewById(R.id.volumeProgressBar);</span>
+<span class="nc" id="L459">            this.volumeImageView = rootView.findViewById(R.id.volumeImageView);</span>
+<span class="nc" id="L460">            this.brightnessRelativeLayout = rootView.findViewById(R.id.brightnessRelativeLayout);</span>
+<span class="nc" id="L461">            this.brightnessProgressBar = rootView.findViewById(R.id.brightnessProgressBar);</span>
+<span class="nc" id="L462">            this.brightnessImageView = rootView.findViewById(R.id.brightnessImageView);</span>
+<span class="nc" id="L463">            this.queueButton = rootView.findViewById(R.id.queueButton);</span>
+<span class="nc" id="L464">            this.repeatButton = rootView.findViewById(R.id.repeatButton);</span>
+<span class="nc" id="L465">            this.shuffleButton = rootView.findViewById(R.id.shuffleButton);</span>
+
+<span class="nc" id="L467">            this.playPauseButton = rootView.findViewById(R.id.playPauseButton);</span>
+<span class="nc" id="L468">            this.playPreviousButton = rootView.findViewById(R.id.playPreviousButton);</span>
+<span class="nc" id="L469">            this.playNextButton = rootView.findViewById(R.id.playNextButton);</span>
+<span class="nc" id="L470">            this.closeButton = rootView.findViewById(R.id.closeButton);</span>
+
+<span class="nc" id="L472">            this.moreOptionsButton = rootView.findViewById(R.id.moreOptionsButton);</span>
+<span class="nc" id="L473">            this.secondaryControls = rootView.findViewById(R.id.secondaryControls);</span>
+<span class="nc" id="L474">            this.shareButton = rootView.findViewById(R.id.share);</span>
+<span class="nc" id="L475">            this.toggleOrientationButton = rootView.findViewById(R.id.toggleOrientation);</span>
+<span class="nc" id="L476">            this.switchBackgroundButton = rootView.findViewById(R.id.switchBackground);</span>
+<span class="nc" id="L477">            this.switchPopupButton = rootView.findViewById(R.id.switchPopup);</span>
+
+<span class="nc" id="L479">            this.queueLayout = findViewById(R.id.playQueuePanel);</span>
+<span class="nc" id="L480">            this.itemsListCloseButton = findViewById(R.id.playQueueClose);</span>
+<span class="nc" id="L481">            this.itemsList = findViewById(R.id.playQueue);</span>
+
+<span class="nc" id="L483">            titleTextView.setSelected(true);</span>
+<span class="nc" id="L484">            channelTextView.setSelected(true);</span>
+
+<span class="nc" id="L486">            getRootView().setKeepScreenOn(true);</span>
+<span class="nc" id="L487">        }</span>
+
+        @Override
+        protected void setupSubtitleView(@NonNull SubtitleView view,
+                                         final float captionScale,
+                                         @NonNull final CaptionStyleCompat captionStyle) {
+<span class="nc" id="L493">            final DisplayMetrics metrics = context.getResources().getDisplayMetrics();</span>
+<span class="nc" id="L494">            final int minimumLength = Math.min(metrics.heightPixels, metrics.widthPixels);</span>
+<span class="nc" id="L495">            final float captionRatioInverse = 20f + 4f * (1f - captionScale);</span>
+<span class="nc" id="L496">            view.setFixedTextSize(TypedValue.COMPLEX_UNIT_PX,</span>
+                    (float) minimumLength / captionRatioInverse);
+<span class="nc" id="L498">            view.setApplyEmbeddedStyles(captionStyle.equals(CaptionStyleCompat.DEFAULT));</span>
+<span class="nc" id="L499">            view.setStyle(captionStyle);</span>
+<span class="nc" id="L500">        }</span>
+
+        @Override
+        public void initListeners() {
+<span class="nc" id="L504">            super.initListeners();</span>
+
+<span class="nc" id="L506">            PlayerGestureListener listener = new PlayerGestureListener();</span>
+<span class="nc" id="L507">            gestureDetector = new GestureDetector(context, listener);</span>
+<span class="nc" id="L508">            gestureDetector.setIsLongpressEnabled(false);</span>
+<span class="nc" id="L509">            getRootView().setOnTouchListener(listener);</span>
+
+<span class="nc" id="L511">            queueButton.setOnClickListener(this);</span>
+<span class="nc" id="L512">            repeatButton.setOnClickListener(this);</span>
+<span class="nc" id="L513">            shuffleButton.setOnClickListener(this);</span>
+
+<span class="nc" id="L515">            playPauseButton.setOnClickListener(this);</span>
+<span class="nc" id="L516">            playPreviousButton.setOnClickListener(this);</span>
+<span class="nc" id="L517">            playNextButton.setOnClickListener(this);</span>
+<span class="nc" id="L518">            closeButton.setOnClickListener(this);</span>
+
+<span class="nc" id="L520">            moreOptionsButton.setOnClickListener(this);</span>
+<span class="nc" id="L521">            shareButton.setOnClickListener(this);</span>
+<span class="nc" id="L522">            toggleOrientationButton.setOnClickListener(this);</span>
+<span class="nc" id="L523">            switchBackgroundButton.setOnClickListener(this);</span>
+<span class="nc" id="L524">            switchPopupButton.setOnClickListener(this);</span>
+
+<span class="nc" id="L526">            getRootView().addOnLayoutChangeListener((view, l, t, r, b, ol, ot, or, ob) -&gt; {</span>
+<span class="nc bnc" id="L527" title="All 8 branches missed.">                if (l != ol || t != ot || r != or || b != ob) {</span>
+                    // Use smaller value to be consistent between screen orientations
+                    // (and to make usage easier)
+<span class="nc" id="L530">                    int width = r - l, height = b - t;</span>
+<span class="nc" id="L531">                    maxGestureLength = (int) (Math.min(width, height) * MAX_GESTURE_LENGTH);</span>
+
+<span class="nc bnc" id="L533" title="All 2 branches missed.">                    if (DEBUG) Log.d(TAG, &quot;maxGestureLength = &quot; + maxGestureLength);</span>
+
+<span class="nc" id="L535">                    volumeProgressBar.setMax(maxGestureLength);</span>
+<span class="nc" id="L536">                    brightnessProgressBar.setMax(maxGestureLength);</span>
+
+<span class="nc" id="L538">                    setInitialGestureValues();</span>
+                }
+<span class="nc" id="L540">            });</span>
+<span class="nc" id="L541">        }</span>
+
+        public void minimize() {
+<span class="nc bnc" id="L544" title="All 3 branches missed.">            switch (PlayerHelper.getMinimizeOnExitAction(context)) {</span>
+                case PlayerHelper.MinimizeMode.MINIMIZE_ON_EXIT_MODE_BACKGROUND:
+<span class="nc" id="L546">                    onPlayBackgroundButtonClicked();</span>
+<span class="nc" id="L547">                    break;</span>
+                case PlayerHelper.MinimizeMode.MINIMIZE_ON_EXIT_MODE_POPUP:
+<span class="nc" id="L549">                    onFullScreenButtonClicked();</span>
+<span class="nc" id="L550">                    break;</span>
+                case PlayerHelper.MinimizeMode.MINIMIZE_ON_EXIT_MODE_NONE:
+                default:
+                    // No action
+                    break;
+            }
+<span class="nc" id="L556">        }</span>
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // ExoPlayer Video Listener
+        //////////////////////////////////////////////////////////////////////////*/
+
+        @Override
+        public void onRepeatModeChanged(int i) {
+<span class="nc" id="L564">            super.onRepeatModeChanged(i);</span>
+<span class="nc" id="L565">            updatePlaybackButtons();</span>
+<span class="nc" id="L566">        }</span>
+
+        @Override
+        public void onShuffleClicked() {
+<span class="nc" id="L570">            super.onShuffleClicked();</span>
+<span class="nc" id="L571">            updatePlaybackButtons();</span>
+<span class="nc" id="L572">        }</span>
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // Playback Listener
+        //////////////////////////////////////////////////////////////////////////*/
+
+        protected void onMetadataChanged(@NonNull final MediaSourceTag tag) {
+<span class="nc" id="L579">            super.onMetadataChanged(tag);</span>
+
+<span class="nc" id="L581">            titleTextView.setText(tag.getMetadata().getName());</span>
+<span class="nc" id="L582">            channelTextView.setText(tag.getMetadata().getUploaderName());</span>
+<span class="nc" id="L583">        }</span>
+
+        @Override
+        public void onPlaybackShutdown() {
+<span class="nc" id="L587">            super.onPlaybackShutdown();</span>
+<span class="nc" id="L588">            finish();</span>
+<span class="nc" id="L589">        }</span>
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // Player Overrides
+        //////////////////////////////////////////////////////////////////////////*/
+
+        @Override
+        public void onFullScreenButtonClicked() {
+<span class="nc" id="L597">            super.onFullScreenButtonClicked();</span>
+
+<span class="nc bnc" id="L599" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;onFullScreenButtonClicked() called&quot;);</span>
+<span class="nc bnc" id="L600" title="All 2 branches missed.">            if (simpleExoPlayer == null) return;</span>
+
+<span class="nc bnc" id="L602" title="All 2 branches missed.">            if (!PermissionHelper.isPopupEnabled(context)) {</span>
+<span class="nc" id="L603">                PermissionHelper.showPopupEnablementToast(context);</span>
+<span class="nc" id="L604">                return;</span>
+            }
+
+<span class="nc" id="L607">            setRecovery();</span>
+<span class="nc" id="L608">            final Intent intent = NavigationHelper.getPlayerIntent(</span>
+                    context,
+                    PopupVideoPlayer.class,
+<span class="nc" id="L611">                    this.getPlayQueue(),</span>
+<span class="nc" id="L612">                    this.getRepeatMode(),</span>
+<span class="nc" id="L613">                    this.getPlaybackSpeed(),</span>
+<span class="nc" id="L614">                    this.getPlaybackPitch(),</span>
+<span class="nc" id="L615">                    this.getPlaybackSkipSilence(),</span>
+<span class="nc" id="L616">                    this.getPlaybackQuality(),</span>
+                    false
+            );
+<span class="nc" id="L619">            context.startService(intent);</span>
+
+<span class="nc" id="L621">            ((View) getControlAnimationView().getParent()).setVisibility(View.GONE);</span>
+<span class="nc" id="L622">            destroy();</span>
+<span class="nc" id="L623">            finish();</span>
+<span class="nc" id="L624">        }</span>
+
+        public void onPlayBackgroundButtonClicked() {
+<span class="nc bnc" id="L627" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;onPlayBackgroundButtonClicked() called&quot;);</span>
+<span class="nc bnc" id="L628" title="All 2 branches missed.">            if (playerImpl.getPlayer() == null) return;</span>
+
+<span class="nc" id="L630">            setRecovery();</span>
+<span class="nc" id="L631">            final Intent intent = NavigationHelper.getPlayerIntent(</span>
+                    context,
+                    BackgroundPlayer.class,
+<span class="nc" id="L634">                    this.getPlayQueue(),</span>
+<span class="nc" id="L635">                    this.getRepeatMode(),</span>
+<span class="nc" id="L636">                    this.getPlaybackSpeed(),</span>
+<span class="nc" id="L637">                    this.getPlaybackPitch(),</span>
+<span class="nc" id="L638">                    this.getPlaybackSkipSilence(),</span>
+<span class="nc" id="L639">                    this.getPlaybackQuality(),</span>
+                    false
+            );
+<span class="nc" id="L642">            context.startService(intent);</span>
+
+<span class="nc" id="L644">            ((View) getControlAnimationView().getParent()).setVisibility(View.GONE);</span>
+<span class="nc" id="L645">            destroy();</span>
+<span class="nc" id="L646">            finish();</span>
+<span class="nc" id="L647">        }</span>
+
+
+        @Override
+        public void onClick(View v) {
+<span class="nc" id="L652">            super.onClick(v);</span>
+<span class="nc bnc" id="L653" title="All 2 branches missed.">            if (v.getId() == playPauseButton.getId()) {</span>
+<span class="nc" id="L654">                onPlayPause();</span>
+
+<span class="nc bnc" id="L656" title="All 2 branches missed.">            } else if (v.getId() == playPreviousButton.getId()) {</span>
+<span class="nc" id="L657">                onPlayPrevious();</span>
+
+<span class="nc bnc" id="L659" title="All 2 branches missed.">            } else if (v.getId() == playNextButton.getId()) {</span>
+<span class="nc" id="L660">                onPlayNext();</span>
+
+<span class="nc bnc" id="L662" title="All 2 branches missed.">            } else if (v.getId() == queueButton.getId()) {</span>
+<span class="nc" id="L663">                onQueueClicked();</span>
+<span class="nc" id="L664">                return;</span>
+<span class="nc bnc" id="L665" title="All 2 branches missed.">            } else if (v.getId() == repeatButton.getId()) {</span>
+<span class="nc" id="L666">                onRepeatClicked();</span>
+<span class="nc" id="L667">                return;</span>
+<span class="nc bnc" id="L668" title="All 2 branches missed.">            } else if (v.getId() == shuffleButton.getId()) {</span>
+<span class="nc" id="L669">                onShuffleClicked();</span>
+<span class="nc" id="L670">                return;</span>
+<span class="nc bnc" id="L671" title="All 2 branches missed.">            } else if (v.getId() == moreOptionsButton.getId()) {</span>
+<span class="nc" id="L672">                onMoreOptionsClicked();</span>
+
+<span class="nc bnc" id="L674" title="All 2 branches missed.">            } else if (v.getId() == shareButton.getId()) {</span>
+<span class="nc" id="L675">                onShareClicked();</span>
+
+<span class="nc bnc" id="L677" title="All 2 branches missed.">            } else if (v.getId() == toggleOrientationButton.getId()) {</span>
+<span class="nc" id="L678">                onScreenRotationClicked();</span>
+
+<span class="nc bnc" id="L680" title="All 2 branches missed.">            } else if (v.getId() == switchPopupButton.getId()) {</span>
+<span class="nc" id="L681">                onFullScreenButtonClicked();</span>
+
+<span class="nc bnc" id="L683" title="All 2 branches missed.">            } else if (v.getId() == switchBackgroundButton.getId()) {</span>
+<span class="nc" id="L684">                onPlayBackgroundButtonClicked();</span>
+
+<span class="nc bnc" id="L686" title="All 2 branches missed.">            } else if (v.getId() == closeButton.getId()) {</span>
+<span class="nc" id="L687">                onPlaybackShutdown();</span>
+<span class="nc" id="L688">                return;</span>
+            }
+
+<span class="nc bnc" id="L691" title="All 2 branches missed.">            if (getCurrentState() != STATE_COMPLETED) {</span>
+<span class="nc" id="L692">                getControlsVisibilityHandler().removeCallbacksAndMessages(null);</span>
+<span class="nc" id="L693">                animateView(getControlsRoot(), true, DEFAULT_CONTROLS_DURATION, 0, () -&gt; {</span>
+<span class="nc bnc" id="L694" title="All 4 branches missed.">                    if (getCurrentState() == STATE_PLAYING &amp;&amp; !isSomePopupMenuVisible()) {</span>
+<span class="nc" id="L695">                        hideControls(DEFAULT_CONTROLS_DURATION, DEFAULT_CONTROLS_HIDE_TIME);</span>
+                    }
+<span class="nc" id="L697">                });</span>
+            }
+<span class="nc" id="L699">        }</span>
+
+        private void onQueueClicked() {
+<span class="nc" id="L702">            queueVisible = true;</span>
+<span class="nc" id="L703">            hideSystemUi();</span>
+
+<span class="nc" id="L705">            buildQueue();</span>
+<span class="nc" id="L706">            updatePlaybackButtons();</span>
+
+<span class="nc" id="L708">            getControlsRoot().setVisibility(View.INVISIBLE);</span>
+<span class="nc" id="L709">            animateView(queueLayout, SLIDE_AND_ALPHA, /*visible=*/true,</span>
+                    DEFAULT_CONTROLS_DURATION);
+
+<span class="nc" id="L712">            itemsList.scrollToPosition(playQueue.getIndex());</span>
+<span class="nc" id="L713">        }</span>
+
+        private void onQueueClosed() {
+<span class="nc" id="L716">            animateView(queueLayout, SLIDE_AND_ALPHA, /*visible=*/false,</span>
+                    DEFAULT_CONTROLS_DURATION);
+<span class="nc" id="L718">            queueVisible = false;</span>
+<span class="nc" id="L719">        }</span>
+
+        private void onMoreOptionsClicked() {
+<span class="nc bnc" id="L722" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;onMoreOptionsClicked() called&quot;);</span>
+
+<span class="nc bnc" id="L724" title="All 2 branches missed.">            final boolean isMoreControlsVisible = secondaryControls.getVisibility() == View.VISIBLE;</span>
+
+<span class="nc bnc" id="L726" title="All 2 branches missed.">            animateRotation(moreOptionsButton, DEFAULT_CONTROLS_DURATION,</span>
+                    isMoreControlsVisible ? 0 : 180);
+<span class="nc bnc" id="L728" title="All 2 branches missed.">            animateView(secondaryControls, SLIDE_AND_ALPHA, !isMoreControlsVisible,</span>
+                    DEFAULT_CONTROLS_DURATION);
+<span class="nc" id="L730">            showControls(DEFAULT_CONTROLS_DURATION);</span>
+<span class="nc" id="L731">        }</span>
+
+        private void onShareClicked() {
+            // share video at the current time (youtube.com/watch?v=ID&amp;t=SECONDS)
+<span class="nc" id="L735">            ShareUtils.shareUrl(MainVideoPlayer.this,</span>
+<span class="nc" id="L736">                    playerImpl.getVideoTitle(),</span>
+<span class="nc" id="L737">                    playerImpl.getVideoUrl() + &quot;&amp;t=&quot; + String.valueOf(playerImpl.getPlaybackSeekBar().getProgress()/1000));</span>
+<span class="nc" id="L738">        }</span>
+
+        private void onScreenRotationClicked() {
+<span class="nc bnc" id="L741" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;onScreenRotationClicked() called&quot;);</span>
+<span class="nc" id="L742">            toggleOrientation();</span>
+<span class="nc" id="L743">            showControlsThenHide();</span>
+<span class="nc" id="L744">        }</span>
+
+        @Override
+        public void onPlaybackSpeedClicked() {
+<span class="nc" id="L748">            PlaybackParameterDialog</span>
+<span class="nc" id="L749">                    .newInstance(getPlaybackSpeed(), getPlaybackPitch(), getPlaybackSkipSilence())</span>
+<span class="nc" id="L750">                    .show(getSupportFragmentManager(), TAG);</span>
+<span class="nc" id="L751">        }</span>
+
+        @Override
+        public void onStopTrackingTouch(SeekBar seekBar) {
+<span class="nc" id="L755">            super.onStopTrackingTouch(seekBar);</span>
+<span class="nc bnc" id="L756" title="All 2 branches missed.">            if (wasPlaying()) showControlsThenHide();</span>
+<span class="nc" id="L757">        }</span>
+
+        @Override
+        public void onDismiss(PopupMenu menu) {
+<span class="nc" id="L761">            super.onDismiss(menu);</span>
+<span class="nc bnc" id="L762" title="All 2 branches missed.">            if (isPlaying()) hideControls(DEFAULT_CONTROLS_DURATION, 0);</span>
+<span class="nc" id="L763">            hideSystemUi();</span>
+<span class="nc" id="L764">        }</span>
+
+        @Override
+        protected int nextResizeMode(int currentResizeMode) {
+            final int newResizeMode;
+<span class="nc bnc" id="L769" title="All 3 branches missed.">            switch (currentResizeMode) {</span>
+                case AspectRatioFrameLayout.RESIZE_MODE_FIT:
+<span class="nc" id="L771">                    newResizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL;</span>
+<span class="nc" id="L772">                    break;</span>
+                case AspectRatioFrameLayout.RESIZE_MODE_FILL:
+<span class="nc" id="L774">                    newResizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM;</span>
+<span class="nc" id="L775">                    break;</span>
+                default:
+<span class="nc" id="L777">                    newResizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT;</span>
+                    break;
+            }
+
+<span class="nc" id="L781">            storeResizeMode(newResizeMode);</span>
+<span class="nc" id="L782">            return newResizeMode;</span>
+        }
+
+        private void storeResizeMode(@AspectRatioFrameLayout.ResizeMode int resizeMode) {
+<span class="nc" id="L786">            defaultPreferences.edit()</span>
+<span class="nc" id="L787">                    .putInt(getString(R.string.last_resize_mode), resizeMode)</span>
+<span class="nc" id="L788">                    .apply();</span>
+<span class="nc" id="L789">        }</span>
+
+        @Override
+        protected VideoPlaybackResolver.QualityResolver getQualityResolver() {
+<span class="nc" id="L793">            return new VideoPlaybackResolver.QualityResolver() {</span>
+                @Override
+                public int getDefaultResolutionIndex(List&lt;VideoStream&gt; sortedVideos) {
+<span class="nc" id="L796">                    return ListHelper.getDefaultResolutionIndex(context, sortedVideos);</span>
+                }
+
+                @Override
+                public int getOverrideResolutionIndex(List&lt;VideoStream&gt; sortedVideos,
+                                                      String playbackQuality) {
+<span class="nc" id="L802">                    return ListHelper.getResolutionIndex(context, sortedVideos, playbackQuality);</span>
+                }
+            };
+        }
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // States
+        //////////////////////////////////////////////////////////////////////////*/
+
+        private void animatePlayButtons(final boolean show, final int duration) {
+<span class="nc" id="L812">            animateView(playPauseButton, AnimationUtils.Type.SCALE_AND_ALPHA, show, duration);</span>
+<span class="nc" id="L813">            animateView(playPreviousButton, AnimationUtils.Type.SCALE_AND_ALPHA, show, duration);</span>
+<span class="nc" id="L814">            animateView(playNextButton, AnimationUtils.Type.SCALE_AND_ALPHA, show, duration);</span>
+<span class="nc" id="L815">        }</span>
+
+        @Override
+        public void onBlocked() {
+<span class="nc" id="L819">            super.onBlocked();</span>
+<span class="nc" id="L820">            playPauseButton.setImageResource(R.drawable.ic_pause_white);</span>
+<span class="nc" id="L821">            animatePlayButtons(false, 100);</span>
+<span class="nc" id="L822">            animateView(closeButton, false, DEFAULT_CONTROLS_DURATION);</span>
+<span class="nc" id="L823">            getRootView().setKeepScreenOn(true);</span>
+<span class="nc" id="L824">        }</span>
+
+        @Override
+        public void onBuffering() {
+<span class="nc" id="L828">            super.onBuffering();</span>
+<span class="nc" id="L829">            getRootView().setKeepScreenOn(true);</span>
+<span class="nc" id="L830">        }</span>
+
+        @Override
+        public void onPlaying() {
+<span class="nc" id="L834">            super.onPlaying();</span>
+<span class="nc" id="L835">            animateView(playPauseButton, AnimationUtils.Type.SCALE_AND_ALPHA, false, 80, 0, () -&gt; {</span>
+<span class="nc" id="L836">                playPauseButton.setImageResource(R.drawable.ic_pause_white);</span>
+<span class="nc" id="L837">                animatePlayButtons(true, 200);</span>
+<span class="nc" id="L838">                animateView(closeButton, false, DEFAULT_CONTROLS_DURATION);</span>
+<span class="nc" id="L839">            });</span>
+
+<span class="nc" id="L841">            getRootView().setKeepScreenOn(true);</span>
+<span class="nc" id="L842">        }</span>
+
+        @Override
+        public void onPaused() {
+<span class="nc" id="L846">            super.onPaused();</span>
+<span class="nc" id="L847">            animateView(playPauseButton, AnimationUtils.Type.SCALE_AND_ALPHA, false, 80, 0, () -&gt; {</span>
+<span class="nc" id="L848">                playPauseButton.setImageResource(R.drawable.ic_play_arrow_white);</span>
+<span class="nc" id="L849">                animatePlayButtons(true, 200);</span>
+<span class="nc" id="L850">                animateView(closeButton, false, DEFAULT_CONTROLS_DURATION);</span>
+<span class="nc" id="L851">            });</span>
+
+<span class="nc" id="L853">            showSystemUi();</span>
+<span class="nc" id="L854">            getRootView().setKeepScreenOn(false);</span>
+<span class="nc" id="L855">        }</span>
+
+        @Override
+        public void onPausedSeek() {
+<span class="nc" id="L859">            super.onPausedSeek();</span>
+<span class="nc" id="L860">            animatePlayButtons(false, 100);</span>
+<span class="nc" id="L861">            getRootView().setKeepScreenOn(true);</span>
+<span class="nc" id="L862">        }</span>
+
+
+        @Override
+        public void onCompleted() {
+<span class="nc" id="L867">            animateView(playPauseButton, AnimationUtils.Type.SCALE_AND_ALPHA, false, 0, 0, () -&gt; {</span>
+<span class="nc" id="L868">                playPauseButton.setImageResource(R.drawable.ic_replay_white);</span>
+<span class="nc" id="L869">                animatePlayButtons(true, DEFAULT_CONTROLS_DURATION);</span>
+<span class="nc" id="L870">                animateView(closeButton, true, DEFAULT_CONTROLS_DURATION);</span>
+<span class="nc" id="L871">            });</span>
+<span class="nc" id="L872">            getRootView().setKeepScreenOn(false);</span>
+<span class="nc" id="L873">            super.onCompleted();</span>
+<span class="nc" id="L874">        }</span>
+
+        /*//////////////////////////////////////////////////////////////////////////
+        // Utils
+        //////////////////////////////////////////////////////////////////////////*/
+
+        private void setInitialGestureValues() {
+<span class="nc bnc" id="L881" title="All 2 branches missed.">            if (getAudioReactor() != null) {</span>
+<span class="nc" id="L882">                final float currentVolumeNormalized = (float) getAudioReactor().getVolume() / getAudioReactor().getMaxVolume();</span>
+<span class="nc" id="L883">                volumeProgressBar.setProgress((int) (volumeProgressBar.getMax() * currentVolumeNormalized));</span>
+            }
+<span class="nc" id="L885">        }</span>
+
+        @Override
+        public void showControlsThenHide() {
+<span class="nc bnc" id="L889" title="All 2 branches missed.">            if (queueVisible) return;</span>
+
+<span class="nc" id="L891">            super.showControlsThenHide();</span>
+<span class="nc" id="L892">        }</span>
+
+        @Override
+        public void showControls(long duration) {
+<span class="nc bnc" id="L896" title="All 2 branches missed.">            if (queueVisible) return;</span>
+
+<span class="nc" id="L898">            super.showControls(duration);</span>
+<span class="nc" id="L899">        }</span>
+
+        @Override
+        public void hideControls(final long duration, long delay) {
+<span class="nc bnc" id="L903" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;hideControls() called with: delay = [&quot; + delay + &quot;]&quot;);</span>
+<span class="nc" id="L904">            getControlsVisibilityHandler().removeCallbacksAndMessages(null);</span>
+<span class="nc" id="L905">            getControlsVisibilityHandler().postDelayed(() -&gt;</span>
+<span class="nc" id="L906">                            animateView(getControlsRoot(), false, duration, 0,</span>
+<span class="nc" id="L907">                                    MainVideoPlayer.this::hideSystemUi),</span>
+                    /*delayMillis=*/delay
+            );
+<span class="nc" id="L910">        }</span>
+
+        private void updatePlaybackButtons() {
+<span class="nc bnc" id="L913" title="All 8 branches missed.">            if (repeatButton == null || shuffleButton == null ||</span>
+<span class="nc" id="L914">                    simpleExoPlayer == null || playQueue == null) return;</span>
+
+<span class="nc" id="L916">            setRepeatModeButton(repeatButton, getRepeatMode());</span>
+<span class="nc" id="L917">            setShuffleButton(shuffleButton, playQueue.isShuffled());</span>
+<span class="nc" id="L918">        }</span>
+
+        private void buildQueue() {
+<span class="nc" id="L921">            itemsList.setAdapter(playQueueAdapter);</span>
+<span class="nc" id="L922">            itemsList.setClickable(true);</span>
+<span class="nc" id="L923">            itemsList.setLongClickable(true);</span>
+
+<span class="nc" id="L925">            itemsList.clearOnScrollListeners();</span>
+<span class="nc" id="L926">            itemsList.addOnScrollListener(getQueueScrollListener());</span>
+
+<span class="nc" id="L928">            itemTouchHelper = new ItemTouchHelper(getItemTouchCallback());</span>
+<span class="nc" id="L929">            itemTouchHelper.attachToRecyclerView(itemsList);</span>
+
+<span class="nc" id="L931">            playQueueAdapter.setSelectedListener(getOnSelectedListener());</span>
+
+<span class="nc" id="L933">            itemsListCloseButton.setOnClickListener(view -&gt; onQueueClosed());</span>
+<span class="nc" id="L934">        }</span>
+
+        private OnScrollBelowItemsListener getQueueScrollListener() {
+<span class="nc" id="L937">            return new OnScrollBelowItemsListener() {</span>
+                @Override
+                public void onScrolledDown(RecyclerView recyclerView) {
+<span class="nc bnc" id="L940" title="All 4 branches missed.">                    if (playQueue != null &amp;&amp; !playQueue.isComplete()) {</span>
+<span class="nc" id="L941">                        playQueue.fetch();</span>
+<span class="nc bnc" id="L942" title="All 2 branches missed.">                    } else if (itemsList != null) {</span>
+<span class="nc" id="L943">                        itemsList.clearOnScrollListeners();</span>
+                    }
+<span class="nc" id="L945">                }</span>
+            };
+        }
+
+        private ItemTouchHelper.SimpleCallback getItemTouchCallback() {
+<span class="nc" id="L950">            return new PlayQueueItemTouchCallback() {</span>
+                @Override
+                public void onMove(int sourceIndex, int targetIndex) {
+<span class="nc bnc" id="L953" title="All 2 branches missed.">                    if (playQueue != null) playQueue.move(sourceIndex, targetIndex);</span>
+<span class="nc" id="L954">                }</span>
+
+                @Override
+                public void onSwiped(int index) {
+<span class="nc bnc" id="L958" title="All 2 branches missed.">                    if(index != -1) playQueue.remove(index);</span>
+<span class="nc" id="L959">                }</span>
+            };
+        }
+
+        private PlayQueueItemBuilder.OnSelectedListener getOnSelectedListener() {
+<span class="nc" id="L964">            return new PlayQueueItemBuilder.OnSelectedListener() {</span>
+                @Override
+                public void selected(PlayQueueItem item, View view) {
+<span class="nc" id="L967">                    onSelected(item);</span>
+<span class="nc" id="L968">                }</span>
+
+                @Override
+                public void held(PlayQueueItem item, View view) {
+<span class="nc" id="L972">                    final int index = playQueue.indexOf(item);</span>
+<span class="nc bnc" id="L973" title="All 2 branches missed.">                    if (index != -1) playQueue.remove(index);</span>
+<span class="nc" id="L974">                }</span>
+
+                @Override
+                public void onStartDrag(PlayQueueItemHolder viewHolder) {
+<span class="nc bnc" id="L978" title="All 2 branches missed.">                    if (itemTouchHelper != null) itemTouchHelper.startDrag(viewHolder);</span>
+<span class="nc" id="L979">                }</span>
+            };
+        }
+
+        ///////////////////////////////////////////////////////////////////////////
+        // Getters
+        ///////////////////////////////////////////////////////////////////////////
+
+        public TextView getTitleTextView() {
+<span class="nc" id="L988">            return titleTextView;</span>
+        }
+
+        public TextView getChannelTextView() {
+<span class="nc" id="L992">            return channelTextView;</span>
+        }
+
+        public RelativeLayout getVolumeRelativeLayout() {
+<span class="nc" id="L996">            return volumeRelativeLayout;</span>
+        }
+
+        public ProgressBar getVolumeProgressBar() {
+<span class="nc" id="L1000">            return volumeProgressBar;</span>
+        }
+
+        public ImageView getVolumeImageView() {
+<span class="nc" id="L1004">            return volumeImageView;</span>
+        }
+
+        public RelativeLayout getBrightnessRelativeLayout() {
+<span class="nc" id="L1008">            return brightnessRelativeLayout;</span>
+        }
+
+        public ProgressBar getBrightnessProgressBar() {
+<span class="nc" id="L1012">            return brightnessProgressBar;</span>
+        }
+
+        public ImageView getBrightnessImageView() {
+<span class="nc" id="L1016">            return brightnessImageView;</span>
+        }
+
+        public ImageButton getRepeatButton() {
+<span class="nc" id="L1020">            return repeatButton;</span>
+        }
+
+        public ImageButton getPlayPauseButton() {
+<span class="nc" id="L1024">            return playPauseButton;</span>
+        }
+
+        public int getMaxGestureLength() {
+<span class="nc" id="L1028">            return maxGestureLength;</span>
+        }
+    }
+
+<span class="nc" id="L1032">    private class PlayerGestureListener extends GestureDetector.SimpleOnGestureListener implements View.OnTouchListener {</span>
+        private boolean isMoving;
+
+        @Override
+        public boolean onDoubleTap(MotionEvent e) {
+<span class="nc bnc" id="L1037" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;onDoubleTap() called with: e = [&quot; + e + &quot;]&quot; + &quot;rawXy = &quot; + e.getRawX() + &quot;, &quot; + e.getRawY() + &quot;, xy = &quot; + e.getX() + &quot;, &quot; + e.getY());</span>
+
+<span class="nc bnc" id="L1039" title="All 2 branches missed.">            if (e.getX() &gt; playerImpl.getRootView().getWidth() * 2 / 3) {</span>
+<span class="nc" id="L1040">                playerImpl.onFastForward();</span>
+<span class="nc bnc" id="L1041" title="All 2 branches missed.">            } else if (e.getX() &lt; playerImpl.getRootView().getWidth() / 3) {</span>
+<span class="nc" id="L1042">                playerImpl.onFastRewind();</span>
+            } else {
+<span class="nc" id="L1044">                playerImpl.getPlayPauseButton().performClick();</span>
+            }
+
+<span class="nc" id="L1047">            return true;</span>
+        }
+
+        @Override
+        public boolean onSingleTapConfirmed(MotionEvent e) {
+<span class="nc bnc" id="L1052" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;onSingleTapConfirmed() called with: e = [&quot; + e + &quot;]&quot;);</span>
+<span class="nc bnc" id="L1053" title="All 2 branches missed.">            if (playerImpl.getCurrentState() == BasePlayer.STATE_BLOCKED) return true;</span>
+
+<span class="nc bnc" id="L1055" title="All 2 branches missed.">            if (playerImpl.isControlsVisible()) {</span>
+<span class="nc" id="L1056">                playerImpl.hideControls(150, 0);</span>
+            } else {
+<span class="nc" id="L1058">                playerImpl.showControlsThenHide();</span>
+<span class="nc" id="L1059">                showSystemUi();</span>
+            }
+<span class="nc" id="L1061">            return true;</span>
+        }
+
+        @Override
+        public boolean onDown(MotionEvent e) {
+<span class="nc bnc" id="L1066" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;onDown() called with: e = [&quot; + e + &quot;]&quot;);</span>
+
+<span class="nc" id="L1068">            return super.onDown(e);</span>
+        }
+
+        private static final int MOVEMENT_THRESHOLD = 40;
+
+<span class="nc" id="L1073">        private final boolean isVolumeGestureEnabled = PlayerHelper.isVolumeGestureEnabled(getApplicationContext());</span>
+<span class="nc" id="L1074">        private final boolean isBrightnessGestureEnabled = PlayerHelper.isBrightnessGestureEnabled(getApplicationContext());</span>
+
+<span class="nc" id="L1076">        private final int maxVolume = playerImpl.getAudioReactor().getMaxVolume();</span>
+
+        @Override
+        public boolean onScroll(MotionEvent initialEvent, MotionEvent movingEvent, float distanceX, float distanceY) {
+<span class="nc bnc" id="L1080" title="All 4 branches missed.">            if (!isVolumeGestureEnabled &amp;&amp; !isBrightnessGestureEnabled) return false;</span>
+
+            //noinspection PointlessBooleanExpression
+<span class="nc bnc" id="L1083" title="All 2 branches missed.">            if (DEBUG &amp;&amp; false) Log.d(TAG, &quot;MainVideoPlayer.onScroll = &quot; +</span>
+                    &quot;, e1.getRaw = [&quot; + initialEvent.getRawX() + &quot;, &quot; + initialEvent.getRawY() + &quot;]&quot; +
+                    &quot;, e2.getRaw = [&quot; + movingEvent.getRawX() + &quot;, &quot; + movingEvent.getRawY() + &quot;]&quot; +
+                    &quot;, distanceXy = [&quot; + distanceX + &quot;, &quot; + distanceY + &quot;]&quot;);
+
+<span class="nc bnc" id="L1088" title="All 2 branches missed.">            final boolean insideThreshold = Math.abs(movingEvent.getY() - initialEvent.getY()) &lt;= MOVEMENT_THRESHOLD;</span>
+<span class="nc bnc" id="L1089" title="All 6 branches missed.">            if (!isMoving &amp;&amp; (insideThreshold || Math.abs(distanceX) &gt; Math.abs(distanceY))</span>
+<span class="nc bnc" id="L1090" title="All 2 branches missed.">                    || playerImpl.getCurrentState() == BasePlayer.STATE_COMPLETED) {</span>
+<span class="nc" id="L1091">                return false;</span>
+            }
+
+<span class="nc" id="L1094">            isMoving = true;</span>
+
+<span class="nc bnc" id="L1096" title="All 2 branches missed.">            boolean acceptAnyArea = isVolumeGestureEnabled != isBrightnessGestureEnabled;</span>
+<span class="nc bnc" id="L1097" title="All 4 branches missed.">            boolean acceptVolumeArea = acceptAnyArea || initialEvent.getX() &gt; playerImpl.getRootView().getWidth() / 2;</span>
+<span class="nc bnc" id="L1098" title="All 4 branches missed.">            boolean acceptBrightnessArea = acceptAnyArea || !acceptVolumeArea;</span>
+
+<span class="nc bnc" id="L1100" title="All 4 branches missed.">            if (isVolumeGestureEnabled &amp;&amp; acceptVolumeArea) {</span>
+<span class="nc" id="L1101">                playerImpl.getVolumeProgressBar().incrementProgressBy((int) distanceY);</span>
+<span class="nc" id="L1102">                float currentProgressPercent =</span>
+<span class="nc" id="L1103">                        (float) playerImpl.getVolumeProgressBar().getProgress() / playerImpl.getMaxGestureLength();</span>
+<span class="nc" id="L1104">                int currentVolume = (int) (maxVolume * currentProgressPercent);</span>
+<span class="nc" id="L1105">                playerImpl.getAudioReactor().setVolume(currentVolume);</span>
+
+<span class="nc bnc" id="L1107" title="All 2 branches missed.">                if (DEBUG) Log.d(TAG, &quot;onScroll().volumeControl, currentVolume = &quot; + currentVolume);</span>
+
+<span class="nc bnc" id="L1109" title="All 6 branches missed.">                final int resId =</span>
+                        currentProgressPercent &lt;= 0 ? R.drawable.ic_volume_off_white_72dp
+                                : currentProgressPercent &lt; 0.25 ? R.drawable.ic_volume_mute_white_72dp
+                                : currentProgressPercent &lt; 0.75 ? R.drawable.ic_volume_down_white_72dp
+                                : R.drawable.ic_volume_up_white_72dp;
+
+<span class="nc" id="L1115">                playerImpl.getVolumeImageView().setImageDrawable(</span>
+<span class="nc" id="L1116">                        AppCompatResources.getDrawable(getApplicationContext(), resId)</span>
+                );
+
+<span class="nc bnc" id="L1119" title="All 2 branches missed.">                if (playerImpl.getVolumeRelativeLayout().getVisibility() != View.VISIBLE) {</span>
+<span class="nc" id="L1120">                    animateView(playerImpl.getVolumeRelativeLayout(), SCALE_AND_ALPHA, true, 200);</span>
+                }
+<span class="nc bnc" id="L1122" title="All 2 branches missed.">                if (playerImpl.getBrightnessRelativeLayout().getVisibility() == View.VISIBLE) {</span>
+<span class="nc" id="L1123">                    playerImpl.getBrightnessRelativeLayout().setVisibility(View.GONE);</span>
+                }
+<span class="nc bnc" id="L1125" title="All 4 branches missed.">            } else if (isBrightnessGestureEnabled &amp;&amp; acceptBrightnessArea) {</span>
+<span class="nc" id="L1126">                playerImpl.getBrightnessProgressBar().incrementProgressBy((int) distanceY);</span>
+<span class="nc" id="L1127">                float currentProgressPercent =</span>
+<span class="nc" id="L1128">                        (float) playerImpl.getBrightnessProgressBar().getProgress() / playerImpl.getMaxGestureLength();</span>
+<span class="nc" id="L1129">                WindowManager.LayoutParams layoutParams = getWindow().getAttributes();</span>
+<span class="nc" id="L1130">                layoutParams.screenBrightness = currentProgressPercent;</span>
+<span class="nc" id="L1131">                getWindow().setAttributes(layoutParams);</span>
+
+<span class="nc bnc" id="L1133" title="All 2 branches missed.">                if (DEBUG) Log.d(TAG, &quot;onScroll().brightnessControl, currentBrightness = &quot; + currentProgressPercent);</span>
+
+<span class="nc bnc" id="L1135" title="All 4 branches missed.">                final int resId =</span>
+                        currentProgressPercent &lt; 0.25 ? R.drawable.ic_brightness_low_white_72dp
+                                : currentProgressPercent &lt; 0.75 ? R.drawable.ic_brightness_medium_white_72dp
+                                : R.drawable.ic_brightness_high_white_72dp;
+
+<span class="nc" id="L1140">                playerImpl.getBrightnessImageView().setImageDrawable(</span>
+<span class="nc" id="L1141">                        AppCompatResources.getDrawable(getApplicationContext(), resId)</span>
+                );
+
+<span class="nc bnc" id="L1144" title="All 2 branches missed.">                if (playerImpl.getBrightnessRelativeLayout().getVisibility() != View.VISIBLE) {</span>
+<span class="nc" id="L1145">                    animateView(playerImpl.getBrightnessRelativeLayout(), SCALE_AND_ALPHA, true, 200);</span>
+                }
+<span class="nc bnc" id="L1147" title="All 2 branches missed.">                if (playerImpl.getVolumeRelativeLayout().getVisibility() == View.VISIBLE) {</span>
+<span class="nc" id="L1148">                    playerImpl.getVolumeRelativeLayout().setVisibility(View.GONE);</span>
+                }
+            }
+<span class="nc" id="L1151">            return true;</span>
+        }
+
+        private void onScrollEnd() {
+<span class="nc bnc" id="L1155" title="All 2 branches missed.">            if (DEBUG) Log.d(TAG, &quot;onScrollEnd() called&quot;);</span>
+
+<span class="nc bnc" id="L1157" title="All 2 branches missed.">            if (playerImpl.getVolumeRelativeLayout().getVisibility() == View.VISIBLE) {</span>
+<span class="nc" id="L1158">                animateView(playerImpl.getVolumeRelativeLayout(), SCALE_AND_ALPHA, false, 200, 200);</span>
+            }
+<span class="nc bnc" id="L1160" title="All 2 branches missed.">            if (playerImpl.getBrightnessRelativeLayout().getVisibility() == View.VISIBLE) {</span>
+<span class="nc" id="L1161">                animateView(playerImpl.getBrightnessRelativeLayout(), SCALE_AND_ALPHA, false, 200, 200);</span>
+            }
+
+<span class="nc bnc" id="L1164" title="All 4 branches missed.">            if (playerImpl.isControlsVisible() &amp;&amp; playerImpl.getCurrentState() == STATE_PLAYING) {</span>
+<span class="nc" id="L1165">                playerImpl.hideControls(DEFAULT_CONTROLS_DURATION, DEFAULT_CONTROLS_HIDE_TIME);</span>
+            }
+<span class="nc" id="L1167">        }</span>
+
+        @Override
+        public boolean onTouch(View v, MotionEvent event) {
+            //noinspection PointlessBooleanExpression
+<span class="nc bnc" id="L1172" title="All 2 branches missed.">            if (DEBUG &amp;&amp; false) Log.d(TAG, &quot;onTouch() called with: v = [&quot; + v + &quot;], event = [&quot; + event + &quot;]&quot;);</span>
+<span class="nc" id="L1173">            gestureDetector.onTouchEvent(event);</span>
+<span class="nc bnc" id="L1174" title="All 4 branches missed.">            if (event.getAction() == MotionEvent.ACTION_UP &amp;&amp; isMoving) {</span>
+<span class="nc" id="L1175">                isMoving = false;</span>
+<span class="nc" id="L1176">                onScrollEnd();</span>
+            }
+<span class="nc" id="L1178">            return true;</span>
+        }
+
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

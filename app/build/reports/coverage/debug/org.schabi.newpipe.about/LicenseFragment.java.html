@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LicenseFragment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.about</a> &gt; <span class="el_source">LicenseFragment.java</span></div><h1>LicenseFragment.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.about;
+
+import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Bundle;
+import android.support.annotation.Nullable;
+import android.support.v4.app.Fragment;
+import android.view.*;
+import android.widget.TextView;
+import org.schabi.newpipe.R;
+
+import java.util.Arrays;
+import java.util.Comparator;
+
+/**
+ * Fragment containing the software licenses
+ */
+<span class="nc" id="L20">public class LicenseFragment extends Fragment {</span>
+
+    private static final String ARG_COMPONENTS = &quot;components&quot;;
+    private SoftwareComponent[] softwareComponents;
+    private SoftwareComponent mComponentForContextMenu;
+
+    public static LicenseFragment newInstance(SoftwareComponent[] softwareComponents) {
+<span class="nc bnc" id="L27" title="All 2 branches missed.">        if(softwareComponents == null) {</span>
+<span class="nc" id="L28">            throw new NullPointerException(&quot;softwareComponents is null&quot;);</span>
+        }
+<span class="nc" id="L30">        LicenseFragment fragment = new LicenseFragment();</span>
+<span class="nc" id="L31">        Bundle bundle = new Bundle();</span>
+<span class="nc" id="L32">        bundle.putParcelableArray(ARG_COMPONENTS, softwareComponents);</span>
+<span class="nc" id="L33">        fragment.setArguments(bundle);</span>
+<span class="nc" id="L34">        return fragment;</span>
+    }
+
+    /**
+     * Shows a popup containing the license
+     * @param context the context to use
+     * @param license the license to show
+     */
+    public static void showLicense(Context context, License license) {
+<span class="nc" id="L43">        new LicenseFragmentHelper((Activity) context).execute(license);</span>
+<span class="nc" id="L44">    }</span>
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+<span class="nc" id="L48">        super.onCreate(savedInstanceState);</span>
+<span class="nc" id="L49">        softwareComponents = (SoftwareComponent[]) getArguments().getParcelableArray(ARG_COMPONENTS);</span>
+
+        // Sort components by name
+<span class="nc" id="L52">        Arrays.sort(softwareComponents, new Comparator&lt;SoftwareComponent&gt;() {</span>
+            @Override
+            public int compare(SoftwareComponent o1, SoftwareComponent o2) {
+<span class="nc" id="L55">                return o1.getName().compareTo(o2.getName());</span>
+            }
+        });
+<span class="nc" id="L58">    }</span>
+
+    @Nullable
+    @Override
+    public View onCreateView(LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+<span class="nc" id="L63">        View rootView = inflater.inflate(R.layout.fragment_licenses, container, false);</span>
+<span class="nc" id="L64">        ViewGroup softwareComponentsView = rootView.findViewById(R.id.software_components);</span>
+
+<span class="nc" id="L66">        View licenseLink = rootView.findViewById(R.id.app_read_license);</span>
+<span class="nc" id="L67">        licenseLink.setOnClickListener(new OnReadFullLicenseClickListener());</span>
+
+<span class="nc bnc" id="L69" title="All 2 branches missed.">        for (final SoftwareComponent component : softwareComponents) {</span>
+<span class="nc" id="L70">            View componentView = inflater.inflate(R.layout.item_software_component, container, false);</span>
+<span class="nc" id="L71">            TextView softwareName = componentView.findViewById(R.id.name);</span>
+<span class="nc" id="L72">            TextView copyright = componentView.findViewById(R.id.copyright);</span>
+<span class="nc" id="L73">            softwareName.setText(component.getName());</span>
+<span class="nc" id="L74">            copyright.setText(getContext().getString(R.string.copyright,</span>
+<span class="nc" id="L75">                    component.getYears(),</span>
+<span class="nc" id="L76">                    component.getCopyrightOwner(),</span>
+<span class="nc" id="L77">                    component.getLicense().getAbbreviation()));</span>
+
+<span class="nc" id="L79">            componentView.setTag(component);</span>
+<span class="nc" id="L80">            componentView.setOnClickListener(new View.OnClickListener() {</span>
+                @Override
+                public void onClick(View v) {
+<span class="nc" id="L83">                    Context context = v.getContext();</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">                    if (context != null) {</span>
+<span class="nc" id="L85">                        showLicense(context, component.getLicense());</span>
+                    }
+<span class="nc" id="L87">                }</span>
+            });
+<span class="nc" id="L89">            softwareComponentsView.addView(componentView);</span>
+<span class="nc" id="L90">            registerForContextMenu(componentView);</span>
+        }
+<span class="nc" id="L92">        return rootView;</span>
+    }
+
+    @Override
+    public void onCreateContextMenu(ContextMenu menu, View v, ContextMenu.ContextMenuInfo menuInfo) {
+<span class="nc" id="L97">        MenuInflater inflater = getActivity().getMenuInflater();</span>
+<span class="nc" id="L98">        SoftwareComponent component = (SoftwareComponent) v.getTag();</span>
+<span class="nc" id="L99">        menu.setHeaderTitle(component.getName());</span>
+<span class="nc" id="L100">        inflater.inflate(R.menu.software_component, menu);</span>
+<span class="nc" id="L101">        super.onCreateContextMenu(menu, v, menuInfo);</span>
+<span class="nc" id="L102">        mComponentForContextMenu = (SoftwareComponent) v.getTag();</span>
+<span class="nc" id="L103">    }</span>
+
+    @Override
+    public boolean onContextItemSelected(MenuItem item) {
+        // item.getMenuInfo() is null so we use the tag of the view
+<span class="nc" id="L108">        final SoftwareComponent component = mComponentForContextMenu;</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">        if (component == null) {</span>
+<span class="nc" id="L110">            return false;</span>
+        }
+<span class="nc bnc" id="L112" title="All 3 branches missed.">        switch (item.getItemId()) {</span>
+            case R.id.action_website:
+<span class="nc" id="L114">                openWebsite(component.getLink());</span>
+<span class="nc" id="L115">                return true;</span>
+            case R.id.action_show_license:
+<span class="nc" id="L117">                showLicense(getContext(), component.getLicense());</span>
+        }
+<span class="nc" id="L119">        return false;</span>
+    }
+
+    private void openWebsite(String componentLink) {
+<span class="nc" id="L123">        Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(componentLink));</span>
+<span class="nc" id="L124">        startActivity(browserIntent);</span>
+<span class="nc" id="L125">    }</span>
+
+<span class="nc" id="L127">    private static class OnReadFullLicenseClickListener implements View.OnClickListener {</span>
+        @Override
+        public void onClick(View v) {
+<span class="nc" id="L130">            LicenseFragment.showLicense(v.getContext(), StandardLicenses.GPL3);</span>
+<span class="nc" id="L131">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

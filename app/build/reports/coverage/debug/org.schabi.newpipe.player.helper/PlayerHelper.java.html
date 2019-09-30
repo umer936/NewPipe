@@ -1,0 +1,360 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PlayerHelper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.player.helper</a> &gt; <span class="el_source">PlayerHelper.java</span></div><h1>PlayerHelper.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.player.helper;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.os.Build;
+import android.preference.PreferenceManager;
+import android.support.annotation.IntDef;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.view.accessibility.CaptioningManager;
+
+import com.google.android.exoplayer2.SeekParameters;
+import com.google.android.exoplayer2.text.CaptionStyleCompat;
+import com.google.android.exoplayer2.trackselection.AdaptiveTrackSelection;
+import com.google.android.exoplayer2.trackselection.TrackSelection;
+import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
+import com.google.android.exoplayer2.util.MimeTypes;
+
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.extractor.InfoItem;
+import org.schabi.newpipe.extractor.MediaFormat;
+import org.schabi.newpipe.extractor.stream.AudioStream;
+import org.schabi.newpipe.extractor.stream.StreamInfo;
+import org.schabi.newpipe.extractor.stream.StreamInfoItem;
+import org.schabi.newpipe.extractor.stream.SubtitlesStream;
+import org.schabi.newpipe.extractor.stream.VideoStream;
+import org.schabi.newpipe.player.playqueue.PlayQueue;
+import org.schabi.newpipe.player.playqueue.PlayQueueItem;
+import org.schabi.newpipe.player.playqueue.SinglePlayQueue;
+
+import java.lang.annotation.Retention;
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Formatter;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
+import static com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL;
+import static com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT;
+import static com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM;
+import static java.lang.annotation.RetentionPolicy.SOURCE;
+import static org.schabi.newpipe.player.helper.PlayerHelper.MinimizeMode.MINIMIZE_ON_EXIT_MODE_BACKGROUND;
+import static org.schabi.newpipe.player.helper.PlayerHelper.MinimizeMode.MINIMIZE_ON_EXIT_MODE_NONE;
+import static org.schabi.newpipe.player.helper.PlayerHelper.MinimizeMode.MINIMIZE_ON_EXIT_MODE_POPUP;
+
+public class PlayerHelper {
+<span class="nc" id="L52">    private PlayerHelper() {}</span>
+
+<span class="nc" id="L54">    private static final StringBuilder stringBuilder = new StringBuilder();</span>
+<span class="nc" id="L55">    private static final Formatter stringFormatter = new Formatter(stringBuilder, Locale.getDefault());</span>
+<span class="nc" id="L56">    private static final NumberFormat speedFormatter = new DecimalFormat(&quot;0.##x&quot;);</span>
+<span class="nc" id="L57">    private static final NumberFormat pitchFormatter = new DecimalFormat(&quot;##%&quot;);</span>
+
+    @Retention(SOURCE)
+    @IntDef({MINIMIZE_ON_EXIT_MODE_NONE, MINIMIZE_ON_EXIT_MODE_BACKGROUND,
+            MINIMIZE_ON_EXIT_MODE_POPUP})
+    public @interface MinimizeMode {
+        int MINIMIZE_ON_EXIT_MODE_NONE = 0;
+        int MINIMIZE_ON_EXIT_MODE_BACKGROUND = 1;
+        int MINIMIZE_ON_EXIT_MODE_POPUP = 2;
+    }
+    ////////////////////////////////////////////////////////////////////////////
+    // Exposed helpers
+    ////////////////////////////////////////////////////////////////////////////
+
+    public static String getTimeString(int milliSeconds) {
+<span class="nc" id="L72">        int seconds = (milliSeconds % 60000) / 1000;</span>
+<span class="nc" id="L73">        int minutes = (milliSeconds % 3600000) / 60000;</span>
+<span class="nc" id="L74">        int hours = (milliSeconds % 86400000) / 3600000;</span>
+<span class="nc" id="L75">        int days = (milliSeconds % (86400000 * 7)) / 86400000;</span>
+
+<span class="nc" id="L77">        stringBuilder.setLength(0);</span>
+<span class="nc bnc" id="L78" title="All 4 branches missed.">        return days &gt; 0 ? stringFormatter.format(&quot;%d:%02d:%02d:%02d&quot;, days, hours, minutes, seconds).toString()</span>
+<span class="nc" id="L79">                : hours &gt; 0 ? stringFormatter.format(&quot;%d:%02d:%02d&quot;, hours, minutes, seconds).toString()</span>
+<span class="nc" id="L80">                : stringFormatter.format(&quot;%02d:%02d&quot;, minutes, seconds).toString();</span>
+    }
+
+    public static String formatSpeed(double speed) {
+<span class="nc" id="L84">        return speedFormatter.format(speed);</span>
+    }
+
+    public static String formatPitch(double pitch) {
+<span class="nc" id="L88">        return pitchFormatter.format(pitch);</span>
+    }
+
+    public static String subtitleMimeTypesOf(final MediaFormat format) {
+<span class="nc bnc" id="L92" title="All 3 branches missed.">        switch (format) {</span>
+<span class="nc" id="L93">            case VTT: return MimeTypes.TEXT_VTT;</span>
+<span class="nc" id="L94">            case TTML: return MimeTypes.APPLICATION_TTML;</span>
+<span class="nc" id="L95">            default: throw new IllegalArgumentException(&quot;Unrecognized mime type: &quot; + format.name());</span>
+        }
+    }
+
+    @NonNull
+    public static String captionLanguageOf(@NonNull final Context context,
+                                           @NonNull final SubtitlesStream subtitles) {
+<span class="nc" id="L102">        final String displayName = subtitles.getDisplayLanguageName();</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        return displayName + (subtitles.isAutoGenerated() ? &quot; (&quot; + context.getString(R.string.caption_auto_generated)+ &quot;)&quot; : &quot;&quot;);</span>
+    }
+
+    @NonNull
+    public static String resizeTypeOf(@NonNull final Context context,
+                                      @AspectRatioFrameLayout.ResizeMode final int resizeMode) {
+<span class="nc bnc" id="L109" title="All 4 branches missed.">        switch (resizeMode) {</span>
+<span class="nc" id="L110">            case RESIZE_MODE_FIT: return context.getResources().getString(R.string.resize_fit);</span>
+<span class="nc" id="L111">            case RESIZE_MODE_FILL: return context.getResources().getString(R.string.resize_fill);</span>
+<span class="nc" id="L112">            case RESIZE_MODE_ZOOM: return context.getResources().getString(R.string.resize_zoom);</span>
+<span class="nc" id="L113">            default: throw new IllegalArgumentException(&quot;Unrecognized resize mode: &quot; + resizeMode);</span>
+        }
+    }
+
+    @NonNull
+    public static String cacheKeyOf(@NonNull final StreamInfo info, @NonNull VideoStream video) {
+<span class="nc" id="L119">        return info.getUrl() + video.getResolution() + video.getFormat().getName();</span>
+    }
+
+    @NonNull
+    public static String cacheKeyOf(@NonNull final StreamInfo info, @NonNull AudioStream audio) {
+<span class="nc" id="L124">        return info.getUrl() + audio.getAverageBitrate() + audio.getFormat().getName();</span>
+    }
+
+    /**
+     * Given a {@link StreamInfo} and the existing queue items, provide the
+     * {@link SinglePlayQueue} consisting of the next video for auto queuing.
+     * &lt;br&gt;&lt;br&gt;
+     * This method detects and prevents cycle by naively checking if a
+     * candidate next video's url already exists in the existing items.
+     * &lt;br&gt;&lt;br&gt;
+     * To select the next video, {@link StreamInfo#getNextVideo()} is first
+     * checked. If it is nonnull and is not part of the existing items, then
+     * it will be used as the next video. Otherwise, an random item with
+     * non-repeating url will be selected from the {@link StreamInfo#getRelatedStreams()}.
+     * */
+    @Nullable
+    public static PlayQueue autoQueueOf(@NonNull final StreamInfo info,
+                                        @NonNull final List&lt;PlayQueueItem&gt; existingItems) {
+<span class="nc" id="L142">        Set&lt;String&gt; urls = new HashSet&lt;&gt;(existingItems.size());</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">        for (final PlayQueueItem item : existingItems) {</span>
+<span class="nc" id="L144">            urls.add(item.getUrl());</span>
+<span class="nc" id="L145">        }</span>
+
+<span class="nc" id="L147">        final StreamInfoItem nextVideo = info.getNextVideo();</span>
+<span class="nc bnc" id="L148" title="All 4 branches missed.">        if (nextVideo != null &amp;&amp; !urls.contains(nextVideo.getUrl())) {</span>
+<span class="nc" id="L149">            return getAutoQueuedSinglePlayQueue(nextVideo);</span>
+        }
+
+<span class="nc" id="L152">        final List&lt;InfoItem&gt; relatedItems = info.getRelatedStreams();</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">        if (relatedItems == null) return null;</span>
+
+<span class="nc" id="L155">        List&lt;StreamInfoItem&gt; autoQueueItems = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">        for (final InfoItem item : info.getRelatedStreams()) {</span>
+<span class="nc bnc" id="L157" title="All 4 branches missed.">            if (item instanceof StreamInfoItem &amp;&amp; !urls.contains(item.getUrl())) {</span>
+<span class="nc" id="L158">                autoQueueItems.add((StreamInfoItem) item);</span>
+            }
+<span class="nc" id="L160">        }</span>
+<span class="nc" id="L161">        Collections.shuffle(autoQueueItems);</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">        return autoQueueItems.isEmpty() ? null : getAutoQueuedSinglePlayQueue(autoQueueItems.get(0));</span>
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Settings Resolution
+    ////////////////////////////////////////////////////////////////////////////
+
+    public static boolean isResumeAfterAudioFocusGain(@NonNull final Context context) {
+<span class="nc" id="L170">        return isResumeAfterAudioFocusGain(context, false);</span>
+    }
+
+    public static boolean isVolumeGestureEnabled(@NonNull final Context context) {
+<span class="nc" id="L174">        return isVolumeGestureEnabled(context, true);</span>
+    }
+
+    public static boolean isBrightnessGestureEnabled(@NonNull final Context context) {
+<span class="nc" id="L178">        return isBrightnessGestureEnabled(context, true);</span>
+    }
+
+    public static boolean isRememberingPopupDimensions(@NonNull final Context context) {
+<span class="nc" id="L182">        return isRememberingPopupDimensions(context, true);</span>
+    }
+
+    public static boolean isAutoQueueEnabled(@NonNull final Context context) {
+<span class="nc" id="L186">        return isAutoQueueEnabled(context, false);</span>
+    }
+
+    @MinimizeMode
+    public static int getMinimizeOnExitAction(@NonNull final Context context) {
+<span class="nc" id="L191">        final String defaultAction = context.getString(R.string.minimize_on_exit_none_key);</span>
+<span class="nc" id="L192">        final String popupAction = context.getString(R.string.minimize_on_exit_popup_key);</span>
+<span class="nc" id="L193">        final String backgroundAction = context.getString(R.string.minimize_on_exit_background_key);</span>
+
+<span class="nc" id="L195">        final String action = getMinimizeOnExitAction(context, defaultAction);</span>
+<span class="nc bnc" id="L196" title="All 2 branches missed.">        if (action.equals(popupAction)) {</span>
+<span class="nc" id="L197">            return MINIMIZE_ON_EXIT_MODE_POPUP;</span>
+<span class="nc bnc" id="L198" title="All 2 branches missed.">        } else if (action.equals(backgroundAction)) {</span>
+<span class="nc" id="L199">            return MINIMIZE_ON_EXIT_MODE_BACKGROUND;</span>
+        } else {
+<span class="nc" id="L201">            return MINIMIZE_ON_EXIT_MODE_NONE;</span>
+        }
+    }
+
+    @NonNull
+    public static SeekParameters getSeekParameters(@NonNull final Context context) {
+<span class="nc bnc" id="L207" title="All 2 branches missed.">        return isUsingInexactSeek(context) ?</span>
+                SeekParameters.CLOSEST_SYNC : SeekParameters.EXACT;
+    }
+
+    public static long getPreferredCacheSize(@NonNull final Context context) {
+<span class="nc" id="L212">        return 64 * 1024 * 1024L;</span>
+    }
+
+    public static long getPreferredFileSize(@NonNull final Context context) {
+<span class="nc" id="L216">        return 512 * 1024L;</span>
+    }
+
+    /**
+     * Returns the number of milliseconds the player buffers for before starting playback.
+     * */
+    public static int getPlaybackStartBufferMs(@NonNull final Context context) {
+<span class="nc" id="L223">        return 500;</span>
+    }
+
+    /**
+     * Returns the minimum number of milliseconds the player always buffers to after starting
+     * playback.
+     * */
+    public static int getPlaybackMinimumBufferMs(@NonNull final Context context) {
+<span class="nc" id="L231">        return 25000;</span>
+    }
+
+    /**
+     * Returns the maximum/optimal number of milliseconds the player will buffer to once the buffer
+     * hits the point of {@link #getPlaybackMinimumBufferMs(Context)}.
+     * */
+    public static int getPlaybackOptimalBufferMs(@NonNull final Context context) {
+<span class="nc" id="L239">        return 60000;</span>
+    }
+
+    public static TrackSelection.Factory getQualitySelector(@NonNull final Context context) {
+<span class="nc" id="L243">        return new AdaptiveTrackSelection.Factory(</span>
+                /*bufferDurationRequiredForQualityIncrease=*/1000,
+                AdaptiveTrackSelection.DEFAULT_MAX_DURATION_FOR_QUALITY_DECREASE_MS,
+                AdaptiveTrackSelection.DEFAULT_MIN_DURATION_TO_RETAIN_AFTER_DISCARD_MS,
+                AdaptiveTrackSelection.DEFAULT_BANDWIDTH_FRACTION);
+    }
+
+    public static boolean isUsingDSP(@NonNull final Context context) {
+<span class="nc" id="L251">        return true;</span>
+    }
+
+    public static int getTossFlingVelocity(@NonNull final Context context) {
+<span class="nc" id="L255">        return 2500;</span>
+    }
+
+    @NonNull
+    public static CaptionStyleCompat getCaptionStyle(@NonNull final Context context) {
+<span class="nc bnc" id="L260" title="All 2 branches missed.">        if (Build.VERSION.SDK_INT &lt; Build.VERSION_CODES.KITKAT) return CaptionStyleCompat.DEFAULT;</span>
+
+<span class="nc" id="L262">        final CaptioningManager captioningManager = (CaptioningManager)</span>
+<span class="nc" id="L263">                context.getSystemService(Context.CAPTIONING_SERVICE);</span>
+<span class="nc bnc" id="L264" title="All 4 branches missed.">        if (captioningManager == null || !captioningManager.isEnabled()) {</span>
+<span class="nc" id="L265">            return CaptionStyleCompat.DEFAULT;</span>
+        }
+
+<span class="nc" id="L268">        return CaptionStyleCompat.createFromCaptionStyle(captioningManager.getUserStyle());</span>
+    }
+
+    /**
+     * System font scaling:
+     * Very small - 0.25f, Small - 0.5f, Normal - 1.0f, Large - 1.5f, Very Large - 2.0f
+     * */
+    public static float getCaptionScale(@NonNull final Context context) {
+<span class="nc bnc" id="L276" title="All 2 branches missed.">        if (Build.VERSION.SDK_INT &lt; Build.VERSION_CODES.KITKAT) return 1f;</span>
+
+<span class="nc" id="L278">        final CaptioningManager captioningManager = (CaptioningManager)</span>
+<span class="nc" id="L279">                context.getSystemService(Context.CAPTIONING_SERVICE);</span>
+<span class="nc bnc" id="L280" title="All 4 branches missed.">        if (captioningManager == null || !captioningManager.isEnabled()) {</span>
+<span class="nc" id="L281">            return 1f;</span>
+        }
+
+<span class="nc" id="L284">        return captioningManager.getFontScale();</span>
+    }
+
+    public static float getScreenBrightness(@NonNull final Context context) {
+        //a value of less than 0, the default, means to use the preferred screen brightness
+<span class="nc" id="L289">        return getScreenBrightness(context, -1);</span>
+    }
+
+    public static void setScreenBrightness(@NonNull final Context context, final float setScreenBrightness) {
+<span class="nc" id="L293">        setScreenBrightness(context, setScreenBrightness, System.currentTimeMillis());</span>
+<span class="nc" id="L294">    }</span>
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Private helpers
+    ////////////////////////////////////////////////////////////////////////////
+
+    @NonNull
+    private static SharedPreferences getPreferences(@NonNull final Context context) {
+<span class="nc" id="L302">        return PreferenceManager.getDefaultSharedPreferences(context);</span>
+    }
+
+    private static boolean isResumeAfterAudioFocusGain(@NonNull final Context context, final boolean b) {
+<span class="nc" id="L306">        return getPreferences(context).getBoolean(context.getString(R.string.resume_on_audio_focus_gain_key), b);</span>
+    }
+
+    private static boolean isVolumeGestureEnabled(@NonNull final Context context, final boolean b) {
+<span class="nc" id="L310">        return getPreferences(context).getBoolean(context.getString(R.string.volume_gesture_control_key), b);</span>
+    }
+
+    private static boolean isBrightnessGestureEnabled(@NonNull final Context context, final boolean b) {
+<span class="nc" id="L314">        return getPreferences(context).getBoolean(context.getString(R.string.brightness_gesture_control_key), b);</span>
+    }
+
+    private static boolean isRememberingPopupDimensions(@NonNull final Context context, final boolean b) {
+<span class="nc" id="L318">        return getPreferences(context).getBoolean(context.getString(R.string.popup_remember_size_pos_key), b);</span>
+    }
+
+    private static boolean isUsingInexactSeek(@NonNull final Context context) {
+<span class="nc" id="L322">        return getPreferences(context).getBoolean(context.getString(R.string.use_inexact_seek_key), false);</span>
+    }
+
+    private static boolean isAutoQueueEnabled(@NonNull final Context context, final boolean b) {
+<span class="nc" id="L326">        return getPreferences(context).getBoolean(context.getString(R.string.auto_queue_key), b);</span>
+    }
+
+    private static void setScreenBrightness(@NonNull final Context context, final float screenBrightness, final long timestamp) {
+<span class="nc" id="L330">        SharedPreferences.Editor editor = getPreferences(context).edit();</span>
+<span class="nc" id="L331">        editor.putFloat(context.getString(R.string.screen_brightness_key), screenBrightness);</span>
+<span class="nc" id="L332">        editor.putLong(context.getString(R.string.screen_brightness_timestamp_key), timestamp);</span>
+<span class="nc" id="L333">        editor.apply();</span>
+<span class="nc" id="L334">    }</span>
+
+    private static float getScreenBrightness(@NonNull final Context context, final float screenBrightness) {
+<span class="nc" id="L337">        SharedPreferences sp = getPreferences(context);</span>
+<span class="nc" id="L338">        long timestamp = sp.getLong(context.getString(R.string.screen_brightness_timestamp_key), 0);</span>
+        // hypothesis: 4h covers a viewing block, eg evening. External lightning conditions will change in the next
+        // viewing block so we fall back to the default brightness
+<span class="nc bnc" id="L341" title="All 2 branches missed.">        if ((System.currentTimeMillis() - timestamp) &gt; TimeUnit.HOURS.toMillis(4)) {</span>
+<span class="nc" id="L342">            return screenBrightness;</span>
+        } else {
+<span class="nc" id="L344">            return sp.getFloat(context.getString(R.string.screen_brightness_key), screenBrightness);</span>
+        }
+    }
+
+    private static String getMinimizeOnExitAction(@NonNull final Context context,
+                                                  final String key) {
+<span class="nc" id="L350">        return getPreferences(context).getString(context.getString(R.string.minimize_on_exit_key),</span>
+                key);
+    }
+
+    private static SinglePlayQueue getAutoQueuedSinglePlayQueue(StreamInfoItem streamInfoItem) {
+<span class="nc" id="L355">        SinglePlayQueue singlePlayQueue = new SinglePlayQueue(streamInfoItem);</span>
+<span class="nc" id="L356">        singlePlayQueue.getItem().setAutoQueued(true);</span>
+<span class="nc" id="L357">        return singlePlayQueue;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

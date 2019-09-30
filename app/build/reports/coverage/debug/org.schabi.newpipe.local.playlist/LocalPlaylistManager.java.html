@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LocalPlaylistManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.local.playlist</a> &gt; <span class="el_source">LocalPlaylistManager.java</span></div><h1>LocalPlaylistManager.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.local.playlist;
+
+import android.support.annotation.Nullable;
+
+import org.schabi.newpipe.database.AppDatabase;
+import org.schabi.newpipe.database.playlist.PlaylistMetadataEntry;
+import org.schabi.newpipe.database.playlist.PlaylistStreamEntry;
+import org.schabi.newpipe.database.playlist.dao.PlaylistDAO;
+import org.schabi.newpipe.database.playlist.dao.PlaylistStreamDAO;
+import org.schabi.newpipe.database.playlist.model.PlaylistEntity;
+import org.schabi.newpipe.database.playlist.model.PlaylistStreamEntity;
+import org.schabi.newpipe.database.stream.dao.StreamDAO;
+import org.schabi.newpipe.database.stream.model.StreamEntity;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import io.reactivex.Completable;
+import io.reactivex.Flowable;
+import io.reactivex.Maybe;
+import io.reactivex.Single;
+import io.reactivex.schedulers.Schedulers;
+
+public class LocalPlaylistManager {
+
+    private final AppDatabase database;
+    private final StreamDAO streamTable;
+    private final PlaylistDAO playlistTable;
+    private final PlaylistStreamDAO playlistStreamTable;
+
+<span class="nc" id="L31">    public LocalPlaylistManager(final AppDatabase db) {</span>
+<span class="nc" id="L32">        database = db;</span>
+<span class="nc" id="L33">        streamTable = db.streamDAO();</span>
+<span class="nc" id="L34">        playlistTable = db.playlistDAO();</span>
+<span class="nc" id="L35">        playlistStreamTable = db.playlistStreamDAO();</span>
+<span class="nc" id="L36">    }</span>
+
+    public Maybe&lt;List&lt;Long&gt;&gt; createPlaylist(final String name, final List&lt;StreamEntity&gt; streams) {
+        // Disallow creation of empty playlists
+<span class="nc bnc" id="L40" title="All 2 branches missed.">        if (streams.isEmpty()) return Maybe.empty();</span>
+<span class="nc" id="L41">        final StreamEntity defaultStream = streams.get(0);</span>
+<span class="nc" id="L42">        final PlaylistEntity newPlaylist =</span>
+<span class="nc" id="L43">                new PlaylistEntity(name, defaultStream.getThumbnailUrl());</span>
+
+<span class="nc" id="L45">        return Maybe.fromCallable(() -&gt; database.runInTransaction(() -&gt;</span>
+<span class="nc" id="L46">                upsertStreams(playlistTable.insert(newPlaylist), streams, 0))</span>
+<span class="nc" id="L47">        ).subscribeOn(Schedulers.io());</span>
+    }
+
+    public Maybe&lt;List&lt;Long&gt;&gt; appendToPlaylist(final long playlistId,
+                                              final List&lt;StreamEntity&gt; streams) {
+<span class="nc" id="L52">        return playlistStreamTable.getMaximumIndexOf(playlistId)</span>
+<span class="nc" id="L53">                .firstElement()</span>
+<span class="nc" id="L54">                .map(maxJoinIndex -&gt; database.runInTransaction(() -&gt;</span>
+<span class="nc" id="L55">                        upsertStreams(playlistId, streams, maxJoinIndex + 1))</span>
+<span class="nc" id="L56">                ).subscribeOn(Schedulers.io());</span>
+    }
+
+    private List&lt;Long&gt; upsertStreams(final long playlistId,
+                                     final List&lt;StreamEntity&gt; streams,
+                                     final int indexOffset) {
+
+<span class="nc" id="L63">        List&lt;PlaylistStreamEntity&gt; joinEntities = new ArrayList&lt;&gt;(streams.size());</span>
+<span class="nc" id="L64">        final List&lt;Long&gt; streamIds = streamTable.upsertAll(streams);</span>
+<span class="nc bnc" id="L65" title="All 2 branches missed.">        for (int index = 0; index &lt; streamIds.size(); index++) {</span>
+<span class="nc" id="L66">            joinEntities.add(new PlaylistStreamEntity(playlistId, streamIds.get(index),</span>
+                    index + indexOffset));
+        }
+<span class="nc" id="L69">        return playlistStreamTable.insertAll(joinEntities);</span>
+    }
+
+    public Completable updateJoin(final long playlistId, final List&lt;Long&gt; streamIds) {
+<span class="nc" id="L73">        List&lt;PlaylistStreamEntity&gt; joinEntities = new ArrayList&lt;&gt;(streamIds.size());</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        for (int i = 0; i &lt; streamIds.size(); i++) {</span>
+<span class="nc" id="L75">            joinEntities.add(new PlaylistStreamEntity(playlistId, streamIds.get(i), i));</span>
+        }
+
+<span class="nc" id="L78">        return Completable.fromRunnable(() -&gt; database.runInTransaction(() -&gt; {</span>
+<span class="nc" id="L79">            playlistStreamTable.deleteBatch(playlistId);</span>
+<span class="nc" id="L80">            playlistStreamTable.insertAll(joinEntities);</span>
+<span class="nc" id="L81">        })).subscribeOn(Schedulers.io());</span>
+    }
+
+    public Flowable&lt;List&lt;PlaylistMetadataEntry&gt;&gt; getPlaylists() {
+<span class="nc" id="L85">        return playlistStreamTable.getPlaylistMetadata().subscribeOn(Schedulers.io());</span>
+    }
+
+    public Flowable&lt;List&lt;PlaylistStreamEntry&gt;&gt; getPlaylistStreams(final long playlistId) {
+<span class="nc" id="L89">        return playlistStreamTable.getOrderedStreamsOf(playlistId).subscribeOn(Schedulers.io());</span>
+    }
+
+    public Single&lt;Integer&gt; deletePlaylist(final long playlistId) {
+<span class="nc" id="L93">        return Single.fromCallable(() -&gt; playlistTable.deletePlaylist(playlistId))</span>
+<span class="nc" id="L94">                .subscribeOn(Schedulers.io());</span>
+    }
+
+    public Maybe&lt;Integer&gt; renamePlaylist(final long playlistId, final String name) {
+<span class="nc" id="L98">        return modifyPlaylist(playlistId, name, null);</span>
+    }
+
+    public Maybe&lt;Integer&gt; changePlaylistThumbnail(final long playlistId,
+                                                  final String thumbnailUrl) {
+<span class="nc" id="L103">        return modifyPlaylist(playlistId, null, thumbnailUrl);</span>
+    }
+
+    private Maybe&lt;Integer&gt; modifyPlaylist(final long playlistId,
+                                          @Nullable final String name,
+                                          @Nullable final String thumbnailUrl) {
+<span class="nc" id="L109">        return playlistTable.getPlaylist(playlistId)</span>
+<span class="nc" id="L110">                .firstElement()</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">                .filter(playlistEntities -&gt; !playlistEntities.isEmpty())</span>
+<span class="nc" id="L112">                .map(playlistEntities -&gt; {</span>
+<span class="nc" id="L113">                    PlaylistEntity playlist = playlistEntities.get(0);</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">                    if (name != null) playlist.setName(name);</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">                    if (thumbnailUrl != null) playlist.setThumbnailUrl(thumbnailUrl);</span>
+<span class="nc" id="L116">                    return playlistTable.update(playlist);</span>
+<span class="nc" id="L117">                }).subscribeOn(Schedulers.io());</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

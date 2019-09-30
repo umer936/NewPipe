@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InfoItemBuilder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.info_list</a> &gt; <span class="el_source">InfoItemBuilder.java</span></div><h1>InfoItemBuilder.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.info_list;
+
+import android.content.Context;
+import android.support.annotation.NonNull;
+import android.view.View;
+import android.view.ViewGroup;
+
+import com.nostra13.universalimageloader.core.ImageLoader;
+
+import org.schabi.newpipe.extractor.InfoItem;
+import org.schabi.newpipe.extractor.channel.ChannelInfoItem;
+import org.schabi.newpipe.extractor.comments.CommentsInfoItem;
+import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem;
+import org.schabi.newpipe.extractor.stream.StreamInfoItem;
+import org.schabi.newpipe.info_list.holder.ChannelInfoItemHolder;
+import org.schabi.newpipe.info_list.holder.ChannelMiniInfoItemHolder;
+import org.schabi.newpipe.info_list.holder.CommentsInfoItemHolder;
+import org.schabi.newpipe.info_list.holder.CommentsMiniInfoItemHolder;
+import org.schabi.newpipe.info_list.holder.InfoItemHolder;
+import org.schabi.newpipe.info_list.holder.PlaylistInfoItemHolder;
+import org.schabi.newpipe.info_list.holder.PlaylistMiniInfoItemHolder;
+import org.schabi.newpipe.info_list.holder.StreamInfoItemHolder;
+import org.schabi.newpipe.info_list.holder.StreamMiniInfoItemHolder;
+import org.schabi.newpipe.local.history.HistoryRecordManager;
+import org.schabi.newpipe.util.OnClickGesture;
+
+/*
+ * Created by Christian Schabesberger on 26.09.16.
+ * &lt;p&gt;
+ * Copyright (C) Christian Schabesberger 2016 &lt;chris.schabesberger@mailbox.org&gt;
+ * InfoItemBuilder.java is part of NewPipe.
+ * &lt;p&gt;
+ * NewPipe is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * &lt;p&gt;
+ * NewPipe is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * &lt;p&gt;
+ * You should have received a copy of the GNU General Public License
+ * along with NewPipe.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+public class InfoItemBuilder {
+<span class="nc" id="L48">    private static final String TAG = InfoItemBuilder.class.toString();</span>
+
+    private final Context context;
+<span class="nc" id="L51">    private final ImageLoader imageLoader = ImageLoader.getInstance();</span>
+
+    private OnClickGesture&lt;StreamInfoItem&gt; onStreamSelectedListener;
+    private OnClickGesture&lt;ChannelInfoItem&gt; onChannelSelectedListener;
+    private OnClickGesture&lt;PlaylistInfoItem&gt; onPlaylistSelectedListener;
+    private OnClickGesture&lt;CommentsInfoItem&gt; onCommentsSelectedListener;
+
+<span class="nc" id="L58">    public InfoItemBuilder(Context context) {</span>
+<span class="nc" id="L59">        this.context = context;</span>
+<span class="nc" id="L60">    }</span>
+
+    public View buildView(@NonNull ViewGroup parent, @NonNull final InfoItem infoItem, final HistoryRecordManager historyRecordManager) {
+<span class="nc" id="L63">        return buildView(parent, infoItem, historyRecordManager, false);</span>
+    }
+
+    public View buildView(@NonNull ViewGroup parent, @NonNull final InfoItem infoItem,
+                          final HistoryRecordManager historyRecordManager, boolean useMiniVariant) {
+<span class="nc" id="L68">        InfoItemHolder holder = holderFromInfoType(parent, infoItem.getInfoType(), useMiniVariant);</span>
+<span class="nc" id="L69">        holder.updateFromItem(infoItem, historyRecordManager);</span>
+<span class="nc" id="L70">        return holder.itemView;</span>
+    }
+
+    private InfoItemHolder holderFromInfoType(@NonNull ViewGroup parent, @NonNull InfoItem.InfoType infoType, boolean useMiniVariant) {
+<span class="nc bnc" id="L74" title="All 5 branches missed.">        switch (infoType) {</span>
+            case STREAM:
+<span class="nc bnc" id="L76" title="All 2 branches missed.">                return useMiniVariant ? new StreamMiniInfoItemHolder(this, parent) : new StreamInfoItemHolder(this, parent);</span>
+            case CHANNEL:
+<span class="nc bnc" id="L78" title="All 2 branches missed.">                return useMiniVariant ? new ChannelMiniInfoItemHolder(this, parent) : new ChannelInfoItemHolder(this, parent);</span>
+            case PLAYLIST:
+<span class="nc bnc" id="L80" title="All 2 branches missed.">                return useMiniVariant ? new PlaylistMiniInfoItemHolder(this, parent) : new PlaylistInfoItemHolder(this, parent);</span>
+            case COMMENT:
+<span class="nc bnc" id="L82" title="All 2 branches missed.">                return useMiniVariant ? new CommentsMiniInfoItemHolder(this, parent) : new CommentsInfoItemHolder(this, parent);</span>
+            default:
+<span class="nc" id="L84">                throw new RuntimeException(&quot;InfoType not expected = &quot; + infoType.name());</span>
+        }
+    }
+
+    public Context getContext() {
+<span class="nc" id="L89">        return context;</span>
+    }
+
+    public ImageLoader getImageLoader() {
+<span class="nc" id="L93">        return imageLoader;</span>
+    }
+
+    public OnClickGesture&lt;StreamInfoItem&gt; getOnStreamSelectedListener() {
+<span class="nc" id="L97">        return onStreamSelectedListener;</span>
+    }
+
+    public void setOnStreamSelectedListener(OnClickGesture&lt;StreamInfoItem&gt; listener) {
+<span class="nc" id="L101">        this.onStreamSelectedListener = listener;</span>
+<span class="nc" id="L102">    }</span>
+
+    public OnClickGesture&lt;ChannelInfoItem&gt; getOnChannelSelectedListener() {
+<span class="nc" id="L105">        return onChannelSelectedListener;</span>
+    }
+
+    public void setOnChannelSelectedListener(OnClickGesture&lt;ChannelInfoItem&gt; listener) {
+<span class="nc" id="L109">        this.onChannelSelectedListener = listener;</span>
+<span class="nc" id="L110">    }</span>
+
+    public OnClickGesture&lt;PlaylistInfoItem&gt; getOnPlaylistSelectedListener() {
+<span class="nc" id="L113">        return onPlaylistSelectedListener;</span>
+    }
+
+    public void setOnPlaylistSelectedListener(OnClickGesture&lt;PlaylistInfoItem&gt; listener) {
+<span class="nc" id="L117">        this.onPlaylistSelectedListener = listener;</span>
+<span class="nc" id="L118">    }</span>
+
+    public OnClickGesture&lt;CommentsInfoItem&gt; getOnCommentsSelectedListener() {
+<span class="nc" id="L121">        return onCommentsSelectedListener;</span>
+    }
+
+    public void setOnCommentsSelectedListener(OnClickGesture&lt;CommentsInfoItem&gt; onCommentsSelectedListener) {
+<span class="nc" id="L125">        this.onCommentsSelectedListener = onCommentsSelectedListener;</span>
+<span class="nc" id="L126">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

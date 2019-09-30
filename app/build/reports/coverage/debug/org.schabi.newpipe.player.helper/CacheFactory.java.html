@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CacheFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.player.helper</a> &gt; <span class="el_source">CacheFactory.java</span></div><h1>CacheFactory.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.player.helper;
+
+import android.content.Context;
+import android.support.annotation.NonNull;
+import android.util.Log;
+
+import com.google.android.exoplayer2.upstream.DataSource;
+import com.google.android.exoplayer2.upstream.DefaultDataSource;
+import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
+import com.google.android.exoplayer2.upstream.FileDataSource;
+import com.google.android.exoplayer2.upstream.TransferListener;
+import com.google.android.exoplayer2.upstream.cache.CacheDataSink;
+import com.google.android.exoplayer2.upstream.cache.CacheDataSource;
+import com.google.android.exoplayer2.upstream.cache.LeastRecentlyUsedCacheEvictor;
+import com.google.android.exoplayer2.upstream.cache.SimpleCache;
+
+import java.io.File;
+
+/* package-private */ class CacheFactory implements DataSource.Factory {
+    private static final String TAG = &quot;CacheFactory&quot;;
+    private static final String CACHE_FOLDER_NAME = &quot;exoplayer&quot;;
+    private static final int CACHE_FLAGS = CacheDataSource.FLAG_BLOCK_ON_CACHE | CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR;
+
+    private final DefaultDataSourceFactory dataSourceFactory;
+    private final File cacheDir;
+    private final long maxFileSize;
+
+    // Creating cache on every instance may cause problems with multiple players when
+    // sources are not ExtractorMediaSource
+    // see: https://stackoverflow.com/questions/28700391/using-cache-in-exoplayer
+    // todo: make this a singleton?
+    private static SimpleCache cache;
+
+    public CacheFactory(@NonNull final Context context,
+                        @NonNull final String userAgent,
+                        @NonNull final TransferListener transferListener) {
+<span class="nc" id="L37">        this(context, userAgent, transferListener, PlayerHelper.getPreferredCacheSize(context),</span>
+<span class="nc" id="L38">                PlayerHelper.getPreferredFileSize(context));</span>
+<span class="nc" id="L39">    }</span>
+
+    private CacheFactory(@NonNull final Context context,
+                         @NonNull final String userAgent,
+                         @NonNull final TransferListener transferListener,
+                         final long maxCacheSize,
+<span class="nc" id="L45">                         final long maxFileSize) {</span>
+<span class="nc" id="L46">        this.maxFileSize = maxFileSize;</span>
+
+<span class="nc" id="L48">        dataSourceFactory = new DefaultDataSourceFactory(context, userAgent, transferListener);</span>
+<span class="nc" id="L49">        cacheDir = new File(context.getExternalCacheDir(), CACHE_FOLDER_NAME);</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">        if (!cacheDir.exists()) {</span>
+            //noinspection ResultOfMethodCallIgnored
+<span class="nc" id="L52">            cacheDir.mkdir();</span>
+        }
+
+<span class="nc bnc" id="L55" title="All 2 branches missed.">        if (cache == null) {</span>
+<span class="nc" id="L56">            final LeastRecentlyUsedCacheEvictor evictor = new LeastRecentlyUsedCacheEvictor(maxCacheSize);</span>
+<span class="nc" id="L57">            cache = new SimpleCache(cacheDir, evictor);</span>
+        }
+<span class="nc" id="L59">    }</span>
+
+    @Override
+    public DataSource createDataSource() {
+<span class="nc" id="L63">        Log.d(TAG, &quot;initExoPlayerCache: cacheDir = &quot; + cacheDir.getAbsolutePath());</span>
+
+<span class="nc" id="L65">        final DefaultDataSource dataSource = dataSourceFactory.createDataSource();</span>
+<span class="nc" id="L66">        final FileDataSource fileSource = new FileDataSource();</span>
+<span class="nc" id="L67">        final CacheDataSink dataSink = new CacheDataSink(cache, maxFileSize);</span>
+
+<span class="nc" id="L69">        return new CacheDataSource(cache, dataSource, fileSource, dataSink, CACHE_FLAGS, null);</span>
+    }
+
+    public void tryDeleteCacheFiles() {
+<span class="nc bnc" id="L73" title="All 4 branches missed.">        if (!cacheDir.exists() || !cacheDir.isDirectory()) return;</span>
+
+        try {
+<span class="nc bnc" id="L76" title="All 2 branches missed.">            for (File file : cacheDir.listFiles()) {</span>
+<span class="nc" id="L77">                final String filePath = file.getAbsolutePath();</span>
+<span class="nc" id="L78">                final boolean deleteSuccessful = file.delete();</span>
+
+<span class="nc" id="L80">                Log.d(TAG, &quot;tryDeleteCacheFiles: &quot; + filePath + &quot; deleted = &quot; + deleteSuccessful);</span>
+            }
+<span class="nc" id="L82">        } catch (Exception ignored) {</span>
+<span class="nc" id="L83">            Log.e(TAG, &quot;Failed to delete file.&quot;, ignored);</span>
+<span class="nc" id="L84">        }</span>
+<span class="nc" id="L85">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

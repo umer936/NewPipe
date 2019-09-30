@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StreamItemAdapter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.util</a> &gt; <span class="el_source">StreamItemAdapter.java</span></div><h1>StreamItemAdapter.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.util;
+
+import android.content.Context;
+import android.util.SparseArray;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.BaseAdapter;
+import android.widget.ImageView;
+import android.widget.Spinner;
+import android.widget.TextView;
+
+import org.schabi.newpipe.Downloader;
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.extractor.stream.AudioStream;
+import org.schabi.newpipe.extractor.stream.Stream;
+import org.schabi.newpipe.extractor.stream.SubtitlesStream;
+import org.schabi.newpipe.extractor.stream.VideoStream;
+
+import java.io.Serializable;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.Callable;
+
+import io.reactivex.Single;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.schedulers.Schedulers;
+import us.shandian.giga.util.Utility;
+
+/**
+ * A list adapter for a list of {@link Stream streams},
+ * currently supporting {@link VideoStream}, {@link AudioStream} and {@link SubtitlesStream}
+ */
+public class StreamItemAdapter&lt;T extends Stream, U extends Stream&gt; extends BaseAdapter {
+    private final Context context;
+
+    private final StreamSizeWrapper&lt;T&gt; streamsWrapper;
+    private final SparseArray&lt;SecondaryStreamHelper&lt;U&gt;&gt; secondaryStreams;
+
+<span class="nc" id="L40">    public StreamItemAdapter(Context context, StreamSizeWrapper&lt;T&gt; streamsWrapper, SparseArray&lt;SecondaryStreamHelper&lt;U&gt;&gt; secondaryStreams) {</span>
+<span class="nc" id="L41">        this.context = context;</span>
+<span class="nc" id="L42">        this.streamsWrapper = streamsWrapper;</span>
+<span class="nc" id="L43">        this.secondaryStreams = secondaryStreams;</span>
+<span class="nc" id="L44">    }</span>
+
+    public StreamItemAdapter(Context context, StreamSizeWrapper&lt;T&gt; streamsWrapper, boolean showIconNoAudio) {
+<span class="nc bnc" id="L47" title="All 2 branches missed.">        this(context, streamsWrapper, showIconNoAudio ? new SparseArray&lt;&gt;() : null);</span>
+<span class="nc" id="L48">    }</span>
+
+    public StreamItemAdapter(Context context, StreamSizeWrapper&lt;T&gt; streamsWrapper) {
+<span class="nc" id="L51">        this(context, streamsWrapper, null);</span>
+<span class="nc" id="L52">    }</span>
+
+    public List&lt;T&gt; getAll() {
+<span class="nc" id="L55">        return streamsWrapper.getStreamsList();</span>
+    }
+
+    public SparseArray&lt;SecondaryStreamHelper&lt;U&gt;&gt; getAllSecondary() {
+<span class="nc" id="L59">        return secondaryStreams;</span>
+    }
+
+    @Override
+    public int getCount() {
+<span class="nc" id="L64">        return streamsWrapper.getStreamsList().size();</span>
+    }
+
+    @Override
+    public T getItem(int position) {
+<span class="nc" id="L69">        return streamsWrapper.getStreamsList().get(position);</span>
+    }
+
+    @Override
+    public long getItemId(int position) {
+<span class="nc" id="L74">        return position;</span>
+    }
+
+    @Override
+    public View getDropDownView(int position, View convertView, ViewGroup parent) {
+<span class="nc" id="L79">        return getCustomView(position, convertView, parent, true);</span>
+    }
+
+    @Override
+    public View getView(int position, View convertView, ViewGroup parent) {
+<span class="nc" id="L84">        return getCustomView(((Spinner) parent).getSelectedItemPosition(), convertView, parent, false);</span>
+    }
+
+    private View getCustomView(int position, View convertView, ViewGroup parent, boolean isDropdownItem) {
+<span class="nc bnc" id="L88" title="All 2 branches missed.">        if (convertView == null) {</span>
+<span class="nc" id="L89">            convertView = LayoutInflater.from(context).inflate(R.layout.stream_quality_item, parent, false);</span>
+        }
+
+<span class="nc" id="L92">        final ImageView woSoundIconView = convertView.findViewById(R.id.wo_sound_icon);</span>
+<span class="nc" id="L93">        final TextView formatNameView = convertView.findViewById(R.id.stream_format_name);</span>
+<span class="nc" id="L94">        final TextView qualityView = convertView.findViewById(R.id.stream_quality);</span>
+<span class="nc" id="L95">        final TextView sizeView = convertView.findViewById(R.id.stream_size);</span>
+
+<span class="nc" id="L97">        final T stream = getItem(position);</span>
+
+<span class="nc" id="L99">        int woSoundIconVisibility = View.GONE;</span>
+        String qualityString;
+
+<span class="nc bnc" id="L102" title="All 2 branches missed.">        if (stream instanceof VideoStream) {</span>
+<span class="nc" id="L103">            VideoStream videoStream = ((VideoStream) stream);</span>
+<span class="nc" id="L104">            qualityString = videoStream.getResolution();</span>
+
+<span class="nc bnc" id="L106" title="All 2 branches missed.">            if (secondaryStreams != null) {</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">                if (videoStream.isVideoOnly()) {</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">                    woSoundIconVisibility = secondaryStreams.get(position) == null ? View.VISIBLE : View.INVISIBLE;</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">                } else if (isDropdownItem) {</span>
+<span class="nc" id="L110">                    woSoundIconVisibility = View.INVISIBLE;</span>
+                }
+            }
+<span class="nc bnc" id="L113" title="All 2 branches missed.">        } else if (stream instanceof AudioStream) {</span>
+<span class="nc" id="L114">            AudioStream audioStream = ((AudioStream) stream);</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">            qualityString = audioStream.getAverageBitrate() &gt; 0</span>
+<span class="nc" id="L116">                    ? audioStream.getAverageBitrate() + &quot;kbps&quot;</span>
+<span class="nc" id="L117">                    : audioStream.getFormat().getName();</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">        } else if (stream instanceof SubtitlesStream) {</span>
+<span class="nc" id="L119">            qualityString = ((SubtitlesStream) stream).getDisplayLanguageName();</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">            if (((SubtitlesStream) stream).isAutoGenerated()) {</span>
+<span class="nc" id="L121">                qualityString += &quot; (&quot; + context.getString(R.string.caption_auto_generated) + &quot;)&quot;;</span>
+            }
+        } else {
+<span class="nc" id="L124">            qualityString = stream.getFormat().getSuffix();</span>
+        }
+
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (streamsWrapper.getSizeInBytes(position) &gt; 0) {</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">            SecondaryStreamHelper secondary = secondaryStreams == null ? null : secondaryStreams.get(position);</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">            if (secondary != null) {</span>
+<span class="nc" id="L130">                long size = secondary.getSizeInBytes() + streamsWrapper.getSizeInBytes(position);</span>
+<span class="nc" id="L131">                sizeView.setText(Utility.formatBytes(size));</span>
+<span class="nc" id="L132">            } else {</span>
+<span class="nc" id="L133">                sizeView.setText(streamsWrapper.getFormattedSize(position));</span>
+            }
+<span class="nc" id="L135">            sizeView.setVisibility(View.VISIBLE);</span>
+<span class="nc" id="L136">        } else {</span>
+<span class="nc" id="L137">            sizeView.setVisibility(View.GONE);</span>
+        }
+
+<span class="nc bnc" id="L140" title="All 2 branches missed.">        if (stream instanceof SubtitlesStream) {</span>
+<span class="nc" id="L141">            formatNameView.setText(((SubtitlesStream) stream).getLanguageTag());</span>
+        } else {
+<span class="nc" id="L143">            formatNameView.setText(stream.getFormat().getName());</span>
+        }
+
+<span class="nc" id="L146">        qualityView.setText(qualityString);</span>
+<span class="nc" id="L147">        woSoundIconView.setVisibility(woSoundIconVisibility);</span>
+
+<span class="nc" id="L149">        return convertView;</span>
+    }
+
+    /**
+     * A wrapper class that includes a way of storing the stream sizes.
+     */
+    public static class StreamSizeWrapper&lt;T extends Stream&gt; implements Serializable {
+<span class="nc" id="L156">        private static final StreamSizeWrapper&lt;Stream&gt; EMPTY = new StreamSizeWrapper&lt;&gt;(Collections.emptyList(), null);</span>
+        private final List&lt;T&gt; streamsList;
+        private final long[] streamSizes;
+        private final String unknownSize;
+
+<span class="nc" id="L161">        public StreamSizeWrapper(List&lt;T&gt; sL, Context context) {</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">            this.streamsList = sL != null</span>
+                    ? sL
+<span class="nc" id="L164">                    : Collections.emptyList();</span>
+<span class="nc" id="L165">            this.streamSizes = new long[streamsList.size()];</span>
+<span class="nc bnc" id="L166" title="All 2 branches missed.">            this.unknownSize = context == null ? &quot;--.-&quot; : context.getString(R.string.unknown_content);</span>
+
+<span class="nc bnc" id="L168" title="All 2 branches missed.">            for (int i = 0; i &lt; streamSizes.length; i++) streamSizes[i] = -2;</span>
+<span class="nc" id="L169">        }</span>
+
+        /**
+         * Helper method to fetch the sizes of all the streams in a wrapper.
+         *
+         * @param streamsWrapper the wrapper
+         * @return a {@link Single} that returns a boolean indicating if any elements were changed
+         */
+        public static &lt;X extends Stream&gt; Single&lt;Boolean&gt; fetchSizeForWrapper(StreamSizeWrapper&lt;X&gt; streamsWrapper) {
+<span class="nc" id="L178">            final Callable&lt;Boolean&gt; fetchAndSet = () -&gt; {</span>
+<span class="nc" id="L179">                boolean hasChanged = false;</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">                for (X stream : streamsWrapper.getStreamsList()) {</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">                    if (streamsWrapper.getSizeInBytes(stream) &gt; -2) {</span>
+<span class="nc" id="L182">                        continue;</span>
+                    }
+
+<span class="nc" id="L185">                    final long contentLength = Downloader.getInstance().getContentLength(stream.getUrl());</span>
+<span class="nc" id="L186">                    streamsWrapper.setSize(stream, contentLength);</span>
+<span class="nc" id="L187">                    hasChanged = true;</span>
+<span class="nc" id="L188">                }</span>
+<span class="nc" id="L189">                return hasChanged;</span>
+            };
+
+<span class="nc" id="L192">            return Single.fromCallable(fetchAndSet)</span>
+<span class="nc" id="L193">                    .subscribeOn(Schedulers.io())</span>
+<span class="nc" id="L194">                    .observeOn(AndroidSchedulers.mainThread())</span>
+<span class="nc" id="L195">                    .onErrorReturnItem(true);</span>
+        }
+
+        public List&lt;T&gt; getStreamsList() {
+<span class="nc" id="L199">            return streamsList;</span>
+        }
+
+        public long getSizeInBytes(int streamIndex) {
+<span class="nc" id="L203">            return streamSizes[streamIndex];</span>
+        }
+
+        public long getSizeInBytes(T stream) {
+<span class="nc" id="L207">            return streamSizes[streamsList.indexOf(stream)];</span>
+        }
+
+        public String getFormattedSize(int streamIndex) {
+<span class="nc" id="L211">            return formatSize(getSizeInBytes(streamIndex));</span>
+        }
+
+        public String getFormattedSize(T stream) {
+<span class="nc" id="L215">            return formatSize(getSizeInBytes(stream));</span>
+        }
+
+        private String formatSize(long size) {
+<span class="nc bnc" id="L219" title="All 2 branches missed.">            if (size &gt; -1) {</span>
+<span class="nc" id="L220">                return Utility.formatBytes(size);</span>
+            }
+<span class="nc" id="L222">            return unknownSize;</span>
+        }
+
+        public void setSize(int streamIndex, long sizeInBytes) {
+<span class="nc" id="L226">            streamSizes[streamIndex] = sizeInBytes;</span>
+<span class="nc" id="L227">        }</span>
+
+        public void setSize(T stream, long sizeInBytes) {
+<span class="nc" id="L230">            streamSizes[streamsList.indexOf(stream)] = sizeInBytes;</span>
+<span class="nc" id="L231">        }</span>
+
+        public static &lt;X extends Stream&gt; StreamSizeWrapper&lt;X&gt; empty() {
+            //noinspection unchecked
+<span class="nc" id="L235">            return (StreamSizeWrapper&lt;X&gt;) EMPTY;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NewPipeSettings.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.settings</a> &gt; <span class="el_source">NewPipeSettings.java</span></div><h1>NewPipeSettings.java</h1><pre class="source lang-java linenums">/*
+ * Created by k3b on 07.01.2016.
+ *
+ * Copyright (C) Christian Schabesberger 2015 &lt;chris.schabesberger@mailbox.org&gt;
+ * NewPipeSettings.java is part of NewPipe.
+ *
+ * NewPipe is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * NewPipe is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NewPipe.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package org.schabi.newpipe.settings;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.os.Environment;
+import android.preference.PreferenceManager;
+import android.support.annotation.NonNull;
+
+import org.schabi.newpipe.R;
+
+import java.io.File;
+
+/**
+ * Helper for global settings
+ */
+
+/*
+ * Copyright (C) Christian Schabesberger 2016 &lt;chris.schabesberger@mailbox.org&gt;
+ * NewPipeSettings.java is part of NewPipe.
+ *
+ * NewPipe is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * NewPipe is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NewPipe.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+public class NewPipeSettings {
+
+<span class="nc" id="L57">    private NewPipeSettings() {</span>
+<span class="nc" id="L58">    }</span>
+
+    public static void initSettings(Context context) {
+<span class="fc" id="L61">        PreferenceManager.setDefaultValues(context, R.xml.appearance_settings, true);</span>
+<span class="fc" id="L62">        PreferenceManager.setDefaultValues(context, R.xml.content_settings, true);</span>
+<span class="fc" id="L63">        PreferenceManager.setDefaultValues(context, R.xml.download_settings, true);</span>
+<span class="fc" id="L64">        PreferenceManager.setDefaultValues(context, R.xml.history_settings, true);</span>
+<span class="fc" id="L65">        PreferenceManager.setDefaultValues(context, R.xml.main_settings, true);</span>
+<span class="fc" id="L66">        PreferenceManager.setDefaultValues(context, R.xml.video_audio_settings, true);</span>
+<span class="fc" id="L67">        PreferenceManager.setDefaultValues(context, R.xml.debug_settings, true);</span>
+
+<span class="fc" id="L69">        getVideoDownloadFolder(context);</span>
+<span class="fc" id="L70">        getAudioDownloadFolder(context);</span>
+<span class="fc" id="L71">    }</span>
+
+    private static void getVideoDownloadFolder(Context context) {
+<span class="fc" id="L74">        getDir(context, R.string.download_path_video_key, Environment.DIRECTORY_MOVIES);</span>
+<span class="fc" id="L75">    }</span>
+
+    private static void getAudioDownloadFolder(Context context) {
+<span class="fc" id="L78">        getDir(context, R.string.download_path_audio_key, Environment.DIRECTORY_MUSIC);</span>
+<span class="fc" id="L79">    }</span>
+
+    private static void getDir(Context context, int keyID, String defaultDirectoryName) {
+<span class="fc" id="L82">        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);</span>
+<span class="fc" id="L83">        final String key = context.getString(keyID);</span>
+<span class="fc" id="L84">        String downloadPath = prefs.getString(key, null);</span>
+<span class="pc bpc" id="L85" title="2 of 4 branches missed.">        if ((downloadPath != null) &amp;&amp; (!downloadPath.isEmpty())) return;</span>
+
+<span class="nc" id="L87">        SharedPreferences.Editor spEditor = prefs.edit();</span>
+<span class="nc" id="L88">        spEditor.putString(key, getNewPipeChildFolderPathForDir(getDir(defaultDirectoryName)));</span>
+<span class="nc" id="L89">        spEditor.apply();</span>
+<span class="nc" id="L90">    }</span>
+
+    @NonNull
+    public static File getDir(String defaultDirectoryName) {
+<span class="nc" id="L94">        return new File(Environment.getExternalStorageDirectory(), defaultDirectoryName);</span>
+    }
+
+    private static String getNewPipeChildFolderPathForDir(File dir) {
+<span class="nc" id="L98">        return new File(dir, &quot;NewPipe&quot;).toURI().toString();</span>
+    }
+
+    public static boolean useStorageAccessFramework(Context context) {
+<span class="nc" id="L102">        final String key = context.getString(R.string.storage_use_saf);</span>
+<span class="nc" id="L103">        final SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);</span>
+
+<span class="nc" id="L105">        return prefs.getBoolean(key, false);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

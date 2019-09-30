@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AudioReactor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.player.helper</a> &gt; <span class="el_source">AudioReactor.java</span></div><h1>AudioReactor.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.player.helper;
+
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
+import android.content.Context;
+import android.content.Intent;
+import android.media.AudioFocusRequest;
+import android.media.AudioManager;
+import android.media.audiofx.AudioEffect;
+import android.os.Build;
+import android.support.annotation.NonNull;
+import android.util.Log;
+
+import com.google.android.exoplayer2.SimpleExoPlayer;
+import com.google.android.exoplayer2.analytics.AnalyticsListener;
+
+public class AudioReactor implements AudioManager.OnAudioFocusChangeListener,
+        AnalyticsListener {
+
+    private static final String TAG = &quot;AudioFocusReactor&quot;;
+
+<span class="nc bnc" id="L23" title="All 2 branches missed.">    private static final boolean SHOULD_BUILD_FOCUS_REQUEST =</span>
+            Build.VERSION.SDK_INT &gt;= Build.VERSION_CODES.O;
+
+    private static final int DUCK_DURATION = 1500;
+    private static final float DUCK_AUDIO_TO = .2f;
+
+    private static final int FOCUS_GAIN_TYPE = AudioManager.AUDIOFOCUS_GAIN;
+    private static final int STREAM_TYPE = AudioManager.STREAM_MUSIC;
+
+    private final SimpleExoPlayer player;
+    private final Context context;
+    private final AudioManager audioManager;
+
+    private final AudioFocusRequest request;
+
+    public AudioReactor(@NonNull final Context context,
+<span class="nc" id="L39">                        @NonNull final SimpleExoPlayer player) {</span>
+<span class="nc" id="L40">        this.player = player;</span>
+<span class="nc" id="L41">        this.context = context;</span>
+<span class="nc" id="L42">        this.audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);</span>
+<span class="nc" id="L43">        player.addAnalyticsListener(this);</span>
+
+<span class="nc bnc" id="L45" title="All 2 branches missed.">        if (SHOULD_BUILD_FOCUS_REQUEST) {</span>
+<span class="nc" id="L46">            request = new AudioFocusRequest.Builder(FOCUS_GAIN_TYPE)</span>
+<span class="nc" id="L47">                    .setAcceptsDelayedFocusGain(true)</span>
+<span class="nc" id="L48">                    .setWillPauseWhenDucked(true)</span>
+<span class="nc" id="L49">                    .setOnAudioFocusChangeListener(this)</span>
+<span class="nc" id="L50">                    .build();</span>
+        } else {
+<span class="nc" id="L52">            request = null;</span>
+        }
+<span class="nc" id="L54">    }</span>
+
+    public void dispose() {
+<span class="nc" id="L57">        abandonAudioFocus();</span>
+<span class="nc" id="L58">        player.removeAnalyticsListener(this);</span>
+<span class="nc" id="L59">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Audio Manager
+    //////////////////////////////////////////////////////////////////////////*/
+
+    public void requestAudioFocus() {
+<span class="nc bnc" id="L66" title="All 2 branches missed.">        if (SHOULD_BUILD_FOCUS_REQUEST) {</span>
+<span class="nc" id="L67">            audioManager.requestAudioFocus(request);</span>
+        } else {
+<span class="nc" id="L69">            audioManager.requestAudioFocus(this, STREAM_TYPE, FOCUS_GAIN_TYPE);</span>
+        }
+<span class="nc" id="L71">    }</span>
+
+    public void abandonAudioFocus() {
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        if (SHOULD_BUILD_FOCUS_REQUEST) {</span>
+<span class="nc" id="L75">            audioManager.abandonAudioFocusRequest(request);</span>
+        } else {
+<span class="nc" id="L77">            audioManager.abandonAudioFocus(this);</span>
+        }
+<span class="nc" id="L79">    }</span>
+
+    public int getVolume() {
+<span class="nc" id="L82">        return audioManager.getStreamVolume(STREAM_TYPE);</span>
+    }
+
+    public int getMaxVolume() {
+<span class="nc" id="L86">        return audioManager.getStreamMaxVolume(STREAM_TYPE);</span>
+    }
+
+    public void setVolume(final int volume) {
+<span class="nc" id="L90">        audioManager.setStreamVolume(STREAM_TYPE, volume, 0);</span>
+<span class="nc" id="L91">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // AudioFocus
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onAudioFocusChange(int focusChange) {
+<span class="nc" id="L99">        Log.d(TAG, &quot;onAudioFocusChange() called with: focusChange = [&quot; + focusChange + &quot;]&quot;);</span>
+<span class="nc bnc" id="L100" title="All 4 branches missed.">        switch (focusChange) {</span>
+            case AudioManager.AUDIOFOCUS_GAIN:
+<span class="nc" id="L102">                onAudioFocusGain();</span>
+<span class="nc" id="L103">                break;</span>
+            case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
+<span class="nc" id="L105">                onAudioFocusLossCanDuck();</span>
+<span class="nc" id="L106">                break;</span>
+            case AudioManager.AUDIOFOCUS_LOSS:
+            case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
+<span class="nc" id="L109">                onAudioFocusLoss();</span>
+                break;
+        }
+<span class="nc" id="L112">    }</span>
+
+    private void onAudioFocusGain() {
+<span class="nc" id="L115">        Log.d(TAG, &quot;onAudioFocusGain() called&quot;);</span>
+<span class="nc" id="L116">        player.setVolume(DUCK_AUDIO_TO);</span>
+<span class="nc" id="L117">        animateAudio(DUCK_AUDIO_TO, 1f);</span>
+
+<span class="nc bnc" id="L119" title="All 2 branches missed.">        if (PlayerHelper.isResumeAfterAudioFocusGain(context)) {</span>
+<span class="nc" id="L120">            player.setPlayWhenReady(true);</span>
+        }
+<span class="nc" id="L122">    }</span>
+
+    private void onAudioFocusLoss() {
+<span class="nc" id="L125">        Log.d(TAG, &quot;onAudioFocusLoss() called&quot;);</span>
+<span class="nc" id="L126">        player.setPlayWhenReady(false);</span>
+<span class="nc" id="L127">    }</span>
+
+    private void onAudioFocusLossCanDuck() {
+<span class="nc" id="L130">        Log.d(TAG, &quot;onAudioFocusLossCanDuck() called&quot;);</span>
+        // Set the volume to 1/10 on ducking
+<span class="nc" id="L132">        player.setVolume(DUCK_AUDIO_TO);</span>
+<span class="nc" id="L133">    }</span>
+
+    private void animateAudio(final float from, final float to) {
+<span class="nc" id="L136">        ValueAnimator valueAnimator = new ValueAnimator();</span>
+<span class="nc" id="L137">        valueAnimator.setFloatValues(from, to);</span>
+<span class="nc" id="L138">        valueAnimator.setDuration(AudioReactor.DUCK_DURATION);</span>
+<span class="nc" id="L139">        valueAnimator.addListener(new AnimatorListenerAdapter() {</span>
+            @Override
+            public void onAnimationStart(Animator animation) {
+<span class="nc" id="L142">                player.setVolume(from);</span>
+<span class="nc" id="L143">            }</span>
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+<span class="nc" id="L147">                player.setVolume(to);</span>
+<span class="nc" id="L148">            }</span>
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+<span class="nc" id="L152">                player.setVolume(to);</span>
+<span class="nc" id="L153">            }</span>
+        });
+<span class="nc" id="L155">        valueAnimator.addUpdateListener(animation -&gt;</span>
+<span class="nc" id="L156">                player.setVolume(((float) animation.getAnimatedValue())));</span>
+<span class="nc" id="L157">        valueAnimator.start();</span>
+<span class="nc" id="L158">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Audio Processing
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onAudioSessionId(EventTime eventTime, int audioSessionId) {
+<span class="nc bnc" id="L166" title="All 2 branches missed.">        if (!PlayerHelper.isUsingDSP(context)) return;</span>
+
+<span class="nc" id="L168">        final Intent intent = new Intent(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION);</span>
+<span class="nc" id="L169">        intent.putExtra(AudioEffect.EXTRA_AUDIO_SESSION, audioSessionId);</span>
+<span class="nc" id="L170">        intent.putExtra(AudioEffect.EXTRA_PACKAGE_NAME, context.getPackageName());</span>
+<span class="nc" id="L171">        context.sendBroadcast(intent);</span>
+<span class="nc" id="L172">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

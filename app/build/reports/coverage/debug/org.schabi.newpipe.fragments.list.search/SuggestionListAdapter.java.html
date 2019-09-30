@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SuggestionListAdapter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.fragments.list.search</a> &gt; <span class="el_source">SuggestionListAdapter.java</span></div><h1>SuggestionListAdapter.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.fragments.list.search;
+
+import android.content.Context;
+import android.content.res.TypedArray;
+import android.support.annotation.AttrRes;
+import android.support.v7.widget.RecyclerView;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ImageView;
+import android.widget.TextView;
+
+import org.schabi.newpipe.R;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class SuggestionListAdapter extends RecyclerView.Adapter&lt;SuggestionListAdapter.SuggestionItemHolder&gt; {
+<span class="nc" id="L19">    private final ArrayList&lt;SuggestionItem&gt; items = new ArrayList&lt;&gt;();</span>
+    private final Context context;
+    private OnSuggestionItemSelected listener;
+<span class="nc" id="L22">    private boolean showSuggestionHistory = true;</span>
+
+    public interface OnSuggestionItemSelected {
+        void onSuggestionItemSelected(SuggestionItem item);
+        void onSuggestionItemInserted(SuggestionItem item);
+        void onSuggestionItemLongClick(SuggestionItem item);
+    }
+
+<span class="nc" id="L30">    public SuggestionListAdapter(Context context) {</span>
+<span class="nc" id="L31">        this.context = context;</span>
+<span class="nc" id="L32">    }</span>
+
+    public void setItems(List&lt;SuggestionItem&gt; items) {
+<span class="nc" id="L35">        this.items.clear();</span>
+<span class="nc bnc" id="L36" title="All 2 branches missed.">        if (showSuggestionHistory) {</span>
+<span class="nc" id="L37">            this.items.addAll(items);</span>
+        } else {
+            // remove history items if history is disabled
+<span class="nc bnc" id="L40" title="All 2 branches missed.">            for (SuggestionItem item : items) {</span>
+<span class="nc bnc" id="L41" title="All 2 branches missed.">                if (!item.fromHistory) {</span>
+<span class="nc" id="L42">                    this.items.add(item);</span>
+                }
+<span class="nc" id="L44">            }</span>
+        }
+<span class="nc" id="L46">        notifyDataSetChanged();</span>
+<span class="nc" id="L47">    }</span>
+
+    public void setListener(OnSuggestionItemSelected listener) {
+<span class="nc" id="L50">        this.listener = listener;</span>
+<span class="nc" id="L51">    }</span>
+
+    public void setShowSuggestionHistory(boolean v) {
+<span class="nc" id="L54">        showSuggestionHistory = v;</span>
+<span class="nc" id="L55">    }</span>
+
+    @Override
+    public SuggestionItemHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+<span class="nc" id="L59">        return new SuggestionItemHolder(LayoutInflater.from(context).inflate(R.layout.item_search_suggestion, parent, false));</span>
+    }
+
+    @Override
+    public void onBindViewHolder(SuggestionItemHolder holder, int position) {
+<span class="nc" id="L64">        final SuggestionItem currentItem = getItem(position);</span>
+<span class="nc" id="L65">        holder.updateFrom(currentItem);</span>
+<span class="nc" id="L66">        holder.queryView.setOnClickListener(v -&gt; {</span>
+<span class="nc bnc" id="L67" title="All 2 branches missed.">            if (listener != null) listener.onSuggestionItemSelected(currentItem);</span>
+<span class="nc" id="L68">        });</span>
+<span class="nc" id="L69">        holder.queryView.setOnLongClickListener(v -&gt; {</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">                if (listener != null) listener.onSuggestionItemLongClick(currentItem);</span>
+<span class="nc" id="L71">                return true;</span>
+        });
+<span class="nc" id="L73">        holder.insertView.setOnClickListener(v -&gt; {</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">            if (listener != null) listener.onSuggestionItemInserted(currentItem);</span>
+<span class="nc" id="L75">        });</span>
+<span class="nc" id="L76">    }</span>
+
+    SuggestionItem getItem(int position) {
+<span class="nc" id="L79">        return items.get(position);</span>
+    }
+
+    @Override
+    public int getItemCount() {
+<span class="nc" id="L84">        return items.size();</span>
+    }
+
+    public boolean isEmpty() {
+<span class="nc bnc" id="L88" title="All 2 branches missed.">        return getItemCount() == 0;</span>
+    }
+
+    public static class SuggestionItemHolder extends RecyclerView.ViewHolder {
+        private final TextView itemSuggestionQuery;
+        private final ImageView suggestionIcon;
+        private final View queryView;
+        private final View insertView;
+
+        // Cache some ids, as they can potentially be constantly updated/recycled
+        private final int historyResId;
+        private final int searchResId;
+
+        private SuggestionItemHolder(View rootView) {
+<span class="nc" id="L102">            super(rootView);</span>
+<span class="nc" id="L103">            suggestionIcon = rootView.findViewById(R.id.item_suggestion_icon);</span>
+<span class="nc" id="L104">            itemSuggestionQuery = rootView.findViewById(R.id.item_suggestion_query);</span>
+
+<span class="nc" id="L106">            queryView = rootView.findViewById(R.id.suggestion_search);</span>
+<span class="nc" id="L107">            insertView = rootView.findViewById(R.id.suggestion_insert);</span>
+
+<span class="nc" id="L109">            historyResId = resolveResourceIdFromAttr(rootView.getContext(), R.attr.history);</span>
+<span class="nc" id="L110">            searchResId = resolveResourceIdFromAttr(rootView.getContext(), R.attr.search);</span>
+<span class="nc" id="L111">        }</span>
+
+        private void updateFrom(SuggestionItem item) {
+<span class="nc bnc" id="L114" title="All 2 branches missed.">            suggestionIcon.setImageResource(item.fromHistory ? historyResId : searchResId);</span>
+<span class="nc" id="L115">            itemSuggestionQuery.setText(item.query);</span>
+<span class="nc" id="L116">        }</span>
+
+        private static int resolveResourceIdFromAttr(Context context, @AttrRes int attr) {
+<span class="nc" id="L119">            TypedArray a = context.getTheme().obtainStyledAttributes(new int[]{attr});</span>
+<span class="nc" id="L120">            int attributeResourceId = a.getResourceId(0, 0);</span>
+<span class="nc" id="L121">            a.recycle();</span>
+<span class="nc" id="L122">            return attributeResourceId;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DownloadActivity.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.download</a> &gt; <span class="el_source">DownloadActivity.java</span></div><h1>DownloadActivity.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.download;
+
+import android.app.FragmentTransaction;
+import android.content.Intent;
+import android.os.Bundle;
+import android.support.v7.app.ActionBar;
+import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.Toolbar;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
+import android.view.ViewTreeObserver;
+
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.settings.SettingsActivity;
+import org.schabi.newpipe.util.ThemeHelper;
+
+import us.shandian.giga.service.DownloadManagerService;
+import us.shandian.giga.ui.fragment.MissionsFragment;
+
+<span class="nc" id="L21">public class DownloadActivity extends AppCompatActivity {</span>
+
+    private static final String MISSIONS_FRAGMENT_TAG = &quot;fragment_tag&quot;;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        // Service
+<span class="nc" id="L28">        Intent i = new Intent();</span>
+<span class="nc" id="L29">        i.setClass(this, DownloadManagerService.class);</span>
+<span class="nc" id="L30">        startService(i);</span>
+
+<span class="nc" id="L32">        ThemeHelper.setTheme(this);</span>
+<span class="nc" id="L33">        super.onCreate(savedInstanceState);</span>
+<span class="nc" id="L34">        setContentView(R.layout.activity_downloader);</span>
+
+<span class="nc" id="L36">        Toolbar toolbar = findViewById(R.id.toolbar);</span>
+<span class="nc" id="L37">        setSupportActionBar(toolbar);</span>
+
+<span class="nc" id="L39">        ActionBar actionBar = getSupportActionBar();</span>
+<span class="nc bnc" id="L40" title="All 2 branches missed.">        if (actionBar != null) {</span>
+<span class="nc" id="L41">            actionBar.setDisplayHomeAsUpEnabled(true);</span>
+<span class="nc" id="L42">            actionBar.setTitle(R.string.downloads_title);</span>
+<span class="nc" id="L43">            actionBar.setDisplayShowTitleEnabled(true);</span>
+        }
+
+<span class="nc" id="L46">        getWindow().getDecorView().getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {</span>
+            @Override
+            public void onGlobalLayout() {
+<span class="nc" id="L49">                updateFragments();</span>
+<span class="nc" id="L50">                getWindow().getDecorView().getViewTreeObserver().removeOnGlobalLayoutListener(this);</span>
+<span class="nc" id="L51">            }</span>
+        });
+<span class="nc" id="L53">    }</span>
+
+    private void updateFragments() {
+<span class="nc" id="L56">        MissionsFragment fragment = new MissionsFragment();</span>
+
+<span class="nc" id="L58">        getSupportFragmentManager().beginTransaction()</span>
+<span class="nc" id="L59">                .replace(R.id.frame, fragment, MISSIONS_FRAGMENT_TAG)</span>
+<span class="nc" id="L60">                .setTransition(FragmentTransaction.TRANSIT_FRAGMENT_FADE)</span>
+<span class="nc" id="L61">                .commit();</span>
+<span class="nc" id="L62">    }</span>
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+<span class="nc" id="L66">        super.onCreateOptionsMenu(menu);</span>
+<span class="nc" id="L67">        MenuInflater inflater = getMenuInflater();</span>
+
+<span class="nc" id="L69">        inflater.inflate(R.menu.download_menu, menu);</span>
+
+<span class="nc" id="L71">        return true;</span>
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+<span class="nc bnc" id="L76" title="All 3 branches missed.">        switch (item.getItemId()) {</span>
+            case android.R.id.home: {
+<span class="nc" id="L78">                onBackPressed();</span>
+<span class="nc" id="L79">                return true;</span>
+            }
+            case R.id.action_settings: {
+<span class="nc" id="L82">                Intent intent = new Intent(this, SettingsActivity.class);</span>
+<span class="nc" id="L83">                startActivity(intent);</span>
+<span class="nc" id="L84">                return true;</span>
+            }
+            default:
+<span class="nc" id="L87">                return super.onOptionsItemSelected(item);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

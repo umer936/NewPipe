@@ -1,0 +1,370 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StateSaver.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.util</a> &gt; <span class="el_source">StateSaver.java</span></div><h1>StateSaver.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2017 Mauricio Colli &lt;mauriciocolli@outlook.com&gt;
+ * StateSaver.java is part of NewPipe
+ *
+ * License: GPL-3.0+
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package org.schabi.newpipe.util;
+
+
+import android.content.Context;
+import android.os.Bundle;
+import android.os.Parcel;
+import android.os.Parcelable;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.text.TextUtils;
+import android.util.Log;
+
+import org.schabi.newpipe.BuildConfig;
+import org.schabi.newpipe.MainActivity;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.FilenameFilter;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.util.LinkedList;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * A way to save state to disk or in a in-memory map if it's just changing configurations (i.e. rotating the phone).
+ */
+public class StateSaver {
+<span class="fc" id="L50">    private static final ConcurrentHashMap&lt;String, Queue&lt;Object&gt;&gt; stateObjectsHolder = new ConcurrentHashMap&lt;&gt;();</span>
+    private static final String TAG = &quot;StateSaver&quot;;
+    private static final String CACHE_DIR_NAME = &quot;state_cache&quot;;
+
+    public static final String KEY_SAVED_STATE = &quot;key_saved_state&quot;;
+    private static String cacheDirPath;
+
+<span class="nc" id="L57">    private StateSaver() {</span>
+        //no instance
+<span class="nc" id="L59">    }</span>
+
+    /**
+     * Initialize the StateSaver, usually you want to call this in the Application class
+     *
+     * @param context used to get the available cache dir
+     */
+    public static void init(Context context) {
+<span class="fc" id="L67">        File externalCacheDir = context.getExternalCacheDir();</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">        if (externalCacheDir != null) cacheDirPath = externalCacheDir.getAbsolutePath();</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        if (TextUtils.isEmpty(cacheDirPath)) cacheDirPath = context.getCacheDir().getAbsolutePath();</span>
+<span class="fc" id="L70">    }</span>
+
+    /**
+     * Used for describe how to save/read the objects.
+     * &lt;p&gt;
+     * Queue was chosen by its FIFO property.
+     */
+    public interface WriteRead {
+        /**
+         * Generate a changing suffix that will name the cache file,
+         * and be used to identify if it changed (thus reducing useless reading/saving).
+         *
+         * @return a unique value
+         */
+        String generateSuffix();
+
+        /**
+         * Add to this queue objects that you want to save.
+         */
+        void writeTo(Queue&lt;Object&gt; objectsToSave);
+
+        /**
+         * Poll saved objects from the queue in the order they were written.
+         *
+         * @param savedObjects queue of objects returned by {@link #writeTo(Queue)}
+         */
+        void readFrom(@NonNull Queue&lt;Object&gt; savedObjects) throws Exception;
+    }
+
+    /**
+     * @see #tryToRestore(SavedState, WriteRead)
+     */
+    public static SavedState tryToRestore(Bundle outState, WriteRead writeRead) {
+<span class="nc bnc" id="L103" title="All 4 branches missed.">        if (outState == null || writeRead == null) return null;</span>
+
+<span class="nc" id="L105">        SavedState savedState = outState.getParcelable(KEY_SAVED_STATE);</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">        if (savedState == null) return null;</span>
+
+<span class="nc" id="L108">        return tryToRestore(savedState, writeRead);</span>
+    }
+
+    /**
+     * Try to restore the state from memory and disk, using the {@link StateSaver.WriteRead#readFrom(Queue)} from the writeRead.
+     */
+    @Nullable
+    private static SavedState tryToRestore(@NonNull SavedState savedState, @NonNull WriteRead writeRead) {
+<span class="nc bnc" id="L116" title="All 2 branches missed.">        if (MainActivity.DEBUG) {</span>
+<span class="nc" id="L117">            Log.d(TAG, &quot;tryToRestore() called with: savedState = [&quot; + savedState + &quot;], writeRead = [&quot; + writeRead + &quot;]&quot;);</span>
+        }
+
+<span class="nc" id="L120">        FileInputStream fileInputStream = null;</span>
+        try {
+<span class="nc" id="L122">            Queue&lt;Object&gt; savedObjects = stateObjectsHolder.remove(savedState.getPrefixFileSaved());</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">            if (savedObjects != null) {</span>
+<span class="nc" id="L124">                writeRead.readFrom(savedObjects);</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">                if (MainActivity.DEBUG) {</span>
+<span class="nc" id="L126">                    Log.d(TAG, &quot;tryToSave: reading objects from holder &gt; &quot; + savedObjects + &quot;, stateObjectsHolder &gt; &quot; + stateObjectsHolder);</span>
+                }
+<span class="nc" id="L128">                return savedState;</span>
+            }
+
+<span class="nc" id="L131">            File file = new File(savedState.getPathFileSaved());</span>
+<span class="nc bnc" id="L132" title="All 2 branches missed.">            if (!file.exists()) {</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">                if(MainActivity.DEBUG) {</span>
+<span class="nc" id="L134">                    Log.d(TAG, &quot;Cache file doesn't exist: &quot; + file.getAbsolutePath());</span>
+                }
+<span class="nc" id="L136">                return null;</span>
+            }
+
+<span class="nc" id="L139">            fileInputStream = new FileInputStream(file);</span>
+<span class="nc" id="L140">            ObjectInputStream inputStream = new ObjectInputStream(fileInputStream);</span>
+            //noinspection unchecked
+<span class="nc" id="L142">            savedObjects = (Queue&lt;Object&gt;) inputStream.readObject();</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">            if (savedObjects != null) {</span>
+<span class="nc" id="L144">                writeRead.readFrom(savedObjects);</span>
+            }
+
+<span class="nc" id="L147">            return savedState;</span>
+<span class="nc" id="L148">        } catch (Exception e) {</span>
+<span class="nc" id="L149">            Log.e(TAG, &quot;Failed to restore state&quot;, e);</span>
+        } finally {
+<span class="nc bnc" id="L151" title="All 10 branches missed.">            if (fileInputStream != null) {</span>
+                try {
+<span class="nc" id="L153">                    fileInputStream.close();</span>
+<span class="nc" id="L154">                } catch (IOException ignored) {</span>
+<span class="nc" id="L155">                }</span>
+            }
+<span class="nc" id="L157">        }</span>
+<span class="nc" id="L158">        return null;</span>
+    }
+
+    /**
+     * @see #tryToSave(boolean, String, String, WriteRead)
+     */
+    @Nullable
+    public static SavedState tryToSave(boolean isChangingConfig, @Nullable SavedState savedState, Bundle outState, WriteRead writeRead) {
+        @NonNull
+        String currentSavedPrefix;
+<span class="nc bnc" id="L168" title="All 4 branches missed.">        if (savedState == null || TextUtils.isEmpty(savedState.getPrefixFileSaved())) {</span>
+            // Generate unique prefix
+<span class="nc" id="L170">            currentSavedPrefix = System.nanoTime() - writeRead.hashCode() + &quot;&quot;;</span>
+        } else {
+            // Reuse prefix
+<span class="nc" id="L173">            currentSavedPrefix = savedState.getPrefixFileSaved();</span>
+        }
+
+<span class="nc" id="L176">        savedState = tryToSave(isChangingConfig, currentSavedPrefix, writeRead.generateSuffix(), writeRead);</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        if (savedState != null) {</span>
+<span class="nc" id="L178">            outState.putParcelable(StateSaver.KEY_SAVED_STATE, savedState);</span>
+<span class="nc" id="L179">            return savedState;</span>
+        }
+
+<span class="nc" id="L182">        return null;</span>
+    }
+
+    /**
+     * If it's not changing configuration (i.e. rotating screen), try to write the state from {@link StateSaver.WriteRead#writeTo(Queue)}
+     * to the file with the name of prefixFileName + suffixFileName, in a cache folder got from the {@link #init(Context)}.
+     * &lt;p&gt;
+     * It checks if the file already exists and if it does, just return the path, so a good way to save is:
+     * &lt;ul&gt;
+     * &lt;li&gt; A fixed prefix for the file&lt;/li&gt;
+     * &lt;li&gt; A changing suffix&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param isChangingConfig
+     * @param prefixFileName
+     * @param suffixFileName
+     * @param writeRead
+     */
+    @Nullable
+    private static SavedState tryToSave(boolean isChangingConfig, final String prefixFileName, String suffixFileName, WriteRead writeRead) {
+<span class="nc bnc" id="L202" title="All 2 branches missed.">        if (MainActivity.DEBUG) {</span>
+<span class="nc" id="L203">            Log.d(TAG, &quot;tryToSave() called with: isChangingConfig = [&quot; + isChangingConfig + &quot;], prefixFileName = [&quot; + prefixFileName + &quot;], suffixFileName = [&quot; + suffixFileName + &quot;], writeRead = [&quot; + writeRead + &quot;]&quot;);</span>
+        }
+
+<span class="nc" id="L206">        LinkedList&lt;Object&gt; savedObjects = new LinkedList&lt;&gt;();</span>
+<span class="nc" id="L207">        writeRead.writeTo(savedObjects);</span>
+
+<span class="nc bnc" id="L209" title="All 2 branches missed.">        if (isChangingConfig) {</span>
+<span class="nc bnc" id="L210" title="All 2 branches missed.">            if (savedObjects.size() &gt; 0) {</span>
+<span class="nc" id="L211">                stateObjectsHolder.put(prefixFileName, savedObjects);</span>
+<span class="nc" id="L212">                return new SavedState(prefixFileName, &quot;&quot;);</span>
+            } else {
+<span class="nc bnc" id="L214" title="All 2 branches missed.">                if(MainActivity.DEBUG) Log.d(TAG, &quot;Nothing to save&quot;);</span>
+<span class="nc" id="L215">                return null;</span>
+            }
+        }
+
+<span class="nc" id="L219">        FileOutputStream fileOutputStream = null;</span>
+        try {
+<span class="nc" id="L221">            File cacheDir = new File(cacheDirPath);</span>
+<span class="nc bnc" id="L222" title="All 2 branches missed.">            if (!cacheDir.exists()) throw new RuntimeException(&quot;Cache dir does not exist &gt; &quot; + cacheDirPath);</span>
+<span class="nc" id="L223">            cacheDir = new File(cacheDir, CACHE_DIR_NAME);</span>
+<span class="nc bnc" id="L224" title="All 2 branches missed.">            if (!cacheDir.exists()) {</span>
+<span class="nc bnc" id="L225" title="All 2 branches missed.">                if(!cacheDir.mkdir()) {</span>
+<span class="nc bnc" id="L226" title="All 2 branches missed.">                    if(BuildConfig.DEBUG) {</span>
+<span class="nc" id="L227">                        Log.e(TAG, &quot;Failed to create cache directory &quot; + cacheDir.getAbsolutePath());</span>
+                    }
+<span class="nc" id="L229">                    return null;</span>
+                }
+            }
+
+<span class="nc bnc" id="L233" title="All 2 branches missed.">            if (TextUtils.isEmpty(suffixFileName)) suffixFileName = &quot;.cache&quot;;</span>
+<span class="nc" id="L234">            File file = new File(cacheDir, prefixFileName + suffixFileName);</span>
+<span class="nc bnc" id="L235" title="All 4 branches missed.">            if (file.exists() &amp;&amp; file.length() &gt; 0) {</span>
+                // If the file already exists, just return it
+<span class="nc" id="L237">                return new SavedState(prefixFileName, file.getAbsolutePath());</span>
+            } else {
+                // Delete any file that contains the prefix
+<span class="nc" id="L240">                File[] files = cacheDir.listFiles(new FilenameFilter() {</span>
+                    @Override
+                    public boolean accept(File dir, String name) {
+<span class="nc" id="L243">                        return name.contains(prefixFileName);</span>
+                    }
+                });
+<span class="nc bnc" id="L246" title="All 2 branches missed.">                for (File fileToDelete : files) {</span>
+<span class="nc" id="L247">                    fileToDelete.delete();</span>
+                }
+            }
+
+<span class="nc" id="L251">            fileOutputStream = new FileOutputStream(file);</span>
+<span class="nc" id="L252">            ObjectOutputStream outputStream = new ObjectOutputStream(fileOutputStream);</span>
+<span class="nc" id="L253">            outputStream.writeObject(savedObjects);</span>
+
+<span class="nc" id="L255">            return new SavedState(prefixFileName, file.getAbsolutePath());</span>
+<span class="nc" id="L256">        } catch (Exception e) {</span>
+<span class="nc" id="L257">            Log.e(TAG, &quot;Failed to save state&quot;, e);</span>
+        } finally {
+<span class="nc bnc" id="L259" title="All 10 branches missed.">            if (fileOutputStream != null) {</span>
+                try {
+<span class="nc" id="L261">                    fileOutputStream.close();</span>
+<span class="nc" id="L262">                } catch (IOException ignored) {</span>
+<span class="nc" id="L263">                }</span>
+            }
+<span class="nc" id="L265">        }</span>
+<span class="nc" id="L266">        return null;</span>
+    }
+
+    /**
+     * Delete the cache file contained in the savedState and remove any possible-existing value in the memory-cache.
+     */
+    public static void onDestroy(SavedState savedState) {
+<span class="nc bnc" id="L273" title="All 2 branches missed.">        if (MainActivity.DEBUG) Log.d(TAG, &quot;onDestroy() called with: savedState = [&quot; + savedState + &quot;]&quot;);</span>
+
+<span class="nc bnc" id="L275" title="All 4 branches missed.">        if (savedState != null &amp;&amp; !TextUtils.isEmpty(savedState.getPathFileSaved())) {</span>
+<span class="nc" id="L276">            stateObjectsHolder.remove(savedState.getPrefixFileSaved());</span>
+            try {
+                //noinspection ResultOfMethodCallIgnored
+<span class="nc" id="L279">                new File(savedState.getPathFileSaved()).delete();</span>
+<span class="nc" id="L280">            } catch (Exception ignored) {</span>
+<span class="nc" id="L281">            }</span>
+        }
+<span class="nc" id="L283">    }</span>
+
+    /**
+     * Clear all the files in cache (in memory and disk).
+     */
+    public static void clearStateFiles() {
+<span class="nc bnc" id="L289" title="All 2 branches missed.">        if (MainActivity.DEBUG) Log.d(TAG, &quot;clearStateFiles() called&quot;);</span>
+
+<span class="nc" id="L291">        stateObjectsHolder.clear();</span>
+<span class="nc" id="L292">        File cacheDir = new File(cacheDirPath);</span>
+<span class="nc bnc" id="L293" title="All 2 branches missed.">        if (!cacheDir.exists()) return;</span>
+
+<span class="nc" id="L295">        cacheDir = new File(cacheDir, CACHE_DIR_NAME);</span>
+<span class="nc bnc" id="L296" title="All 2 branches missed.">        if (cacheDir.exists()) {</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">            for (File file : cacheDir.listFiles()) file.delete();</span>
+        }
+<span class="nc" id="L299">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Inner
+    //////////////////////////////////////////////////////////////////////////*/
+
+    /**
+     * Information about the saved state on the disk
+     */
+    public static class SavedState implements Parcelable {
+        private final String prefixFileSaved;
+        private final String pathFileSaved;
+
+<span class="nc" id="L312">        public SavedState(String prefixFileSaved, String pathFileSaved) {</span>
+<span class="nc" id="L313">            this.prefixFileSaved = prefixFileSaved;</span>
+<span class="nc" id="L314">            this.pathFileSaved = pathFileSaved;</span>
+<span class="nc" id="L315">        }</span>
+
+<span class="nc" id="L317">        protected SavedState(Parcel in) {</span>
+<span class="nc" id="L318">            prefixFileSaved = in.readString();</span>
+<span class="nc" id="L319">            pathFileSaved = in.readString();</span>
+<span class="nc" id="L320">        }</span>
+
+        @Override
+        public String toString() {
+<span class="nc" id="L324">            return getPrefixFileSaved() + &quot; &gt; &quot; + getPathFileSaved();</span>
+        }
+
+        @Override
+        public int describeContents() {
+<span class="nc" id="L329">            return 0;</span>
+        }
+
+        @Override
+        public void writeToParcel(Parcel dest, int flags) {
+<span class="nc" id="L334">            dest.writeString(prefixFileSaved);</span>
+<span class="nc" id="L335">            dest.writeString(pathFileSaved);</span>
+<span class="nc" id="L336">        }</span>
+
+        @SuppressWarnings(&quot;unused&quot;)
+<span class="nc" id="L339">        public static final Parcelable.Creator&lt;SavedState&gt; CREATOR = new Parcelable.Creator&lt;SavedState&gt;() {</span>
+            @Override
+            public SavedState createFromParcel(Parcel in) {
+<span class="nc" id="L342">                return new SavedState(in);</span>
+            }
+
+            @Override
+            public SavedState[] newArray(int size) {
+<span class="nc" id="L347">                return new SavedState[size];</span>
+            }
+        };
+
+        /**
+         * Get the prefix of the saved file
+         * @return the file prefix
+         */
+        public String getPrefixFileSaved() {
+<span class="nc" id="L356">            return prefixFileSaved;</span>
+        }
+
+        /**
+         * Get the path to the saved file
+         * @return the path to the saved file
+         */
+        public String getPathFileSaved() {
+<span class="nc" id="L364">            return pathFileSaved;</span>
+        }
+    }
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

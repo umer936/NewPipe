@@ -1,0 +1,848 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DownloadDialog.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.download</a> &gt; <span class="el_source">DownloadDialog.java</span></div><h1>DownloadDialog.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.download;
+
+import android.app.Activity;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
+import android.content.SharedPreferences;
+import android.net.Uri;
+import android.os.Bundle;
+import android.os.Environment;
+import android.os.IBinder;
+import android.preference.PreferenceManager;
+import android.support.annotation.IdRes;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.annotation.StringRes;
+import android.support.v4.app.DialogFragment;
+import android.support.v4.provider.DocumentFile;
+import android.support.v7.app.AlertDialog;
+import android.support.v7.view.menu.ActionMenuItemView;
+import android.support.v7.widget.Toolbar;
+import android.util.Log;
+import android.util.SparseArray;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.AdapterView;
+import android.widget.EditText;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
+import android.widget.SeekBar;
+import android.widget.Spinner;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import com.nononsenseapps.filepicker.Utils;
+
+import org.schabi.newpipe.MainActivity;
+import org.schabi.newpipe.R;
+import org.schabi.newpipe.extractor.MediaFormat;
+import org.schabi.newpipe.extractor.NewPipe;
+import org.schabi.newpipe.extractor.stream.AudioStream;
+import org.schabi.newpipe.extractor.stream.Stream;
+import org.schabi.newpipe.extractor.stream.StreamInfo;
+import org.schabi.newpipe.extractor.stream.SubtitlesStream;
+import org.schabi.newpipe.extractor.stream.VideoStream;
+import org.schabi.newpipe.extractor.utils.Localization;
+import org.schabi.newpipe.report.ErrorActivity;
+import org.schabi.newpipe.report.UserAction;
+import org.schabi.newpipe.settings.NewPipeSettings;
+import org.schabi.newpipe.util.FilePickerActivityHelper;
+import org.schabi.newpipe.util.FilenameUtils;
+import org.schabi.newpipe.util.ListHelper;
+import org.schabi.newpipe.util.PermissionHelper;
+import org.schabi.newpipe.util.SecondaryStreamHelper;
+import org.schabi.newpipe.util.StreamItemAdapter;
+import org.schabi.newpipe.util.StreamItemAdapter.StreamSizeWrapper;
+import org.schabi.newpipe.util.ThemeHelper;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+
+import icepick.Icepick;
+import icepick.State;
+import io.reactivex.disposables.CompositeDisposable;
+import us.shandian.giga.io.StoredDirectoryHelper;
+import us.shandian.giga.io.StoredFileHelper;
+import us.shandian.giga.postprocessing.Postprocessing;
+import us.shandian.giga.service.DownloadManager;
+import us.shandian.giga.service.DownloadManagerService;
+import us.shandian.giga.service.DownloadManagerService.DownloadManagerBinder;
+import us.shandian.giga.service.MissionState;
+
+<span class="nc" id="L79">public class DownloadDialog extends DialogFragment implements RadioGroup.OnCheckedChangeListener, AdapterView.OnItemSelectedListener {</span>
+    private static final String TAG = &quot;DialogFragment&quot;;
+<span class="nc" id="L81">    private static final boolean DEBUG = MainActivity.DEBUG;</span>
+    private static final int REQUEST_DOWNLOAD_SAVE_AS = 0x1230;
+
+    @State
+    protected StreamInfo currentInfo;
+<span class="nc" id="L86">    @State</span>
+<span class="nc" id="L87">    protected StreamSizeWrapper&lt;AudioStream&gt; wrappedAudioStreams = StreamSizeWrapper.empty();</span>
+<span class="nc" id="L88">    @State</span>
+<span class="nc" id="L89">    protected StreamSizeWrapper&lt;VideoStream&gt; wrappedVideoStreams = StreamSizeWrapper.empty();</span>
+<span class="nc" id="L90">    @State</span>
+<span class="nc" id="L91">    protected StreamSizeWrapper&lt;SubtitlesStream&gt; wrappedSubtitleStreams = StreamSizeWrapper.empty();</span>
+<span class="nc" id="L92">    @State</span>
+    protected int selectedVideoIndex = 0;
+<span class="nc" id="L94">    @State</span>
+    protected int selectedAudioIndex = 0;
+<span class="nc" id="L96">    @State</span>
+    protected int selectedSubtitleIndex = 0;
+
+    private StreamItemAdapter&lt;AudioStream, Stream&gt; audioStreamsAdapter;
+    private StreamItemAdapter&lt;VideoStream, AudioStream&gt; videoStreamsAdapter;
+    private StreamItemAdapter&lt;SubtitlesStream, Stream&gt; subtitleStreamsAdapter;
+
+<span class="nc" id="L103">    private final CompositeDisposable disposables = new CompositeDisposable();</span>
+
+    private EditText nameEditText;
+    private Spinner streamsSpinner;
+    private RadioGroup radioStreamsGroup;
+    private TextView threadsCountTextView;
+    private SeekBar threadsSeekBar;
+
+    private SharedPreferences prefs;
+
+    public static DownloadDialog newInstance(StreamInfo info) {
+<span class="nc" id="L114">        DownloadDialog dialog = new DownloadDialog();</span>
+<span class="nc" id="L115">        dialog.setInfo(info);</span>
+<span class="nc" id="L116">        return dialog;</span>
+    }
+
+    public static DownloadDialog newInstance(Context context, StreamInfo info) {
+<span class="nc" id="L120">        final ArrayList&lt;VideoStream&gt; streamsList = new ArrayList&lt;&gt;(ListHelper.getSortedStreamVideosList(context,</span>
+<span class="nc" id="L121">                info.getVideoStreams(), info.getVideoOnlyStreams(), false));</span>
+<span class="nc" id="L122">        final int selectedStreamIndex = ListHelper.getDefaultResolutionIndex(context, streamsList);</span>
+
+<span class="nc" id="L124">        final DownloadDialog instance = newInstance(info);</span>
+<span class="nc" id="L125">        instance.setVideoStreams(streamsList);</span>
+<span class="nc" id="L126">        instance.setSelectedVideoStream(selectedStreamIndex);</span>
+<span class="nc" id="L127">        instance.setAudioStreams(info.getAudioStreams());</span>
+<span class="nc" id="L128">        instance.setSubtitleStreams(info.getSubtitles());</span>
+
+<span class="nc" id="L130">        return instance;</span>
+    }
+
+    private void setInfo(StreamInfo info) {
+<span class="nc" id="L134">        this.currentInfo = info;</span>
+<span class="nc" id="L135">    }</span>
+
+    public void setAudioStreams(List&lt;AudioStream&gt; audioStreams) {
+<span class="nc" id="L138">        setAudioStreams(new StreamSizeWrapper&lt;&gt;(audioStreams, getContext()));</span>
+<span class="nc" id="L139">    }</span>
+
+    public void setAudioStreams(StreamSizeWrapper&lt;AudioStream&gt; wrappedAudioStreams) {
+<span class="nc" id="L142">        this.wrappedAudioStreams = wrappedAudioStreams;</span>
+<span class="nc" id="L143">    }</span>
+
+    public void setVideoStreams(List&lt;VideoStream&gt; videoStreams) {
+<span class="nc" id="L146">        setVideoStreams(new StreamSizeWrapper&lt;&gt;(videoStreams, getContext()));</span>
+<span class="nc" id="L147">    }</span>
+
+    public void setVideoStreams(StreamSizeWrapper&lt;VideoStream&gt; wrappedVideoStreams) {
+<span class="nc" id="L150">        this.wrappedVideoStreams = wrappedVideoStreams;</span>
+<span class="nc" id="L151">    }</span>
+
+    public void setSubtitleStreams(List&lt;SubtitlesStream&gt; subtitleStreams) {
+<span class="nc" id="L154">        setSubtitleStreams(new StreamSizeWrapper&lt;&gt;(subtitleStreams, getContext()));</span>
+<span class="nc" id="L155">    }</span>
+
+    public void setSubtitleStreams(StreamSizeWrapper&lt;SubtitlesStream&gt; wrappedSubtitleStreams) {
+<span class="nc" id="L158">        this.wrappedSubtitleStreams = wrappedSubtitleStreams;</span>
+<span class="nc" id="L159">    }</span>
+
+    public void setSelectedVideoStream(int selectedVideoIndex) {
+<span class="nc" id="L162">        this.selectedVideoIndex = selectedVideoIndex;</span>
+<span class="nc" id="L163">    }</span>
+
+    public void setSelectedAudioStream(int selectedAudioIndex) {
+<span class="nc" id="L166">        this.selectedAudioIndex = selectedAudioIndex;</span>
+<span class="nc" id="L167">    }</span>
+
+    public void setSelectedSubtitleStream(int selectedSubtitleIndex) {
+<span class="nc" id="L170">        this.selectedSubtitleIndex = selectedSubtitleIndex;</span>
+<span class="nc" id="L171">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // LifeCycle
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+<span class="nc" id="L179">        super.onCreate(savedInstanceState);</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">        if (DEBUG)</span>
+<span class="nc" id="L181">            Log.d(TAG, &quot;onCreate() called with: savedInstanceState = [&quot; + savedInstanceState + &quot;]&quot;);</span>
+
+<span class="nc bnc" id="L183" title="All 2 branches missed.">        if (!PermissionHelper.checkStoragePermissions(getActivity(), PermissionHelper.DOWNLOAD_DIALOG_REQUEST_CODE)) {</span>
+<span class="nc" id="L184">            getDialog().dismiss();</span>
+<span class="nc" id="L185">            return;</span>
+        }
+
+<span class="nc" id="L188">        context = getContext();</span>
+
+<span class="nc" id="L190">        setStyle(STYLE_NO_TITLE, ThemeHelper.getDialogTheme(context));</span>
+<span class="nc" id="L191">        Icepick.restoreInstanceState(this, savedInstanceState);</span>
+
+<span class="nc" id="L193">        SparseArray&lt;SecondaryStreamHelper&lt;AudioStream&gt;&gt; secondaryStreams = new SparseArray&lt;&gt;(4);</span>
+<span class="nc" id="L194">        List&lt;VideoStream&gt; videoStreams = wrappedVideoStreams.getStreamsList();</span>
+
+<span class="nc bnc" id="L196" title="All 2 branches missed.">        for (int i = 0; i &lt; videoStreams.size(); i++) {</span>
+<span class="nc bnc" id="L197" title="All 2 branches missed.">            if (!videoStreams.get(i).isVideoOnly()) continue;</span>
+<span class="nc" id="L198">            AudioStream audioStream = SecondaryStreamHelper.getAudioStreamFor(wrappedAudioStreams.getStreamsList(), videoStreams.get(i));</span>
+
+<span class="nc bnc" id="L200" title="All 2 branches missed.">            if (audioStream != null) {</span>
+<span class="nc" id="L201">                secondaryStreams.append(i, new SecondaryStreamHelper&lt;&gt;(wrappedAudioStreams, audioStream));</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">            } else if (DEBUG) {</span>
+<span class="nc" id="L203">                Log.w(TAG, &quot;No audio stream candidates for video format &quot; + videoStreams.get(i).getFormat().name());</span>
+            }
+        }
+
+<span class="nc" id="L207">        this.videoStreamsAdapter = new StreamItemAdapter&lt;&gt;(context, wrappedVideoStreams, secondaryStreams);</span>
+<span class="nc" id="L208">        this.audioStreamsAdapter = new StreamItemAdapter&lt;&gt;(context, wrappedAudioStreams);</span>
+<span class="nc" id="L209">        this.subtitleStreamsAdapter = new StreamItemAdapter&lt;&gt;(context, wrappedSubtitleStreams);</span>
+
+<span class="nc" id="L211">        Intent intent = new Intent(context, DownloadManagerService.class);</span>
+<span class="nc" id="L212">        context.startService(intent);</span>
+
+<span class="nc" id="L214">        context.bindService(intent, new ServiceConnection() {</span>
+            @Override
+            public void onServiceConnected(ComponentName cname, IBinder service) {
+<span class="nc" id="L217">                DownloadManagerBinder mgr = (DownloadManagerBinder) service;</span>
+
+<span class="nc" id="L219">                mainStorageAudio = mgr.getMainStorageAudio();</span>
+<span class="nc" id="L220">                mainStorageVideo = mgr.getMainStorageVideo();</span>
+<span class="nc" id="L221">                downloadManager = mgr.getDownloadManager();</span>
+<span class="nc" id="L222">                askForSavePath = mgr.askForSavePath();</span>
+
+<span class="nc" id="L224">                okButton.setEnabled(true);</span>
+
+<span class="nc" id="L226">                context.unbindService(this);</span>
+<span class="nc" id="L227">            }</span>
+
+            @Override
+            public void onServiceDisconnected(ComponentName name) {
+                // nothing to do
+<span class="nc" id="L232">            }</span>
+        }, Context.BIND_AUTO_CREATE);
+<span class="nc" id="L234">    }</span>
+
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+<span class="nc bnc" id="L238" title="All 2 branches missed.">        if (DEBUG)</span>
+<span class="nc" id="L239">            Log.d(TAG, &quot;onCreateView() called with: inflater = [&quot; + inflater + &quot;], container = [&quot; + container + &quot;], savedInstanceState = [&quot; + savedInstanceState + &quot;]&quot;);</span>
+<span class="nc" id="L240">        return inflater.inflate(R.layout.download_dialog, container);</span>
+    }
+
+    @Override
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+<span class="nc" id="L245">        super.onViewCreated(view, savedInstanceState);</span>
+<span class="nc" id="L246">        nameEditText = view.findViewById(R.id.file_name);</span>
+<span class="nc" id="L247">        nameEditText.setText(FilenameUtils.createFilename(getContext(), currentInfo.getName()));</span>
+<span class="nc" id="L248">        selectedAudioIndex = ListHelper.getDefaultAudioFormat(getContext(), currentInfo.getAudioStreams());</span>
+
+<span class="nc" id="L250">        selectedSubtitleIndex = getSubtitleIndexBy(subtitleStreamsAdapter.getAll());</span>
+
+<span class="nc" id="L252">        streamsSpinner = view.findViewById(R.id.quality_spinner);</span>
+<span class="nc" id="L253">        streamsSpinner.setOnItemSelectedListener(this);</span>
+
+<span class="nc" id="L255">        threadsCountTextView = view.findViewById(R.id.threads_count);</span>
+<span class="nc" id="L256">        threadsSeekBar = view.findViewById(R.id.threads);</span>
+
+<span class="nc" id="L258">        radioStreamsGroup = view.findViewById(R.id.video_audio_group);</span>
+<span class="nc" id="L259">        radioStreamsGroup.setOnCheckedChangeListener(this);</span>
+
+<span class="nc" id="L261">        initToolbar(view.findViewById(R.id.toolbar));</span>
+<span class="nc" id="L262">        setupDownloadOptions();</span>
+
+<span class="nc" id="L264">        prefs = PreferenceManager.getDefaultSharedPreferences(getContext());</span>
+
+<span class="nc" id="L266">        int threads = prefs.getInt(getString(R.string.default_download_threads), 3);</span>
+<span class="nc" id="L267">        threadsCountTextView.setText(String.valueOf(threads));</span>
+<span class="nc" id="L268">        threadsSeekBar.setProgress(threads - 1);</span>
+<span class="nc" id="L269">        threadsSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {</span>
+
+            @Override
+            public void onProgressChanged(SeekBar seekbar, int progress, boolean fromUser) {
+<span class="nc" id="L273">                progress++;</span>
+<span class="nc" id="L274">                prefs.edit().putInt(getString(R.string.default_download_threads), progress).apply();</span>
+<span class="nc" id="L275">                threadsCountTextView.setText(String.valueOf(progress));</span>
+<span class="nc" id="L276">            }</span>
+
+            @Override
+            public void onStartTrackingTouch(SeekBar p1) {
+<span class="nc" id="L280">            }</span>
+
+            @Override
+            public void onStopTrackingTouch(SeekBar p1) {
+<span class="nc" id="L284">            }</span>
+        });
+
+<span class="nc" id="L287">        fetchStreamsSize();</span>
+<span class="nc" id="L288">    }</span>
+
+    private void fetchStreamsSize() {
+<span class="nc" id="L291">        disposables.clear();</span>
+
+<span class="nc" id="L293">        disposables.add(StreamSizeWrapper.fetchSizeForWrapper(wrappedVideoStreams).subscribe(result -&gt; {</span>
+<span class="nc bnc" id="L294" title="All 2 branches missed.">            if (radioStreamsGroup.getCheckedRadioButtonId() == R.id.video_button) {</span>
+<span class="nc" id="L295">                setupVideoSpinner();</span>
+            }
+<span class="nc" id="L297">        }));</span>
+<span class="nc" id="L298">        disposables.add(StreamSizeWrapper.fetchSizeForWrapper(wrappedAudioStreams).subscribe(result -&gt; {</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">            if (radioStreamsGroup.getCheckedRadioButtonId() == R.id.audio_button) {</span>
+<span class="nc" id="L300">                setupAudioSpinner();</span>
+            }
+<span class="nc" id="L302">        }));</span>
+<span class="nc" id="L303">        disposables.add(StreamSizeWrapper.fetchSizeForWrapper(wrappedSubtitleStreams).subscribe(result -&gt; {</span>
+<span class="nc bnc" id="L304" title="All 2 branches missed.">            if (radioStreamsGroup.getCheckedRadioButtonId() == R.id.subtitle_button) {</span>
+<span class="nc" id="L305">                setupSubtitleSpinner();</span>
+            }
+<span class="nc" id="L307">        }));</span>
+<span class="nc" id="L308">    }</span>
+
+    @Override
+    public void onDestroy() {
+<span class="nc" id="L312">        super.onDestroy();</span>
+<span class="nc" id="L313">        disposables.clear();</span>
+<span class="nc" id="L314">    }</span>
+
+    @Override
+    public void onSaveInstanceState(@NonNull Bundle outState) {
+<span class="nc" id="L318">        super.onSaveInstanceState(outState);</span>
+<span class="nc" id="L319">        Icepick.saveInstanceState(this, outState);</span>
+<span class="nc" id="L320">    }</span>
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+<span class="nc" id="L324">        super.onActivityResult(requestCode, resultCode, data);</span>
+
+<span class="nc bnc" id="L326" title="All 4 branches missed.">        if (requestCode == REQUEST_DOWNLOAD_SAVE_AS &amp;&amp; resultCode == Activity.RESULT_OK) {</span>
+<span class="nc bnc" id="L327" title="All 2 branches missed.">            if (data.getData() == null) {</span>
+<span class="nc" id="L328">                showFailedDialog(R.string.general_error);</span>
+<span class="nc" id="L329">                return;</span>
+            }
+
+<span class="nc bnc" id="L332" title="All 2 branches missed.">            if (FilePickerActivityHelper.isOwnFileUri(context, data.getData())) {</span>
+<span class="nc" id="L333">                File file = Utils.getFileForUri(data.getData());</span>
+<span class="nc" id="L334">                checkSelectedDownload(null, Uri.fromFile(file), file.getName(), StoredFileHelper.DEFAULT_MIME);</span>
+<span class="nc" id="L335">                return;</span>
+            }
+
+<span class="nc" id="L338">            DocumentFile docFile = DocumentFile.fromSingleUri(context, data.getData());</span>
+<span class="nc bnc" id="L339" title="All 2 branches missed.">            if (docFile == null) {</span>
+<span class="nc" id="L340">                showFailedDialog(R.string.general_error);</span>
+<span class="nc" id="L341">                return;</span>
+            }
+
+            // check if the selected file was previously used
+<span class="nc" id="L345">            checkSelectedDownload(null, data.getData(), docFile.getName(), docFile.getType());</span>
+        }
+<span class="nc" id="L347">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Inits
+    //////////////////////////////////////////////////////////////////////////*/
+
+    private void initToolbar(Toolbar toolbar) {
+<span class="nc bnc" id="L354" title="All 2 branches missed.">        if (DEBUG) Log.d(TAG, &quot;initToolbar() called with: toolbar = [&quot; + toolbar + &quot;]&quot;);</span>
+
+<span class="nc" id="L356">        boolean isLight = ThemeHelper.isLightThemeSelected(getActivity());</span>
+
+<span class="nc" id="L358">        toolbar.setTitle(R.string.download_dialog_title);</span>
+<span class="nc bnc" id="L359" title="All 2 branches missed.">        toolbar.setNavigationIcon(isLight ? R.drawable.ic_arrow_back_black_24dp : R.drawable.ic_arrow_back_white_24dp);</span>
+<span class="nc" id="L360">        toolbar.inflateMenu(R.menu.dialog_url);</span>
+<span class="nc" id="L361">        toolbar.setNavigationOnClickListener(v -&gt; getDialog().dismiss());</span>
+
+<span class="nc" id="L363">        okButton = toolbar.findViewById(R.id.okay);</span>
+<span class="nc" id="L364">        okButton.setEnabled(false);// disable until the download service connection is done</span>
+
+<span class="nc" id="L366">        toolbar.setOnMenuItemClickListener(item -&gt; {</span>
+<span class="nc bnc" id="L367" title="All 2 branches missed.">            if (item.getItemId() == R.id.okay) {</span>
+<span class="nc" id="L368">                prepareSelectedDownload();</span>
+<span class="nc" id="L369">                return true;</span>
+            }
+<span class="nc" id="L371">            return false;</span>
+        });
+<span class="nc" id="L373">    }</span>
+
+    private void setupAudioSpinner() {
+<span class="nc bnc" id="L376" title="All 2 branches missed.">        if (getContext() == null) return;</span>
+
+<span class="nc" id="L378">        streamsSpinner.setAdapter(audioStreamsAdapter);</span>
+<span class="nc" id="L379">        streamsSpinner.setSelection(selectedAudioIndex);</span>
+<span class="nc" id="L380">        setRadioButtonsState(true);</span>
+<span class="nc" id="L381">    }</span>
+
+    private void setupVideoSpinner() {
+<span class="nc bnc" id="L384" title="All 2 branches missed.">        if (getContext() == null) return;</span>
+
+<span class="nc" id="L386">        streamsSpinner.setAdapter(videoStreamsAdapter);</span>
+<span class="nc" id="L387">        streamsSpinner.setSelection(selectedVideoIndex);</span>
+<span class="nc" id="L388">        setRadioButtonsState(true);</span>
+<span class="nc" id="L389">    }</span>
+
+    private void setupSubtitleSpinner() {
+<span class="nc bnc" id="L392" title="All 2 branches missed.">        if (getContext() == null) return;</span>
+
+<span class="nc" id="L394">        streamsSpinner.setAdapter(subtitleStreamsAdapter);</span>
+<span class="nc" id="L395">        streamsSpinner.setSelection(selectedSubtitleIndex);</span>
+<span class="nc" id="L396">        setRadioButtonsState(true);</span>
+<span class="nc" id="L397">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Radio group Video&amp;Audio options - Listener
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onCheckedChanged(RadioGroup group, @IdRes int checkedId) {
+<span class="nc bnc" id="L405" title="All 2 branches missed.">        if (DEBUG)</span>
+<span class="nc" id="L406">            Log.d(TAG, &quot;onCheckedChanged() called with: group = [&quot; + group + &quot;], checkedId = [&quot; + checkedId + &quot;]&quot;);</span>
+<span class="nc" id="L407">        boolean flag = true;</span>
+
+<span class="nc bnc" id="L409" title="All 4 branches missed.">        switch (checkedId) {</span>
+            case R.id.audio_button:
+<span class="nc" id="L411">                setupAudioSpinner();</span>
+<span class="nc" id="L412">                break;</span>
+            case R.id.video_button:
+<span class="nc" id="L414">                setupVideoSpinner();</span>
+<span class="nc" id="L415">                break;</span>
+            case R.id.subtitle_button:
+<span class="nc" id="L417">                setupSubtitleSpinner();</span>
+<span class="nc" id="L418">                flag = false;</span>
+                break;
+        }
+
+<span class="nc" id="L422">        threadsSeekBar.setEnabled(flag);</span>
+<span class="nc" id="L423">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Streams Spinner Listener
+    //////////////////////////////////////////////////////////////////////////*/
+
+    @Override
+    public void onItemSelected(AdapterView&lt;?&gt; parent, View view, int position, long id) {
+<span class="nc bnc" id="L431" title="All 2 branches missed.">        if (DEBUG)</span>
+<span class="nc" id="L432">            Log.d(TAG, &quot;onItemSelected() called with: parent = [&quot; + parent + &quot;], view = [&quot; + view + &quot;], position = [&quot; + position + &quot;], id = [&quot; + id + &quot;]&quot;);</span>
+<span class="nc bnc" id="L433" title="All 4 branches missed.">        switch (radioStreamsGroup.getCheckedRadioButtonId()) {</span>
+            case R.id.audio_button:
+<span class="nc" id="L435">                selectedAudioIndex = position;</span>
+<span class="nc" id="L436">                break;</span>
+            case R.id.video_button:
+<span class="nc" id="L438">                selectedVideoIndex = position;</span>
+<span class="nc" id="L439">                break;</span>
+            case R.id.subtitle_button:
+<span class="nc" id="L441">                selectedSubtitleIndex = position;</span>
+                break;
+        }
+<span class="nc" id="L444">    }</span>
+
+    @Override
+    public void onNothingSelected(AdapterView&lt;?&gt; parent) {
+<span class="nc" id="L448">    }</span>
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Utils
+    //////////////////////////////////////////////////////////////////////////*/
+
+    protected void setupDownloadOptions() {
+<span class="nc" id="L455">        setRadioButtonsState(false);</span>
+
+<span class="nc" id="L457">        final RadioButton audioButton = radioStreamsGroup.findViewById(R.id.audio_button);</span>
+<span class="nc" id="L458">        final RadioButton videoButton = radioStreamsGroup.findViewById(R.id.video_button);</span>
+<span class="nc" id="L459">        final RadioButton subtitleButton = radioStreamsGroup.findViewById(R.id.subtitle_button);</span>
+<span class="nc bnc" id="L460" title="All 2 branches missed.">        final boolean isVideoStreamsAvailable = videoStreamsAdapter.getCount() &gt; 0;</span>
+<span class="nc bnc" id="L461" title="All 2 branches missed.">        final boolean isAudioStreamsAvailable = audioStreamsAdapter.getCount() &gt; 0;</span>
+<span class="nc bnc" id="L462" title="All 2 branches missed.">        final boolean isSubtitleStreamsAvailable = subtitleStreamsAdapter.getCount() &gt; 0;</span>
+
+<span class="nc bnc" id="L464" title="All 2 branches missed.">        audioButton.setVisibility(isAudioStreamsAvailable ? View.VISIBLE : View.GONE);</span>
+<span class="nc bnc" id="L465" title="All 2 branches missed.">        videoButton.setVisibility(isVideoStreamsAvailable ? View.VISIBLE : View.GONE);</span>
+<span class="nc bnc" id="L466" title="All 2 branches missed.">        subtitleButton.setVisibility(isSubtitleStreamsAvailable ? View.VISIBLE : View.GONE);</span>
+
+<span class="nc bnc" id="L468" title="All 2 branches missed.">        if (isVideoStreamsAvailable) {</span>
+<span class="nc" id="L469">            videoButton.setChecked(true);</span>
+<span class="nc" id="L470">            setupVideoSpinner();</span>
+<span class="nc bnc" id="L471" title="All 2 branches missed.">        } else if (isAudioStreamsAvailable) {</span>
+<span class="nc" id="L472">            audioButton.setChecked(true);</span>
+<span class="nc" id="L473">            setupAudioSpinner();</span>
+<span class="nc bnc" id="L474" title="All 2 branches missed.">        } else if (isSubtitleStreamsAvailable) {</span>
+<span class="nc" id="L475">            subtitleButton.setChecked(true);</span>
+<span class="nc" id="L476">            setupSubtitleSpinner();</span>
+        } else {
+<span class="nc" id="L478">            Toast.makeText(getContext(), R.string.no_streams_available_download, Toast.LENGTH_SHORT).show();</span>
+<span class="nc" id="L479">            getDialog().dismiss();</span>
+        }
+<span class="nc" id="L481">    }</span>
+
+    private void setRadioButtonsState(boolean enabled) {
+<span class="nc" id="L484">        radioStreamsGroup.findViewById(R.id.audio_button).setEnabled(enabled);</span>
+<span class="nc" id="L485">        radioStreamsGroup.findViewById(R.id.video_button).setEnabled(enabled);</span>
+<span class="nc" id="L486">        radioStreamsGroup.findViewById(R.id.subtitle_button).setEnabled(enabled);</span>
+<span class="nc" id="L487">    }</span>
+
+    private int getSubtitleIndexBy(List&lt;SubtitlesStream&gt; streams) {
+<span class="nc" id="L490">        Localization loc = NewPipe.getPreferredLocalization();</span>
+
+<span class="nc bnc" id="L492" title="All 2 branches missed.">        for (int i = 0; i &lt; streams.size(); i++) {</span>
+<span class="nc" id="L493">            Locale streamLocale = streams.get(i).getLocale();</span>
+<span class="nc" id="L494">            String tag = streamLocale.getLanguage().concat(&quot;-&quot;).concat(streamLocale.getCountry());</span>
+<span class="nc bnc" id="L495" title="All 2 branches missed.">            if (tag.equalsIgnoreCase(loc.getLanguage())) {</span>
+<span class="nc" id="L496">                return i;</span>
+            }
+        }
+
+        // fallback
+        // 1st loop match country &amp; language
+        // 2nd loop match language only
+<span class="nc" id="L503">        int index = loc.getLanguage().indexOf(&quot;-&quot;);</span>
+<span class="nc bnc" id="L504" title="All 2 branches missed.">        String lang = index &gt; 0 ? loc.getLanguage().substring(0, index) : loc.getLanguage();</span>
+
+<span class="nc bnc" id="L506" title="All 2 branches missed.">        for (int j = 0; j &lt; 2; j++) {</span>
+<span class="nc bnc" id="L507" title="All 2 branches missed.">            for (int i = 0; i &lt; streams.size(); i++) {</span>
+<span class="nc" id="L508">                Locale streamLocale = streams.get(i).getLocale();</span>
+
+<span class="nc bnc" id="L510" title="All 2 branches missed.">                if (streamLocale.getLanguage().equalsIgnoreCase(lang)) {</span>
+<span class="nc bnc" id="L511" title="All 4 branches missed.">                    if (j &gt; 0 || streamLocale.getCountry().equalsIgnoreCase(loc.getCountry())) {</span>
+<span class="nc" id="L512">                        return i;</span>
+                    }
+                }
+            }
+        }
+
+<span class="nc" id="L518">        return 0;</span>
+    }
+
+<span class="nc" id="L521">    StoredDirectoryHelper mainStorageAudio = null;</span>
+<span class="nc" id="L522">    StoredDirectoryHelper mainStorageVideo = null;</span>
+<span class="nc" id="L523">    DownloadManager downloadManager = null;</span>
+<span class="nc" id="L524">    ActionMenuItemView okButton = null;</span>
+    Context context;
+    boolean askForSavePath;
+
+    private String getNameEditText() {
+<span class="nc" id="L529">        String str = nameEditText.getText().toString().trim();</span>
+
+<span class="nc bnc" id="L531" title="All 2 branches missed.">        return FilenameUtils.createFilename(context, str.isEmpty() ? currentInfo.getName() : str);</span>
+    }
+
+    private void showFailedDialog(@StringRes int msg) {
+<span class="nc" id="L535">        new AlertDialog.Builder(context)</span>
+<span class="nc" id="L536">                .setTitle(R.string.general_error)</span>
+<span class="nc" id="L537">                .setMessage(msg)</span>
+<span class="nc" id="L538">                .setNegativeButton(android.R.string.ok, null)</span>
+<span class="nc" id="L539">                .create()</span>
+<span class="nc" id="L540">                .show();</span>
+<span class="nc" id="L541">    }</span>
+
+    private void showErrorActivity(Exception e) {
+<span class="nc" id="L544">        ErrorActivity.reportError(</span>
+                context,
+<span class="nc" id="L546">                Collections.singletonList(e),</span>
+                null,
+                null,
+<span class="nc" id="L549">                ErrorActivity.ErrorInfo.make(UserAction.SOMETHING_ELSE, &quot;-&quot;, &quot;-&quot;, R.string.general_error)</span>
+        );
+<span class="nc" id="L551">    }</span>
+
+    private void prepareSelectedDownload() {
+        StoredDirectoryHelper mainStorage;
+        MediaFormat format;
+        String mime;
+
+        // first, build the filename and get the output folder (if possible)
+        // later, run a very very very large file checking logic
+
+<span class="nc" id="L561">        String filename = getNameEditText().concat(&quot;.&quot;);</span>
+
+<span class="nc bnc" id="L563" title="All 4 branches missed.">        switch (radioStreamsGroup.getCheckedRadioButtonId()) {</span>
+            case R.id.audio_button:
+<span class="nc" id="L565">                mainStorage = mainStorageAudio;</span>
+<span class="nc" id="L566">                format = audioStreamsAdapter.getItem(selectedAudioIndex).getFormat();</span>
+<span class="nc" id="L567">                mime = format.mimeType;</span>
+<span class="nc" id="L568">                filename += format.suffix;</span>
+<span class="nc" id="L569">                break;</span>
+            case R.id.video_button:
+<span class="nc" id="L571">                mainStorage = mainStorageVideo;</span>
+<span class="nc" id="L572">                format = videoStreamsAdapter.getItem(selectedVideoIndex).getFormat();</span>
+<span class="nc" id="L573">                mime = format.mimeType;</span>
+<span class="nc" id="L574">                filename += format.suffix;</span>
+<span class="nc" id="L575">                break;</span>
+            case R.id.subtitle_button:
+<span class="nc" id="L577">                mainStorage = mainStorageVideo;// subtitle &amp; video files go together</span>
+<span class="nc" id="L578">                format = subtitleStreamsAdapter.getItem(selectedSubtitleIndex).getFormat();</span>
+<span class="nc" id="L579">                mime = format.mimeType;</span>
+<span class="nc bnc" id="L580" title="All 2 branches missed.">                filename += format == MediaFormat.TTML ? MediaFormat.SRT.suffix : format.suffix;</span>
+<span class="nc" id="L581">                break;</span>
+            default:
+<span class="nc" id="L583">                throw new RuntimeException(&quot;No stream selected&quot;);</span>
+        }
+
+<span class="nc bnc" id="L586" title="All 4 branches missed.">        if (mainStorage == null || askForSavePath) {</span>
+            // This part is called if with SAF preferred:
+            //  * older android version running
+            //  * save path not defined (via download settings)
+            //  * the user checked the &quot;ask where to download&quot; option
+
+<span class="nc bnc" id="L592" title="All 2 branches missed.">            if (!askForSavePath)</span>
+<span class="nc" id="L593">                Toast.makeText(context, getString(R.string.no_available_dir), Toast.LENGTH_LONG).show();</span>
+
+<span class="nc bnc" id="L595" title="All 2 branches missed.">            if (NewPipeSettings.useStorageAccessFramework(context)) {</span>
+<span class="nc" id="L596">                StoredFileHelper.requestSafWithFileCreation(this, REQUEST_DOWNLOAD_SAVE_AS, filename, mime);</span>
+            } else {
+                File initialSavePath;
+<span class="nc bnc" id="L599" title="All 2 branches missed.">                if (radioStreamsGroup.getCheckedRadioButtonId() == R.id.audio_button)</span>
+<span class="nc" id="L600">                    initialSavePath = NewPipeSettings.getDir(Environment.DIRECTORY_MUSIC);</span>
+                else
+<span class="nc" id="L602">                    initialSavePath = NewPipeSettings.getDir(Environment.DIRECTORY_MOVIES);</span>
+
+<span class="nc" id="L604">                initialSavePath = new File(initialSavePath, filename);</span>
+<span class="nc" id="L605">                startActivityForResult(</span>
+<span class="nc" id="L606">                        FilePickerActivityHelper.chooseFileToSave(context, initialSavePath.getAbsolutePath()),</span>
+                        REQUEST_DOWNLOAD_SAVE_AS
+                );
+            }
+
+<span class="nc" id="L611">            return;</span>
+        }
+
+        // check for existing file with the same name
+<span class="nc" id="L615">        checkSelectedDownload(mainStorage, mainStorage.findFile(filename), filename, mime);</span>
+<span class="nc" id="L616">    }</span>
+
+    private void checkSelectedDownload(StoredDirectoryHelper mainStorage, Uri targetFile, String filename, String mime) {
+        StoredFileHelper storage;
+
+        try {
+<span class="nc bnc" id="L622" title="All 2 branches missed.">            if (mainStorage == null) {</span>
+                // using SAF on older android version
+<span class="nc" id="L624">                storage = new StoredFileHelper(context, null, targetFile, &quot;&quot;);</span>
+<span class="nc bnc" id="L625" title="All 2 branches missed.">            } else if (targetFile == null) {</span>
+                // the file does not exist, but it is probably used in a pending download
+<span class="nc" id="L627">                storage = new StoredFileHelper(mainStorage.getUri(), filename, mime, mainStorage.getTag());</span>
+            } else {
+                // the target filename is already use, attempt to use it
+<span class="nc" id="L630">                storage = new StoredFileHelper(context, mainStorage.getUri(), targetFile, mainStorage.getTag());</span>
+            }
+<span class="nc" id="L632">        } catch (Exception e) {</span>
+<span class="nc" id="L633">            showErrorActivity(e);</span>
+<span class="nc" id="L634">            return;</span>
+<span class="nc" id="L635">        }</span>
+
+        // check if is our file
+<span class="nc" id="L638">        MissionState state = downloadManager.checkForExistingMission(storage);</span>
+        @StringRes int msgBtn;
+        @StringRes int msgBody;
+
+<span class="nc bnc" id="L642" title="All 5 branches missed.">        switch (state) {</span>
+            case Finished:
+<span class="nc" id="L644">                msgBtn = R.string.overwrite;</span>
+<span class="nc" id="L645">                msgBody = R.string.overwrite_finished_warning;</span>
+<span class="nc" id="L646">                break;</span>
+            case Pending:
+<span class="nc" id="L648">                msgBtn = R.string.overwrite;</span>
+<span class="nc" id="L649">                msgBody = R.string.download_already_pending;</span>
+<span class="nc" id="L650">                break;</span>
+            case PendingRunning:
+<span class="nc" id="L652">                msgBtn = R.string.generate_unique_name;</span>
+<span class="nc" id="L653">                msgBody = R.string.download_already_running;</span>
+<span class="nc" id="L654">                break;</span>
+            case None:
+<span class="nc bnc" id="L656" title="All 2 branches missed.">                if (mainStorage == null) {</span>
+                    // This part is called if:
+                    // * using SAF on older android version
+                    // * save path not defined
+                    // * if the file exists overwrite it, is not necessary ask
+<span class="nc bnc" id="L661" title="All 4 branches missed.">                    if (!storage.existsAsFile() &amp;&amp; !storage.create()) {</span>
+<span class="nc" id="L662">                        showFailedDialog(R.string.error_file_creation);</span>
+<span class="nc" id="L663">                        return;</span>
+                    }
+<span class="nc" id="L665">                    continueSelectedDownload(storage);</span>
+<span class="nc" id="L666">                    return;</span>
+<span class="nc bnc" id="L667" title="All 2 branches missed.">                } else if (targetFile == null) {</span>
+                    // This part is called if:
+                    // * the filename is not used in a pending/finished download
+                    // * the file does not exists, create
+
+<span class="nc bnc" id="L672" title="All 2 branches missed.">                    if (!mainStorage.mkdirs()) {</span>
+<span class="nc" id="L673">                        showFailedDialog(R.string.error_path_creation);</span>
+<span class="nc" id="L674">                        return;</span>
+                    }
+
+<span class="nc" id="L677">                    storage = mainStorage.createFile(filename, mime);</span>
+<span class="nc bnc" id="L678" title="All 4 branches missed.">                    if (storage == null || !storage.canWrite()) {</span>
+<span class="nc" id="L679">                        showFailedDialog(R.string.error_file_creation);</span>
+<span class="nc" id="L680">                        return;</span>
+                    }
+
+<span class="nc" id="L683">                    continueSelectedDownload(storage);</span>
+<span class="nc" id="L684">                    return;</span>
+                }
+<span class="nc" id="L686">                msgBtn = R.string.overwrite;</span>
+<span class="nc" id="L687">                msgBody = R.string.overwrite_unrelated_warning;</span>
+<span class="nc" id="L688">                break;</span>
+            default:
+<span class="nc" id="L690">                return;</span>
+        }
+
+
+<span class="nc" id="L694">        AlertDialog.Builder askDialog = new AlertDialog.Builder(context)</span>
+<span class="nc" id="L695">                .setTitle(R.string.download_dialog_title)</span>
+<span class="nc" id="L696">                .setMessage(msgBody)</span>
+<span class="nc" id="L697">                .setNegativeButton(android.R.string.cancel, null);</span>
+<span class="nc" id="L698">        final StoredFileHelper finalStorage = storage;</span>
+
+
+<span class="nc bnc" id="L701" title="All 2 branches missed.">        if (mainStorage == null) {</span>
+            // This part is called if:
+            // * using SAF on older android version
+            // * save path not defined
+<span class="nc bnc" id="L705" title="All 2 branches missed.">            switch (state) {</span>
+                case Pending:
+                case Finished:
+<span class="nc" id="L708">                    askDialog.setPositiveButton(msgBtn, (dialog, which) -&gt; {</span>
+<span class="nc" id="L709">                        dialog.dismiss();</span>
+<span class="nc" id="L710">                        downloadManager.forgetMission(finalStorage);</span>
+<span class="nc" id="L711">                        continueSelectedDownload(finalStorage);</span>
+<span class="nc" id="L712">                    });</span>
+                    break;
+            }
+
+<span class="nc" id="L716">            askDialog.create().show();</span>
+<span class="nc" id="L717">            return;</span>
+        }
+
+<span class="nc" id="L720">        askDialog.setPositiveButton(msgBtn, (dialog, which) -&gt; {</span>
+<span class="nc" id="L721">            dialog.dismiss();</span>
+
+            StoredFileHelper storageNew;
+<span class="nc bnc" id="L724" title="All 4 branches missed.">            switch (state) {</span>
+                case Finished:
+                case Pending:
+<span class="nc" id="L727">                    downloadManager.forgetMission(finalStorage);</span>
+                case None:
+<span class="nc bnc" id="L729" title="All 2 branches missed.">                    if (targetFile == null) {</span>
+<span class="nc" id="L730">                        storageNew = mainStorage.createFile(filename, mime);</span>
+                    } else {
+                        try {
+                            // try take (or steal) the file
+<span class="nc" id="L734">                            storageNew = new StoredFileHelper(context, mainStorage.getUri(), targetFile, mainStorage.getTag());</span>
+<span class="nc" id="L735">                        } catch (IOException e) {</span>
+<span class="nc" id="L736">                            Log.e(TAG, &quot;Failed to take (or steal) the file in &quot; + targetFile.toString());</span>
+<span class="nc" id="L737">                            storageNew = null;</span>
+<span class="nc" id="L738">                        }</span>
+                    }
+
+<span class="nc bnc" id="L741" title="All 4 branches missed.">                    if (storageNew != null &amp;&amp; storageNew.canWrite())</span>
+<span class="nc" id="L742">                        continueSelectedDownload(storageNew);</span>
+                    else
+<span class="nc" id="L744">                        showFailedDialog(R.string.error_file_creation);</span>
+<span class="nc" id="L745">                    break;</span>
+                case PendingRunning:
+<span class="nc" id="L747">                    storageNew = mainStorage.createUniqueFile(filename, mime);</span>
+<span class="nc bnc" id="L748" title="All 2 branches missed.">                    if (storageNew == null)</span>
+<span class="nc" id="L749">                        showFailedDialog(R.string.error_file_creation);</span>
+                    else
+<span class="nc" id="L751">                        continueSelectedDownload(storageNew);</span>
+                    break;
+            }
+<span class="nc" id="L754">        });</span>
+
+<span class="nc" id="L756">        askDialog.create().show();</span>
+<span class="nc" id="L757">    }</span>
+
+    private void continueSelectedDownload(@NonNull StoredFileHelper storage) {
+<span class="nc bnc" id="L760" title="All 2 branches missed.">        if (!storage.canWrite()) {</span>
+<span class="nc" id="L761">            showFailedDialog(R.string.permission_denied);</span>
+<span class="nc" id="L762">            return;</span>
+        }
+
+        // check if the selected file has to be overwritten, by simply checking its length
+        try {
+<span class="nc bnc" id="L767" title="All 2 branches missed.">            if (storage.length() &gt; 0) storage.truncate();</span>
+<span class="nc" id="L768">        } catch (IOException e) {</span>
+<span class="nc" id="L769">            Log.e(TAG, &quot;failed to truncate the file: &quot; + storage.getUri().toString(), e);</span>
+<span class="nc" id="L770">            showFailedDialog(R.string.overwrite_failed);</span>
+<span class="nc" id="L771">            return;</span>
+<span class="nc" id="L772">        }</span>
+
+        Stream selectedStream;
+        char kind;
+<span class="nc" id="L776">        int threads = threadsSeekBar.getProgress() + 1;</span>
+        String[] urls;
+<span class="nc" id="L778">        String psName = null;</span>
+<span class="nc" id="L779">        String[] psArgs = null;</span>
+<span class="nc" id="L780">        String secondaryStreamUrl = null;</span>
+<span class="nc" id="L781">        long nearLength = 0;</span>
+
+        // more download logic: select muxer, subtitle converter, etc.
+<span class="nc bnc" id="L784" title="All 4 branches missed.">        switch (radioStreamsGroup.getCheckedRadioButtonId()) {</span>
+            case R.id.audio_button:
+<span class="nc" id="L786">                kind = 'a';</span>
+<span class="nc" id="L787">                selectedStream = audioStreamsAdapter.getItem(selectedAudioIndex);</span>
+
+<span class="nc bnc" id="L789" title="All 2 branches missed.">                if (selectedStream.getFormat() == MediaFormat.M4A) {</span>
+<span class="nc" id="L790">                    psName = Postprocessing.ALGORITHM_M4A_NO_DASH;</span>
+                }
+                break;
+            case R.id.video_button:
+<span class="nc" id="L794">                kind = 'v';</span>
+<span class="nc" id="L795">                selectedStream = videoStreamsAdapter.getItem(selectedVideoIndex);</span>
+
+<span class="nc" id="L797">                SecondaryStreamHelper&lt;AudioStream&gt; secondaryStream = videoStreamsAdapter</span>
+<span class="nc" id="L798">                        .getAllSecondary()</span>
+<span class="nc" id="L799">                        .get(wrappedVideoStreams.getStreamsList().indexOf(selectedStream));</span>
+
+<span class="nc bnc" id="L801" title="All 2 branches missed.">                if (secondaryStream != null) {</span>
+<span class="nc" id="L802">                    secondaryStreamUrl = secondaryStream.getStream().getUrl();</span>
+
+<span class="nc bnc" id="L804" title="All 2 branches missed.">                    if (selectedStream.getFormat() == MediaFormat.MPEG_4)</span>
+<span class="nc" id="L805">                        psName = Postprocessing.ALGORITHM_MP4_FROM_DASH_MUXER;</span>
+                    else
+<span class="nc" id="L807">                        psName = Postprocessing.ALGORITHM_WEBM_MUXER;</span>
+
+<span class="nc" id="L809">                    psArgs = null;</span>
+<span class="nc" id="L810">                    long videoSize = wrappedVideoStreams.getSizeInBytes((VideoStream) selectedStream);</span>
+
+                    // set nearLength, only, if both sizes are fetched or known. This probably
+                    // does not work on slow networks but is later updated in the downloader
+<span class="nc bnc" id="L814" title="All 4 branches missed.">                    if (secondaryStream.getSizeInBytes() &gt; 0 &amp;&amp; videoSize &gt; 0) {</span>
+<span class="nc" id="L815">                        nearLength = secondaryStream.getSizeInBytes() + videoSize;</span>
+                    }
+<span class="nc" id="L817">                }</span>
+                break;
+            case R.id.subtitle_button:
+<span class="nc" id="L820">                threads = 1;// use unique thread for subtitles due small file size</span>
+<span class="nc" id="L821">                kind = 's';</span>
+<span class="nc" id="L822">                selectedStream = subtitleStreamsAdapter.getItem(selectedSubtitleIndex);</span>
+
+<span class="nc bnc" id="L824" title="All 2 branches missed.">                if (selectedStream.getFormat() == MediaFormat.TTML) {</span>
+<span class="nc" id="L825">                    psName = Postprocessing.ALGORITHM_TTML_CONVERTER;</span>
+<span class="nc" id="L826">                    psArgs = new String[]{</span>
+<span class="nc" id="L827">                            selectedStream.getFormat().getSuffix(),</span>
+                            &quot;false&quot;,// ignore empty frames
+                            &quot;false&quot;,// detect youtube duplicate lines
+                    };
+                }
+                break;
+            default:
+<span class="nc" id="L834">                return;</span>
+        }
+
+<span class="nc bnc" id="L837" title="All 2 branches missed.">        if (secondaryStreamUrl == null) {</span>
+<span class="nc" id="L838">            urls = new String[]{selectedStream.getUrl()};</span>
+        } else {
+<span class="nc" id="L840">            urls = new String[]{selectedStream.getUrl(), secondaryStreamUrl};</span>
+        }
+
+<span class="nc" id="L843">        DownloadManagerService.startMission(context, urls, storage, kind, threads, currentInfo.getUrl(), psName, psArgs, nearLength);</span>
+
+<span class="nc" id="L845">        dismiss();</span>
+<span class="nc" id="L846">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PlaybackResolver.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.player.resolver</a> &gt; <span class="el_source">PlaybackResolver.java</span></div><h1>PlaybackResolver.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.player.resolver;
+
+import android.net.Uri;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.text.TextUtils;
+
+import com.google.android.exoplayer2.C;
+import com.google.android.exoplayer2.source.MediaSource;
+import com.google.android.exoplayer2.util.Util;
+
+import org.schabi.newpipe.extractor.stream.StreamInfo;
+import org.schabi.newpipe.extractor.stream.StreamType;
+import org.schabi.newpipe.player.helper.PlayerDataSource;
+
+public interface PlaybackResolver extends Resolver&lt;StreamInfo, MediaSource&gt; {
+
+    @Nullable
+    default MediaSource maybeBuildLiveMediaSource(@NonNull final PlayerDataSource dataSource,
+                                                  @NonNull final StreamInfo info) {
+<span class="nc" id="L21">        final StreamType streamType = info.getStreamType();</span>
+<span class="nc bnc" id="L22" title="All 4 branches missed.">        if (!(streamType == StreamType.AUDIO_LIVE_STREAM || streamType == StreamType.LIVE_STREAM)) {</span>
+<span class="nc" id="L23">            return null;</span>
+        }
+
+<span class="nc" id="L26">        final MediaSourceTag tag = new MediaSourceTag(info);</span>
+<span class="nc bnc" id="L27" title="All 2 branches missed.">        if (!info.getHlsUrl().isEmpty()) {</span>
+<span class="nc" id="L28">            return buildLiveMediaSource(dataSource, info.getHlsUrl(), C.TYPE_HLS, tag);</span>
+<span class="nc bnc" id="L29" title="All 2 branches missed.">        } else if (!info.getDashMpdUrl().isEmpty()) {</span>
+<span class="nc" id="L30">            return buildLiveMediaSource(dataSource, info.getDashMpdUrl(), C.TYPE_DASH, tag);</span>
+        }
+
+<span class="nc" id="L33">        return null;</span>
+    }
+
+    @NonNull
+    default MediaSource buildLiveMediaSource(@NonNull final PlayerDataSource dataSource,
+                                             @NonNull final String sourceUrl,
+                                             @C.ContentType final int type,
+                                             @NonNull final MediaSourceTag metadata) {
+<span class="nc" id="L41">        final Uri uri = Uri.parse(sourceUrl);</span>
+<span class="nc bnc" id="L42" title="All 4 branches missed.">        switch (type) {</span>
+            case C.TYPE_SS:
+<span class="nc" id="L44">                return dataSource.getLiveSsMediaSourceFactory().setTag(metadata)</span>
+<span class="nc" id="L45">                        .createMediaSource(uri);</span>
+            case C.TYPE_DASH:
+<span class="nc" id="L47">                return dataSource.getLiveDashMediaSourceFactory().setTag(metadata)</span>
+<span class="nc" id="L48">                        .createMediaSource(uri);</span>
+            case C.TYPE_HLS:
+<span class="nc" id="L50">                return dataSource.getLiveHlsMediaSourceFactory().setTag(metadata)</span>
+<span class="nc" id="L51">                        .createMediaSource(uri);</span>
+            default:
+<span class="nc" id="L53">                throw new IllegalStateException(&quot;Unsupported type: &quot; + type);</span>
+        }
+    }
+
+    @NonNull
+    default MediaSource buildMediaSource(@NonNull final PlayerDataSource dataSource,
+                                         @NonNull final String sourceUrl,
+                                         @NonNull final String cacheKey,
+                                         @NonNull final String overrideExtension,
+                                         @NonNull final MediaSourceTag metadata) {
+<span class="nc" id="L63">        final Uri uri = Uri.parse(sourceUrl);</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">        @C.ContentType final int type = TextUtils.isEmpty(overrideExtension) ?</span>
+<span class="nc" id="L65">                Util.inferContentType(uri) : Util.inferContentType(&quot;.&quot; + overrideExtension);</span>
+
+<span class="nc bnc" id="L67" title="All 5 branches missed.">        switch (type) {</span>
+            case C.TYPE_SS:
+<span class="nc" id="L69">                return dataSource.getLiveSsMediaSourceFactory().setTag(metadata)</span>
+<span class="nc" id="L70">                        .createMediaSource(uri);</span>
+            case C.TYPE_DASH:
+<span class="nc" id="L72">                return dataSource.getDashMediaSourceFactory().setTag(metadata)</span>
+<span class="nc" id="L73">                        .createMediaSource(uri);</span>
+            case C.TYPE_HLS:
+<span class="nc" id="L75">                return dataSource.getHlsMediaSourceFactory().setTag(metadata)</span>
+<span class="nc" id="L76">                        .createMediaSource(uri);</span>
+            case C.TYPE_OTHER:
+<span class="nc" id="L78">                return dataSource.getExtractorMediaSourceFactory(cacheKey).setTag(metadata)</span>
+<span class="nc" id="L79">                        .createMediaSource(uri);</span>
+            default:
+<span class="nc" id="L81">                throw new IllegalStateException(&quot;Unsupported type: &quot; + type);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

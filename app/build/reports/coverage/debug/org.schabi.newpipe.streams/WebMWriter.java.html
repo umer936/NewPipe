@@ -1,0 +1,724 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WebMWriter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.streams</a> &gt; <span class="el_source">WebMWriter.java</span></div><h1>WebMWriter.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.streams;
+
+import android.support.annotation.NonNull;
+
+import org.schabi.newpipe.streams.WebMReader.Cluster;
+import org.schabi.newpipe.streams.WebMReader.Segment;
+import org.schabi.newpipe.streams.WebMReader.SimpleBlock;
+import org.schabi.newpipe.streams.WebMReader.WebMTrack;
+import org.schabi.newpipe.streams.io.SharpStream;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+
+/**
+ * @author kapodamy
+ */
+public class WebMWriter {
+
+    private final static int BUFFER_SIZE = 8 * 1024;
+    private final static int DEFAULT_TIMECODE_SCALE = 1000000;
+    private final static int INTERV = 100;// 100ms on 1000000us timecode scale
+    private final static int DEFAULT_CUES_EACH_MS = 5000;// 100ms on 1000000us timecode scale
+
+    private WebMReader.WebMTrack[] infoTracks;
+    private SharpStream[] sourceTracks;
+
+    private WebMReader[] readers;
+
+<span class="nc" id="L32">    private boolean done = false;</span>
+<span class="nc" id="L33">    private boolean parsed = false;</span>
+
+<span class="nc" id="L35">    private long written = 0;</span>
+
+    private Segment[] readersSegment;
+    private Cluster[] readersCluter;
+
+    private int[] predefinedDurations;
+
+    private byte[] outBuffer;
+
+<span class="nc" id="L44">    public WebMWriter(SharpStream... source) {</span>
+<span class="nc" id="L45">        sourceTracks = source;</span>
+<span class="nc" id="L46">        readers = new WebMReader[sourceTracks.length];</span>
+<span class="nc" id="L47">        infoTracks = new WebMTrack[sourceTracks.length];</span>
+<span class="nc" id="L48">        outBuffer = new byte[BUFFER_SIZE];</span>
+<span class="nc" id="L49">    }</span>
+
+    public WebMTrack[] getTracksFromSource(int sourceIndex) throws IllegalStateException {
+<span class="nc bnc" id="L52" title="All 2 branches missed.">        if (done) {</span>
+<span class="nc" id="L53">            throw new IllegalStateException(&quot;already done&quot;);</span>
+        }
+<span class="nc bnc" id="L55" title="All 2 branches missed.">        if (!parsed) {</span>
+<span class="nc" id="L56">            throw new IllegalStateException(&quot;All sources must be parsed first&quot;);</span>
+        }
+
+<span class="nc" id="L59">        return readers[sourceIndex].getAvailableTracks();</span>
+    }
+
+    public void parseSources() throws IOException, IllegalStateException {
+<span class="nc bnc" id="L63" title="All 2 branches missed.">        if (done) {</span>
+<span class="nc" id="L64">            throw new IllegalStateException(&quot;already done&quot;);</span>
+        }
+<span class="nc bnc" id="L66" title="All 2 branches missed.">        if (parsed) {</span>
+<span class="nc" id="L67">            throw new IllegalStateException(&quot;already parsed&quot;);</span>
+        }
+
+        try {
+<span class="nc bnc" id="L71" title="All 2 branches missed.">            for (int i = 0; i &lt; readers.length; i++) {</span>
+<span class="nc" id="L72">                readers[i] = new WebMReader(sourceTracks[i]);</span>
+<span class="nc" id="L73">                readers[i].parse();</span>
+            }
+
+        } finally {
+<span class="nc" id="L77">            parsed = true;</span>
+<span class="nc" id="L78">        }</span>
+<span class="nc" id="L79">    }</span>
+
+    public void selectTracks(int... trackIndex) throws IOException {
+        try {
+<span class="nc" id="L83">            readersSegment = new Segment[readers.length];</span>
+<span class="nc" id="L84">            readersCluter = new Cluster[readers.length];</span>
+<span class="nc" id="L85">            predefinedDurations = new int[readers.length];</span>
+
+<span class="nc bnc" id="L87" title="All 2 branches missed.">            for (int i = 0; i &lt; readers.length; i++) {</span>
+<span class="nc" id="L88">                infoTracks[i] = readers[i].selectTrack(trackIndex[i]);</span>
+<span class="nc" id="L89">                predefinedDurations[i] = -1;</span>
+<span class="nc" id="L90">                readersSegment[i] = readers[i].getNextSegment();</span>
+            }
+        } finally {
+<span class="nc" id="L93">            parsed = true;</span>
+<span class="nc" id="L94">        }</span>
+<span class="nc" id="L95">    }</span>
+
+    public boolean isDone() {
+<span class="nc" id="L98">        return done;</span>
+    }
+
+    public boolean isParsed() {
+<span class="nc" id="L102">        return parsed;</span>
+    }
+
+    public void close() {
+<span class="nc" id="L106">        done = true;</span>
+<span class="nc" id="L107">        parsed = true;</span>
+
+<span class="nc bnc" id="L109" title="All 2 branches missed.">        for (SharpStream src : sourceTracks) {</span>
+<span class="nc" id="L110">            src.close();</span>
+        }
+
+<span class="nc" id="L113">        sourceTracks = null;</span>
+<span class="nc" id="L114">        readers = null;</span>
+<span class="nc" id="L115">        infoTracks = null;</span>
+<span class="nc" id="L116">        readersSegment = null;</span>
+<span class="nc" id="L117">        readersCluter = null;</span>
+<span class="nc" id="L118">        outBuffer = null;</span>
+<span class="nc" id="L119">    }</span>
+
+    public void build(SharpStream out) throws IOException, RuntimeException {
+<span class="nc bnc" id="L122" title="All 2 branches missed.">        if (!out.canRewind()) {</span>
+<span class="nc" id="L123">            throw new IOException(&quot;The output stream must be allow seek&quot;);</span>
+        }
+
+<span class="nc" id="L126">        makeEBML(out);</span>
+
+<span class="nc" id="L128">        long offsetSegmentSizeSet = written + 5;</span>
+<span class="nc" id="L129">        long offsetInfoDurationSet = written + 94;</span>
+<span class="nc" id="L130">        long offsetClusterSet = written + 58;</span>
+<span class="nc" id="L131">        long offsetCuesSet = written + 75;</span>
+
+<span class="nc" id="L133">        ArrayList&lt;byte[]&gt; listBuffer = new ArrayList&lt;&gt;(4);</span>
+
+        /* segment */
+<span class="nc" id="L136">        listBuffer.add(new byte[]{</span>
+                0x18, 0x53, (byte) 0x80, 0x67, 0x01,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00// segment content size
+        });
+
+<span class="nc" id="L141">        long baseSegmentOffset = written + listBuffer.get(0).length;</span>
+
+        /* seek head */
+<span class="nc" id="L144">        listBuffer.add(new byte[]{</span>
+                0x11, 0x4d, (byte) 0x9b, 0x74, (byte) 0xbe,
+                0x4d, (byte) 0xbb, (byte) 0x8b,
+                0x53, (byte) 0xab, (byte) 0x84, 0x15, 0x49, (byte) 0xa9, 0x66, 0x53,
+                (byte) 0xac, (byte) 0x81, /*info offset*/ 0x43,
+                0x4d, (byte) 0xbb, (byte) 0x8b, 0x53, (byte) 0xab,
+                (byte) 0x84, 0x16, 0x54, (byte) 0xae, 0x6b, 0x53, (byte) 0xac, (byte) 0x81,
+                /*tracks offset*/ 0x6a,
+                0x4d, (byte) 0xbb, (byte) 0x8e, 0x53, (byte) 0xab, (byte) 0x84, 0x1f,
+                0x43, (byte) 0xb6, 0x75, 0x53, (byte) 0xac, (byte) 0x84, /*cluster offset [2]*/ 0x00, 0x00, 0x00, 0x00,
+                0x4d, (byte) 0xbb, (byte) 0x8e, 0x53, (byte) 0xab, (byte) 0x84, 0x1c, 0x53,
+                (byte) 0xbb, 0x6b, 0x53, (byte) 0xac, (byte) 0x84, /*cues offset [7]*/ 0x00, 0x00, 0x00, 0x00
+        });
+
+        /* info */
+<span class="nc" id="L159">        listBuffer.add(new byte[]{</span>
+                0x15, 0x49, (byte) 0xa9, 0x66, (byte) 0xa2, 0x2a, (byte) 0xd7, (byte) 0xb1
+        });
+<span class="nc" id="L162">        listBuffer.add(encode(DEFAULT_TIMECODE_SCALE, true));// this value MUST NOT exceed 4 bytes</span>
+<span class="nc" id="L163">        listBuffer.add(new byte[]{0x44, (byte) 0x89, (byte) 0x84,</span>
+                0x00, 0x00, 0x00, 0x00,// info.duration
+
+                /* MuxingApp */
+                0x4d, (byte) 0x80, (byte) 0x87, 0x4E,
+                0x65, 0x77, 0x50, 0x69, 0x70, 0x65, // &quot;NewPipe&quot; binary string
+
+                /* WritingApp */
+                0x57, 0x41, (byte) 0x87, 0x4E,
+                0x65, 0x77, 0x50, 0x69, 0x70, 0x65// &quot;NewPipe&quot; binary string
+        });
+
+        /* tracks */
+<span class="nc" id="L176">        listBuffer.addAll(makeTracks());</span>
+
+<span class="nc bnc" id="L178" title="All 2 branches missed.">        for (byte[] buff : listBuffer) {</span>
+<span class="nc" id="L179">            dump(buff, out);</span>
+<span class="nc" id="L180">        }</span>
+
+        // reserve space for Cues element, but is a waste of space (actually is 64 KiB)
+        // TODO: better Cue maker
+<span class="nc" id="L184">        long cueReservedOffset = written;</span>
+<span class="nc" id="L185">        dump(new byte[]{(byte) 0xec, 0x20, (byte) 0xff, (byte) 0xfb}, out);</span>
+<span class="nc" id="L186">        int reserved = (1024 * 63) - 4;</span>
+<span class="nc bnc" id="L187" title="All 2 branches missed.">        while (reserved &gt; 0) {</span>
+<span class="nc" id="L188">            int write = Math.min(reserved, outBuffer.length);</span>
+<span class="nc" id="L189">            out.write(outBuffer, 0, write);</span>
+<span class="nc" id="L190">            reserved -= write;</span>
+<span class="nc" id="L191">            written += write;</span>
+<span class="nc" id="L192">        }</span>
+
+        // Select a track for the cue
+<span class="nc" id="L195">        int cuesForTrackId = selectTrackForCue();</span>
+<span class="nc bnc" id="L196" title="All 2 branches missed.">        long nextCueTime = infoTracks[cuesForTrackId].trackType == 1 ? -1 : 0;</span>
+<span class="nc" id="L197">        ArrayList&lt;KeyFrame&gt; keyFrames = new ArrayList&lt;&gt;(32);</span>
+
+<span class="nc" id="L199">        ArrayList&lt;Long&gt; clusterOffsets = new ArrayList&lt;&gt;(32);</span>
+<span class="nc" id="L200">        ArrayList&lt;Integer&gt; clusterSizes = new ArrayList&lt;&gt;(32);</span>
+
+<span class="nc" id="L202">        long duration = 0;</span>
+<span class="nc" id="L203">        int durationFromTrackId = 0;</span>
+
+<span class="nc" id="L205">        byte[] bTimecode = makeTimecode(0);</span>
+
+<span class="nc" id="L207">        int firstClusterOffset = (int) written;</span>
+<span class="nc" id="L208">        long currentClusterOffset = makeCluster(out, bTimecode, 0, clusterOffsets, clusterSizes);</span>
+
+<span class="nc" id="L210">        long baseTimecode = 0;</span>
+<span class="nc" id="L211">        long limitTimecode = -1;</span>
+<span class="nc" id="L212">        int limitTimecodeByTrackId = cuesForTrackId;</span>
+
+<span class="nc" id="L214">        int blockWritten = Integer.MAX_VALUE;</span>
+
+<span class="nc" id="L216">        int newClusterByTrackId = -1;</span>
+
+<span class="nc bnc" id="L218" title="All 2 branches missed.">        while (blockWritten &gt; 0) {</span>
+<span class="nc" id="L219">            blockWritten = 0;</span>
+<span class="nc" id="L220">            int i = 0;</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">            while (i &lt; readers.length) {</span>
+<span class="nc" id="L222">                Block bloq = getNextBlockFrom(i);</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">                if (bloq == null) {</span>
+<span class="nc" id="L224">                    i++;</span>
+<span class="nc" id="L225">                    continue;</span>
+                }
+
+<span class="nc bnc" id="L228" title="All 2 branches missed.">                if (bloq.data == null) {</span>
+<span class="nc" id="L229">                    blockWritten = 1;// fake block</span>
+<span class="nc" id="L230">                    newClusterByTrackId = i;</span>
+<span class="nc" id="L231">                    i++;</span>
+<span class="nc" id="L232">                    continue;</span>
+                }
+
+<span class="nc bnc" id="L235" title="All 2 branches missed.">                if (newClusterByTrackId == i) {</span>
+<span class="nc" id="L236">                    limitTimecodeByTrackId = i;</span>
+<span class="nc" id="L237">                    newClusterByTrackId = -1;</span>
+<span class="nc" id="L238">                    baseTimecode = bloq.absoluteTimecode;</span>
+<span class="nc" id="L239">                    limitTimecode = baseTimecode + INTERV;</span>
+<span class="nc" id="L240">                    bTimecode = makeTimecode(baseTimecode);</span>
+<span class="nc" id="L241">                    currentClusterOffset = makeCluster(out, bTimecode, currentClusterOffset, clusterOffsets, clusterSizes);</span>
+                }
+
+<span class="nc bnc" id="L244" title="All 2 branches missed.">                if (cuesForTrackId == i) {</span>
+<span class="nc bnc" id="L245" title="All 8 branches missed.">                    if ((nextCueTime &gt; -1 &amp;&amp; bloq.absoluteTimecode &gt;= nextCueTime) || (nextCueTime &lt; 0 &amp;&amp; bloq.isKeyframe())) {</span>
+<span class="nc bnc" id="L246" title="All 2 branches missed.">                        if (nextCueTime &gt; -1) {</span>
+<span class="nc" id="L247">                            nextCueTime += DEFAULT_CUES_EACH_MS;</span>
+                        }
+<span class="nc" id="L249">                        keyFrames.add(</span>
+                                new KeyFrame(baseSegmentOffset, currentClusterOffset - 7, written, bTimecode.length, bloq.absoluteTimecode)
+                        );
+                    }
+                }
+
+<span class="nc" id="L255">                writeBlock(out, bloq, baseTimecode);</span>
+<span class="nc" id="L256">                blockWritten++;</span>
+
+<span class="nc bnc" id="L258" title="All 2 branches missed.">                if (bloq.absoluteTimecode &gt; duration) {</span>
+<span class="nc" id="L259">                    duration = bloq.absoluteTimecode;</span>
+<span class="nc" id="L260">                    durationFromTrackId = bloq.trackNumber;</span>
+                }
+
+<span class="nc bnc" id="L263" title="All 2 branches missed.">                if (limitTimecode &lt; 0) {</span>
+<span class="nc" id="L264">                    limitTimecode = bloq.absoluteTimecode + INTERV;</span>
+<span class="nc" id="L265">                    continue;</span>
+                }
+
+<span class="nc bnc" id="L268" title="All 2 branches missed.">                if (bloq.absoluteTimecode &gt;= limitTimecode) {</span>
+<span class="nc bnc" id="L269" title="All 2 branches missed.">                    if (limitTimecodeByTrackId != i) {</span>
+<span class="nc" id="L270">                        limitTimecode += INTERV - (bloq.absoluteTimecode - limitTimecode);</span>
+                    }
+<span class="nc" id="L272">                    i++;</span>
+                }
+<span class="nc" id="L274">            }</span>
+<span class="nc" id="L275">        }</span>
+
+<span class="nc" id="L277">        makeCluster(out, null, currentClusterOffset, null, clusterSizes);</span>
+
+<span class="nc" id="L279">        long segmentSize = written - offsetSegmentSizeSet - 7;</span>
+
+        /* ---- final step write offsets and sizes ---- */
+<span class="nc" id="L282">        seekTo(out, offsetSegmentSizeSet);</span>
+<span class="nc" id="L283">        writeLong(out, segmentSize);</span>
+
+<span class="nc bnc" id="L285" title="All 2 branches missed.">        if (predefinedDurations[durationFromTrackId] &gt; -1) {</span>
+<span class="nc" id="L286">            duration += predefinedDurations[durationFromTrackId];// this value is full-filled in makeTrackEntry() method</span>
+        }
+<span class="nc" id="L288">        seekTo(out, offsetInfoDurationSet);</span>
+<span class="nc" id="L289">        writeFloat(out, duration);</span>
+
+<span class="nc" id="L291">        firstClusterOffset -= baseSegmentOffset;</span>
+<span class="nc" id="L292">        seekTo(out, offsetClusterSet);</span>
+<span class="nc" id="L293">        writeInt(out, firstClusterOffset);</span>
+
+<span class="nc" id="L295">        seekTo(out, cueReservedOffset);</span>
+
+        /* Cue */
+<span class="nc" id="L298">        dump(new byte[]{0x1c, 0x53, (byte) 0xbb, 0x6b, 0x20, 0x00, 0x00}, out);</span>
+
+<span class="nc bnc" id="L300" title="All 2 branches missed.">        for (KeyFrame keyFrame : keyFrames) {</span>
+<span class="nc bnc" id="L301" title="All 2 branches missed.">            for (byte[] buffer : makeCuePoint(cuesForTrackId, keyFrame)) {</span>
+<span class="nc" id="L302">                dump(buffer, out);</span>
+<span class="nc bnc" id="L303" title="All 2 branches missed.">                if (written &gt;= (cueReservedOffset + 65535 - 16)) {</span>
+<span class="nc" id="L304">                    throw new IOException(&quot;Too many Cues&quot;);</span>
+                }
+<span class="nc" id="L306">            }</span>
+<span class="nc" id="L307">        }</span>
+<span class="nc" id="L308">        short cueSize = (short) (written - cueReservedOffset - 7);</span>
+
+        /*  EBML Void */
+<span class="nc" id="L311">        ByteBuffer voidBuffer = ByteBuffer.allocate(4);</span>
+<span class="nc" id="L312">        voidBuffer.putShort((short) 0xec20);</span>
+<span class="nc" id="L313">        voidBuffer.putShort((short) (firstClusterOffset - written - 4));</span>
+<span class="nc" id="L314">        dump(voidBuffer.array(), out);</span>
+
+<span class="nc" id="L316">        seekTo(out, offsetCuesSet);</span>
+<span class="nc" id="L317">        writeInt(out, (int) (cueReservedOffset - baseSegmentOffset));</span>
+
+<span class="nc" id="L319">        seekTo(out, cueReservedOffset + 5);</span>
+<span class="nc" id="L320">        writeShort(out, cueSize);</span>
+
+<span class="nc bnc" id="L322" title="All 2 branches missed.">        for (int i = 0; i &lt; clusterSizes.size(); i++) {</span>
+<span class="nc" id="L323">            seekTo(out, clusterOffsets.get(i));</span>
+<span class="nc" id="L324">            byte[] buffer = ByteBuffer.allocate(4).putInt(clusterSizes.get(i) | 0x10000000).array();</span>
+<span class="nc" id="L325">            dump(buffer, out);</span>
+        }
+<span class="nc" id="L327">    }</span>
+
+    private Block getNextBlockFrom(int internalTrackId) throws IOException {
+<span class="nc bnc" id="L330" title="All 2 branches missed.">        if (readersSegment[internalTrackId] == null) {</span>
+<span class="nc" id="L331">            readersSegment[internalTrackId] = readers[internalTrackId].getNextSegment();</span>
+<span class="nc bnc" id="L332" title="All 2 branches missed.">            if (readersSegment[internalTrackId] == null) {</span>
+<span class="nc" id="L333">                return null;// no more blocks in the selected track</span>
+            }
+        }
+
+<span class="nc bnc" id="L337" title="All 2 branches missed.">        if (readersCluter[internalTrackId] == null) {</span>
+<span class="nc" id="L338">            readersCluter[internalTrackId] = readersSegment[internalTrackId].getNextCluster();</span>
+<span class="nc bnc" id="L339" title="All 2 branches missed.">            if (readersCluter[internalTrackId] == null) {</span>
+<span class="nc" id="L340">                readersSegment[internalTrackId] = null;</span>
+<span class="nc" id="L341">                return getNextBlockFrom(internalTrackId);</span>
+            }
+        }
+
+<span class="nc" id="L345">        SimpleBlock res = readersCluter[internalTrackId].getNextSimpleBlock();</span>
+<span class="nc bnc" id="L346" title="All 2 branches missed.">        if (res == null) {</span>
+<span class="nc" id="L347">            readersCluter[internalTrackId] = null;</span>
+<span class="nc" id="L348">            return new Block();// fake block to indicate the end of the cluster</span>
+        }
+
+<span class="nc" id="L351">        Block bloq = new Block();</span>
+<span class="nc" id="L352">        bloq.data = res.data;</span>
+<span class="nc" id="L353">        bloq.dataSize = (int) res.dataSize;</span>
+<span class="nc" id="L354">        bloq.trackNumber = internalTrackId;</span>
+<span class="nc" id="L355">        bloq.flags = res.flags;</span>
+<span class="nc" id="L356">        bloq.absoluteTimecode = convertTimecode(res.relativeTimeCode, readersSegment[internalTrackId].info.timecodeScale);</span>
+<span class="nc" id="L357">        bloq.absoluteTimecode += readersCluter[internalTrackId].timecode;</span>
+
+<span class="nc" id="L359">        return bloq;</span>
+    }
+
+    private short convertTimecode(int time, long oldTimeScale) {
+<span class="nc" id="L363">        return (short) (time * (DEFAULT_TIMECODE_SCALE / oldTimeScale));</span>
+    }
+
+    private void seekTo(SharpStream stream, long offset) throws IOException {
+<span class="nc bnc" id="L367" title="All 2 branches missed.">        if (stream.canSeek()) {</span>
+<span class="nc" id="L368">            stream.seek(offset);</span>
+        } else {
+<span class="nc bnc" id="L370" title="All 2 branches missed.">            if (offset &gt; written) {</span>
+<span class="nc" id="L371">                stream.skip(offset - written);</span>
+            } else {
+<span class="nc" id="L373">                stream.rewind();</span>
+<span class="nc" id="L374">                stream.skip(offset);</span>
+            }
+        }
+
+<span class="nc" id="L378">        written = offset;</span>
+<span class="nc" id="L379">    }</span>
+
+    private void writeLong(SharpStream stream, long number) throws IOException {
+<span class="nc" id="L382">        byte[] buffer = ByteBuffer.allocate(DataReader.LONG_SIZE).putLong(number).array();</span>
+<span class="nc" id="L383">        stream.write(buffer, 1, buffer.length - 1);</span>
+<span class="nc" id="L384">        written += buffer.length - 1;</span>
+<span class="nc" id="L385">    }</span>
+
+    private void writeFloat(SharpStream stream, float number) throws IOException {
+<span class="nc" id="L388">        byte[] buffer = ByteBuffer.allocate(DataReader.FLOAT_SIZE).putFloat(number).array();</span>
+<span class="nc" id="L389">        dump(buffer, stream);</span>
+<span class="nc" id="L390">    }</span>
+
+    private void writeShort(SharpStream stream, short number) throws IOException {
+<span class="nc" id="L393">        byte[] buffer = ByteBuffer.allocate(DataReader.SHORT_SIZE).putShort(number).array();</span>
+<span class="nc" id="L394">        dump(buffer, stream);</span>
+<span class="nc" id="L395">    }</span>
+
+    private void writeInt(SharpStream stream, int number) throws IOException {
+<span class="nc" id="L398">        byte[] buffer = ByteBuffer.allocate(DataReader.INTEGER_SIZE).putInt(number).array();</span>
+<span class="nc" id="L399">        dump(buffer, stream);</span>
+<span class="nc" id="L400">    }</span>
+
+    private void writeBlock(SharpStream stream, Block bloq, long clusterTimecode) throws IOException {
+<span class="nc" id="L403">        long relativeTimeCode = bloq.absoluteTimecode - clusterTimecode;</span>
+
+<span class="nc bnc" id="L405" title="All 4 branches missed.">        if (relativeTimeCode &lt; Short.MIN_VALUE || relativeTimeCode &gt; Short.MAX_VALUE) {</span>
+<span class="nc" id="L406">            throw new IndexOutOfBoundsException(&quot;SimpleBlock timecode overflow.&quot;);</span>
+        }
+
+<span class="nc" id="L409">        ArrayList&lt;byte[]&gt; listBuffer = new ArrayList&lt;&gt;(5);</span>
+<span class="nc" id="L410">        listBuffer.add(new byte[]{(byte) 0xa3});</span>
+<span class="nc" id="L411">        listBuffer.add(null);// block size</span>
+<span class="nc" id="L412">        listBuffer.add(encode(bloq.trackNumber + 1, false));</span>
+<span class="nc" id="L413">        listBuffer.add(ByteBuffer.allocate(DataReader.SHORT_SIZE).putShort((short) relativeTimeCode).array());</span>
+<span class="nc" id="L414">        listBuffer.add(new byte[]{bloq.flags});</span>
+
+<span class="nc" id="L416">        int blockSize = bloq.dataSize;</span>
+<span class="nc bnc" id="L417" title="All 2 branches missed.">        for (int i = 2; i &lt; listBuffer.size(); i++) {</span>
+<span class="nc" id="L418">            blockSize += listBuffer.get(i).length;</span>
+        }
+<span class="nc" id="L420">        listBuffer.set(1, encode(blockSize, false));</span>
+
+<span class="nc bnc" id="L422" title="All 2 branches missed.">        for (byte[] buff : listBuffer) {</span>
+<span class="nc" id="L423">            dump(buff, stream);</span>
+<span class="nc" id="L424">        }</span>
+
+        int read;
+<span class="nc bnc" id="L427" title="All 2 branches missed.">        while ((read = bloq.data.read(outBuffer)) &gt; 0) {</span>
+<span class="nc" id="L428">            stream.write(outBuffer, 0, read);</span>
+<span class="nc" id="L429">            written += read;</span>
+        }
+<span class="nc" id="L431">    }</span>
+
+    private byte[] makeTimecode(long timecode) {
+<span class="nc" id="L434">        ByteBuffer buffer = ByteBuffer.allocate(9);</span>
+<span class="nc" id="L435">        buffer.put((byte) 0xe7);</span>
+<span class="nc" id="L436">        buffer.put(encode(timecode, true));</span>
+
+<span class="nc" id="L438">        byte[] res = new byte[buffer.position()];</span>
+<span class="nc" id="L439">        System.arraycopy(buffer.array(), 0, res, 0, res.length);</span>
+
+<span class="nc" id="L441">        return res;</span>
+    }
+
+    private long makeCluster(SharpStream stream, byte[] bTimecode, long startOffset, ArrayList&lt;Long&gt; clusterOffsets, ArrayList&lt;Integer&gt; clusterSizes) throws IOException {
+<span class="nc bnc" id="L445" title="All 2 branches missed.">        if (startOffset &gt; 0) {</span>
+<span class="nc" id="L446">            clusterSizes.add((int) (written - startOffset));// size for last offset</span>
+        }
+
+<span class="nc bnc" id="L449" title="All 2 branches missed.">        if (clusterOffsets != null) {</span>
+            /* cluster */
+<span class="nc" id="L451">            dump(new byte[]{0x1f, 0x43, (byte) 0xb6, 0x75}, stream);</span>
+<span class="nc" id="L452">            clusterOffsets.add(written);// warning: max cluster size is 256 MiB</span>
+<span class="nc" id="L453">            dump(new byte[]{0x10, 0x00, 0x00, 0x00}, stream);</span>
+
+<span class="nc" id="L455">            startOffset = written;// size for the this cluster</span>
+
+<span class="nc" id="L457">            dump(bTimecode, stream);</span>
+
+<span class="nc" id="L459">            return startOffset;</span>
+        }
+
+<span class="nc" id="L462">        return -1;</span>
+    }
+
+    private void makeEBML(SharpStream stream) throws IOException {
+        // deafult values
+<span class="nc" id="L467">        dump(new byte[]{</span>
+                0x1A, 0x45, (byte) 0xDF, (byte) 0xA3, 0x01, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x1F, 0x42, (byte) 0x86, (byte) 0x81, 0x01,
+                0x42, (byte) 0xF7, (byte) 0x81, 0x01, 0x42, (byte) 0xF2, (byte) 0x81, 0x04,
+                0x42, (byte) 0xF3, (byte) 0x81, 0x08, 0x42, (byte) 0x82, (byte) 0x84, 0x77,
+                0x65, 0x62, 0x6D, 0x42, (byte) 0x87, (byte) 0x81, 0x02,
+                0x42, (byte) 0x85, (byte) 0x81, 0x02
+        }, stream);
+<span class="nc" id="L475">    }</span>
+
+    private ArrayList&lt;byte[]&gt; makeTracks() {
+<span class="nc" id="L478">        ArrayList&lt;byte[]&gt; buffer = new ArrayList&lt;&gt;(1);</span>
+<span class="nc" id="L479">        buffer.add(new byte[]{0x16, 0x54, (byte) 0xae, 0x6b});</span>
+<span class="nc" id="L480">        buffer.add(null);</span>
+
+<span class="nc bnc" id="L482" title="All 2 branches missed.">        for (int i = 0; i &lt; infoTracks.length; i++) {</span>
+<span class="nc" id="L483">            buffer.addAll(makeTrackEntry(i, infoTracks[i]));</span>
+        }
+
+<span class="nc" id="L486">        return lengthFor(buffer);</span>
+    }
+
+    private ArrayList&lt;byte[]&gt; makeTrackEntry(int internalTrackId, WebMTrack track) {
+<span class="nc" id="L490">        byte[] id = encode(internalTrackId + 1, true);</span>
+<span class="nc" id="L491">        ArrayList&lt;byte[]&gt; buffer = new ArrayList&lt;&gt;(12);</span>
+
+        /* track */
+<span class="nc" id="L494">        buffer.add(new byte[]{(byte) 0xae});</span>
+<span class="nc" id="L495">        buffer.add(null);</span>
+
+        /* track number */
+<span class="nc" id="L498">        buffer.add(new byte[]{(byte) 0xd7});</span>
+<span class="nc" id="L499">        buffer.add(id);</span>
+
+        /* track uid */
+<span class="nc" id="L502">        buffer.add(new byte[]{0x73, (byte) 0xc5});</span>
+<span class="nc" id="L503">        buffer.add(id);</span>
+
+        /* flag lacing */
+<span class="nc" id="L506">        buffer.add(new byte[]{(byte) 0x9c, (byte) 0x81, 0x00});</span>
+
+        /* lang */
+<span class="nc" id="L509">        buffer.add(new byte[]{0x22, (byte) 0xb5, (byte) 0x9c, (byte) 0x83, 0x75, 0x6e, 0x64});</span>
+
+        /* codec id */
+<span class="nc" id="L512">        buffer.add(new byte[]{(byte) 0x86});</span>
+<span class="nc" id="L513">        buffer.addAll(encode(track.codecId));</span>
+
+        /* type */
+<span class="nc" id="L516">        buffer.add(new byte[]{(byte) 0x83});</span>
+<span class="nc" id="L517">        buffer.add(encode(track.trackType, true));</span>
+
+        /* default duration */
+<span class="nc bnc" id="L520" title="All 2 branches missed.">        if (track.defaultDuration != 0) {</span>
+<span class="nc" id="L521">            predefinedDurations[internalTrackId] = (int) Math.ceil(track.defaultDuration / (float) DEFAULT_TIMECODE_SCALE);</span>
+<span class="nc" id="L522">            buffer.add(new byte[]{0x23, (byte) 0xe3, (byte) 0x83});</span>
+<span class="nc" id="L523">            buffer.add(encode(track.defaultDuration, true));</span>
+        }
+
+        /* audio/video */
+<span class="nc bnc" id="L527" title="All 6 branches missed.">        if ((track.trackType == 1 || track.trackType == 2) &amp;&amp; valid(track.bMetadata)) {</span>
+<span class="nc bnc" id="L528" title="All 2 branches missed.">            buffer.add(new byte[]{(byte) (track.trackType == 1 ? 0xe0 : 0xe1)});</span>
+<span class="nc" id="L529">            buffer.add(encode(track.bMetadata.length, false));</span>
+<span class="nc" id="L530">            buffer.add(track.bMetadata);</span>
+        }
+
+        /* codec private*/
+<span class="nc bnc" id="L534" title="All 2 branches missed.">        if (valid(track.codecPrivate)) {</span>
+<span class="nc" id="L535">            buffer.add(new byte[]{0x63, (byte) 0xa2});</span>
+<span class="nc" id="L536">            buffer.add(encode(track.codecPrivate.length, false));</span>
+<span class="nc" id="L537">            buffer.add(track.codecPrivate);</span>
+        }
+
+<span class="nc" id="L540">        return lengthFor(buffer);</span>
+
+    }
+
+    private ArrayList&lt;byte[]&gt; makeCuePoint(int internalTrackId, KeyFrame keyFrame) {
+<span class="nc" id="L545">        ArrayList&lt;byte[]&gt; buffer = new ArrayList&lt;&gt;(5);</span>
+
+        /* CuePoint */
+<span class="nc" id="L548">        buffer.add(new byte[]{(byte) 0xbb});</span>
+<span class="nc" id="L549">        buffer.add(null);</span>
+
+        /* CueTime */
+<span class="nc" id="L552">        buffer.add(new byte[]{(byte) 0xb3});</span>
+<span class="nc" id="L553">        buffer.add(encode(keyFrame.atTimecode, true));</span>
+
+        /* CueTrackPosition */
+<span class="nc" id="L556">        buffer.addAll(makeCueTrackPosition(internalTrackId, keyFrame));</span>
+
+<span class="nc" id="L558">        return lengthFor(buffer);</span>
+    }
+
+    private ArrayList&lt;byte[]&gt; makeCueTrackPosition(int internalTrackId, KeyFrame keyFrame) {
+<span class="nc" id="L562">        ArrayList&lt;byte[]&gt; buffer = new ArrayList&lt;&gt;(8);</span>
+
+        /* CueTrackPositions */
+<span class="nc" id="L565">        buffer.add(new byte[]{(byte) 0xb7});</span>
+<span class="nc" id="L566">        buffer.add(null);</span>
+
+        /* CueTrack */
+<span class="nc" id="L569">        buffer.add(new byte[]{(byte) 0xf7});</span>
+<span class="nc" id="L570">        buffer.add(encode(internalTrackId + 1, true));</span>
+
+        /* CueClusterPosition */
+<span class="nc" id="L573">        buffer.add(new byte[]{(byte) 0xf1});</span>
+<span class="nc" id="L574">        buffer.add(encode(keyFrame.atCluster, true));</span>
+
+        /* CueRelativePosition */
+<span class="nc bnc" id="L577" title="All 2 branches missed.">        if (keyFrame.atBlock &gt; 0) {</span>
+<span class="nc" id="L578">            buffer.add(new byte[]{(byte) 0xf0});</span>
+<span class="nc" id="L579">            buffer.add(encode(keyFrame.atBlock, true));</span>
+        }
+
+<span class="nc" id="L582">        return lengthFor(buffer);</span>
+    }
+
+    private void dump(byte[] buffer, SharpStream stream) throws IOException {
+<span class="nc" id="L586">        stream.write(buffer);</span>
+<span class="nc" id="L587">        written += buffer.length;</span>
+<span class="nc" id="L588">    }</span>
+
+    private ArrayList&lt;byte[]&gt; lengthFor(ArrayList&lt;byte[]&gt; buffer) {
+<span class="nc" id="L591">        long size = 0;</span>
+<span class="nc bnc" id="L592" title="All 2 branches missed.">        for (int i = 2; i &lt; buffer.size(); i++) {</span>
+<span class="nc" id="L593">            size += buffer.get(i).length;</span>
+        }
+<span class="nc" id="L595">        buffer.set(1, encode(size, false));</span>
+<span class="nc" id="L596">        return buffer;</span>
+    }
+
+    private byte[] encode(long number, boolean withLength) {
+<span class="nc" id="L600">        int length = -1;</span>
+<span class="nc bnc" id="L601" title="All 2 branches missed.">        for (int i = 1; i &lt;= 7; i++) {</span>
+<span class="nc bnc" id="L602" title="All 2 branches missed.">            if (number &lt; Math.pow(2, 7 * i)) {</span>
+<span class="nc" id="L603">                length = i;</span>
+<span class="nc" id="L604">                break;</span>
+            }
+        }
+
+<span class="nc bnc" id="L608" title="All 2 branches missed.">        if (length &lt; 1) {</span>
+<span class="nc" id="L609">            throw new ArithmeticException(&quot;Can't encode a number of bigger than 7 bytes&quot;);</span>
+        }
+
+<span class="nc bnc" id="L612" title="All 2 branches missed.">        if (number == (Math.pow(2, 7 * length)) - 1) {</span>
+<span class="nc" id="L613">            length++;</span>
+        }
+
+<span class="nc bnc" id="L616" title="All 2 branches missed.">        int offset = withLength ? 1 : 0;</span>
+<span class="nc" id="L617">        byte[] buffer = new byte[offset + length];</span>
+<span class="nc" id="L618">        long marker = (long) Math.floor((length - 1f) / 8f);</span>
+
+<span class="nc" id="L620">        float mul = 1;</span>
+<span class="nc bnc" id="L621" title="All 2 branches missed.">        for (int i = length - 1; i &gt;= 0; i--, mul *= 0x100) {</span>
+<span class="nc" id="L622">            long b = (long) Math.floor(number / mul);</span>
+<span class="nc bnc" id="L623" title="All 4 branches missed.">            if (!withLength &amp;&amp; i == marker) {</span>
+<span class="nc" id="L624">                b = b | (0x80 &gt;&gt; (length - 1));</span>
+            }
+<span class="nc" id="L626">            buffer[offset + i] = (byte) b;</span>
+        }
+
+<span class="nc bnc" id="L629" title="All 2 branches missed.">        if (withLength) {</span>
+<span class="nc" id="L630">            buffer[0] = (byte) (0x80 | length);</span>
+        }
+
+<span class="nc" id="L633">        return buffer;</span>
+    }
+
+    private ArrayList&lt;byte[]&gt; encode(String value) {
+        byte[] str;
+<span class="nc" id="L638">        str = value.getBytes(StandardCharsets.UTF_8);// or use &quot;utf-8&quot;</span>
+
+<span class="nc" id="L640">        ArrayList&lt;byte[]&gt; buffer = new ArrayList&lt;&gt;(2);</span>
+<span class="nc" id="L641">        buffer.add(encode(str.length, false));</span>
+<span class="nc" id="L642">        buffer.add(str);</span>
+
+<span class="nc" id="L644">        return buffer;</span>
+    }
+
+    private boolean valid(byte[] buffer) {
+<span class="nc bnc" id="L648" title="All 4 branches missed.">        return buffer != null &amp;&amp; buffer.length &gt; 0;</span>
+    }
+
+    private int selectTrackForCue() {
+<span class="nc" id="L652">        int i = 0;</span>
+<span class="nc" id="L653">        int videoTracks = 0;</span>
+<span class="nc" id="L654">        int audioTracks = 0;</span>
+
+<span class="nc bnc" id="L656" title="All 2 branches missed.">        for (; i &lt; infoTracks.length; i++) {</span>
+<span class="nc bnc" id="L657" title="All 3 branches missed.">            switch (infoTracks[i].trackType) {</span>
+                case 1:
+<span class="nc" id="L659">                    videoTracks++;</span>
+<span class="nc" id="L660">                    break;</span>
+                case 2:
+<span class="nc" id="L662">                    audioTracks++;</span>
+                    break;
+            }
+        }
+
+        int kind;
+<span class="nc bnc" id="L668" title="All 2 branches missed.">        if (audioTracks == infoTracks.length) {</span>
+<span class="nc" id="L669">            kind = 2;</span>
+<span class="nc bnc" id="L670" title="All 2 branches missed.">        } else if (videoTracks == infoTracks.length) {</span>
+<span class="nc" id="L671">            kind = 1;</span>
+<span class="nc bnc" id="L672" title="All 2 branches missed.">        } else if (videoTracks &gt; 0) {</span>
+<span class="nc" id="L673">            kind = 1;</span>
+<span class="nc bnc" id="L674" title="All 2 branches missed.">        } else if (audioTracks &gt; 0) {</span>
+<span class="nc" id="L675">            kind = 2;</span>
+        } else {
+<span class="nc" id="L677">            return 0;</span>
+        }
+
+        // TODO: in the adove code, find and select the shortest track for the desired kind
+<span class="nc bnc" id="L681" title="All 2 branches missed.">        for (i = 0; i &lt; infoTracks.length; i++) {</span>
+<span class="nc bnc" id="L682" title="All 2 branches missed.">            if (kind == infoTracks[i].trackType) {</span>
+<span class="nc" id="L683">                return i;</span>
+            }
+        }
+
+<span class="nc" id="L687">        return 0;</span>
+    }
+
+    class KeyFrame {
+
+<span class="nc" id="L692">        KeyFrame(long segment, long cluster, long block, int bTimecodeLength, long timecode) {</span>
+<span class="nc" id="L693">            atCluster = cluster - segment;</span>
+<span class="nc bnc" id="L694" title="All 2 branches missed.">            if ((block - bTimecodeLength) &gt; cluster) {</span>
+<span class="nc" id="L695">                atBlock = (int) (block - cluster);</span>
+            }
+<span class="nc" id="L697">            atTimecode = timecode;</span>
+<span class="nc" id="L698">        }</span>
+
+        long atCluster;
+        int atBlock;
+        long atTimecode;
+    }
+
+<span class="nc" id="L705">    class Block {</span>
+
+        InputStream data;
+        int trackNumber;
+        byte flags;
+        int dataSize;
+        long absoluteTimecode;
+
+        boolean isKeyframe() {
+<span class="nc bnc" id="L714" title="All 2 branches missed.">            return (flags &amp; 0x80) == 0x80;</span>
+        }
+
+        @NonNull
+        @Override
+        public String toString() {
+<span class="nc" id="L720">            return String.format(&quot;trackNumber=%s  isKeyFrame=%S  absoluteTimecode=%s&quot;, trackNumber, isKeyframe(), absoluteTimecode);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>

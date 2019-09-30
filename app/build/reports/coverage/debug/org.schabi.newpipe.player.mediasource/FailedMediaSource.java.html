@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FailedMediaSource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=0;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">debugAndroidTest</a> &gt; <a href="index.source.html" class="el_package">org.schabi.newpipe.player.mediasource</a> &gt; <span class="el_source">FailedMediaSource.java</span></div><h1>FailedMediaSource.java</h1><pre class="source lang-java linenums">package org.schabi.newpipe.player.mediasource;
+
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.util.Log;
+
+import com.google.android.exoplayer2.source.BaseMediaSource;
+import com.google.android.exoplayer2.source.MediaPeriod;
+import com.google.android.exoplayer2.upstream.Allocator;
+import com.google.android.exoplayer2.upstream.TransferListener;
+
+import org.schabi.newpipe.player.playqueue.PlayQueueItem;
+
+import java.io.IOException;
+
+public class FailedMediaSource extends BaseMediaSource implements ManagedMediaSource {
+<span class="nc" id="L17">    private final String TAG = &quot;FailedMediaSource@&quot; + Integer.toHexString(hashCode());</span>
+
+    public static class FailedMediaSourceException extends Exception {
+        FailedMediaSourceException(String message) {
+<span class="nc" id="L21">            super(message);</span>
+<span class="nc" id="L22">        }</span>
+
+        FailedMediaSourceException(Throwable cause) {
+<span class="nc" id="L25">            super(cause);</span>
+<span class="nc" id="L26">        }</span>
+    }
+
+    public static final class MediaSourceResolutionException extends FailedMediaSourceException {
+        public MediaSourceResolutionException(String message) {
+<span class="nc" id="L31">            super(message);</span>
+<span class="nc" id="L32">        }</span>
+    }
+
+    public static final class StreamInfoLoadException extends FailedMediaSourceException {
+        public StreamInfoLoadException(Throwable cause) {
+<span class="nc" id="L37">            super(cause);</span>
+<span class="nc" id="L38">        }</span>
+    }
+
+    private final PlayQueueItem playQueueItem;
+    private final FailedMediaSourceException error;
+
+    private final long retryTimestamp;
+
+    public FailedMediaSource(@NonNull final PlayQueueItem playQueueItem,
+                             @NonNull final FailedMediaSourceException error,
+<span class="nc" id="L48">                             final long retryTimestamp) {</span>
+<span class="nc" id="L49">        this.playQueueItem = playQueueItem;</span>
+<span class="nc" id="L50">        this.error = error;</span>
+<span class="nc" id="L51">        this.retryTimestamp = retryTimestamp;</span>
+<span class="nc" id="L52">    }</span>
+
+    /**
+     * Permanently fail the play queue item associated with this source, with no hope of retrying.
+     * The error will always be propagated to ExoPlayer.
+     * */
+    public FailedMediaSource(@NonNull final PlayQueueItem playQueueItem,
+<span class="nc" id="L59">                             @NonNull final FailedMediaSourceException error) {</span>
+<span class="nc" id="L60">        this.playQueueItem = playQueueItem;</span>
+<span class="nc" id="L61">        this.error = error;</span>
+<span class="nc" id="L62">        this.retryTimestamp = Long.MAX_VALUE;</span>
+<span class="nc" id="L63">    }</span>
+
+    public PlayQueueItem getStream() {
+<span class="nc" id="L66">        return playQueueItem;</span>
+    }
+
+    public FailedMediaSourceException getError() {
+<span class="nc" id="L70">        return error;</span>
+    }
+
+    private boolean canRetry() {
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        return System.currentTimeMillis() &gt;= retryTimestamp;</span>
+    }
+
+    @Override
+    public void maybeThrowSourceInfoRefreshError() throws IOException {
+<span class="nc" id="L79">        throw new IOException(error);</span>
+    }
+
+    @Override
+    public MediaPeriod createPeriod(MediaPeriodId id, Allocator allocator, long startPositionUs) {
+<span class="nc" id="L84">        return null;</span>
+    }
+
+    @Override
+<span class="nc" id="L88">    public void releasePeriod(MediaPeriod mediaPeriod) {}</span>
+
+
+    @Override
+    protected void prepareSourceInternal(@Nullable TransferListener mediaTransferListener) {
+<span class="nc" id="L93">        Log.e(TAG, &quot;Loading failed source: &quot;, error);</span>
+<span class="nc" id="L94">    }</span>
+
+    @Override
+<span class="nc" id="L97">    protected void releaseSourceInternal() {}</span>
+
+    @Override
+    public boolean shouldBeReplacedWith(@NonNull final PlayQueueItem newIdentity,
+                                        final boolean isInterruptable) {
+<span class="nc bnc" id="L102" title="All 4 branches missed.">        return newIdentity != playQueueItem || canRetry();</span>
+    }
+
+    @Override
+    public boolean isStreamEqual(@NonNull PlayQueueItem stream) {
+<span class="nc bnc" id="L107" title="All 2 branches missed.">        return playQueueItem == stream;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span>Generated by the Android Gradle plugin 3.2.0</div></body></html>
